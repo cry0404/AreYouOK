@@ -1,2 +1,4 @@
 .cursor
 docs/
+.DS_Store
+config/.env

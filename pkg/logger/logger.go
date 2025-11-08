@@ -6,11 +6,8 @@ import (
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
-
+//也可考虑 hertz 本身自带的日志组件 ？
 var Logger *zap.Logger
-
-// Init 初始化 zap logger
-// 注意：需要在 config 包初始化之后调用
 func Init() {
 	var zapConfig zap.Config
 
@@ -20,7 +17,7 @@ func Init() {
 		zapConfig = zap.NewProductionConfig()
 	}
 
-	// 设置日志级别
+	// 日志级别
 	switch config.Cfg.LoggerLevel {
 	case "DEBUG":
 		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
@@ -34,14 +31,14 @@ func Init() {
 		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	}
 
-	// 设置日志格式
+	// 日志格式
 	if config.Cfg.LoggerFormat == "text" {
 		zapConfig.Encoding = "console"
 	} else {
 		zapConfig.Encoding = "json"
 	}
 
-	// 设置输出路径
+	// 输出路径
 	if config.Cfg.LoggerOutputPath != "stdout" {
 		zapConfig.OutputPaths = []string{config.Cfg.LoggerOutputPath}
 		zapConfig.ErrorOutputPaths = []string{config.Cfg.LoggerOutputPath}
@@ -60,8 +57,7 @@ func Init() {
 	)
 }
 
-// Sync 刷新日志缓冲区
-// 应该在程序退出前调用，通常在 main 函数中使用 defer logger.Sync()
+
 func Sync() {
 	if Logger != nil {
 		_ = Logger.Sync()

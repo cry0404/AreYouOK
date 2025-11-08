@@ -77,10 +77,11 @@ type Config struct {
 	LoggerFormat     string `env:"LOGGER_FORMAT" envDefault:"text"` // json, text
 	LoggerOutputPath string `env:"LOGGER_OUTPUT_PATH" envDefault:"stdout"`
 
-	// 链路追踪配置
-	TracingEnabled  bool    `env:"TRACING_ENABLED" envDefault:"false"`
-	TracingEndpoint string  `env:"TRACING_ENDPOINT" envDefault:"http://localhost:14268/api/traces"`
-	TracingSampler  float64 `env:"TRACING_SAMPLER" envDefault:"0.01"`
+	//最后扩展时考虑是否加入
+	// // 链路追踪配置
+	// TracingEnabled  bool    `env:"TRACING_ENABLED" envDefault:"false"`
+	// TracingEndpoint string  `env:"TRACING_ENDPOINT" envDefault:"http://localhost:14268/api/traces"`
+	// TracingSampler  float64 `env:"TRACING_SAMPLER" envDefault:"0.01"`
 
 	// 速率限制配置
 	RateLimitEnabled bool `env:"RATE_LIMIT_ENABLED" envDefault:"true"`

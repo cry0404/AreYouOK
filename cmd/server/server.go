@@ -4,6 +4,7 @@ import (
 	"AreYouOK/config"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/storage/database"
 	"context"
 	"net"
 	"os"
@@ -16,15 +17,12 @@ import (
 )
 
 func main() {
-	// 1. 初始化日志（必须在最前面，因为其他初始化可能需要日志）
 	logger.Init()
 	defer logger.Sync()
 
-	// 2. 优雅退出处理
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 监听系统信号
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -37,7 +35,16 @@ func main() {
 	}()
 
 	// 3. 初始化其他组件（数据库、Redis、RabbitMQ等）
-	// TODO: 在这里初始化数据库连接
+	if err := database.Init(); err != nil {
+		logger.Logger.Fatal("Failed to initialize database", zap.Error(err))
+	}
+	defer func() {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := database.Close(shutdownCtx); err != nil {
+			logger.Logger.Error("Failed to close database", zap.Error(err))
+		}
+	}()
 	// TODO: 在这里初始化 Redis 连接
 	// TODO: 在这里初始化 RabbitMQ 连接
 
@@ -47,7 +54,6 @@ func main() {
 		zap.String("environment", config.Cfg.Environment),
 	)
 
-	// 4. 启动 Hertz HTTP 服务
 	addr := net.JoinHostPort(config.Cfg.ServerHost, config.Cfg.ServerPort)
 	h := server.Default(server.WithHostPorts(addr))
 
