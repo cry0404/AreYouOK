@@ -24,16 +24,14 @@ func Register(h *server.Hertz) {
 	authRequired := v1.Group("")
 	// TODO: 在此添加 JWT 鉴权、限流等中间件，例如 authRequired.Use(middleware.Auth())
 
-	onboarding := authRequired.Group("/onboarding")
-	onboarding.GET("/progress", handler.GetOnboardingProgress)
-
 	authRequired.GET("/users/me", handler.GetCurrentUser)
+	authRequired.GET("/users/me/status", handler.GetUserStatus)
 	authRequired.PUT("/users/me/settings", handler.UpdateUserSettings)
 	authRequired.GET("/users/me/quotas", handler.GetUserQuotas)
 
 	authRequired.GET("/contacts", handler.ListContacts)
 	authRequired.POST("/contacts", handler.CreateContact)
-	authRequired.DELETE("/contacts/:contact_id", handler.DeleteContact)
+	authRequired.DELETE("/contacts/:priority", handler.DeleteContact)
 
 	checkIns := authRequired.Group("/check-ins")
 	checkIns.GET("/today", handler.GetTodayCheckIn)
@@ -53,5 +51,4 @@ func Register(h *server.Hertz) {
 	notifications.GET("/tasks", handler.ListNotificationTasks)
 	notifications.GET("/tasks/:task_id", handler.GetNotificationTask)
 	notifications.POST("/ack", handler.AckNotification)
-	notifications.GET("/templates", handler.ListNotificationTemplates)
 }

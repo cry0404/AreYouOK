@@ -37,13 +37,3 @@ func AckNotification(ctx context.Context, c *app.RequestContext) {
 	}
 	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
 }
-
-// ListNotificationTemplates 查询通知模板列表。
-func ListNotificationTemplates(ctx context.Context, c *app.RequestContext) {
-	var query model.NotificationTemplateQuery
-	if err := c.Bind(&query); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_QUERY", "Invalid query", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
-}

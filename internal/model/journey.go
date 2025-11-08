@@ -32,7 +32,7 @@ type UpdateJourneyRequest struct {
 
 // JourneyAlertData 表示行程提醒执行状态。
 type JourneyAlertData struct {
-	Status        string  `json:"status"`
-	Attempts      int     `json:"attempts"`
-	LastAttemptAt *string `json:"last_attempt_at"`
+	AlertStatus        string  `json:"alert_status"`
+	AlertAttempts      int     `json:"alert_attempts"`
+	AlertLastAttemptAt *string `json:"alert_last_attempt_at"`
 }

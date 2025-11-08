@@ -15,11 +15,12 @@ type ExchangeAlipayRequest struct {
 
 // AuthUserSnapshot 表示授权后返回的用户概览信息。
 type AuthUserSnapshot struct {
-	ID            string `json:"id"`
-	Nickname      string `json:"nickname"`
-	AvatarURL     string `json:"avatar_url"`
-	PhoneVerified bool   `json:"phone_verified"`
-	IsNewUser     bool   `json:"is_new_user"`
+	ID            string       `json:"id"`
+	Nickname      string       `json:"nickname"`
+	Status        string       `json:"status"`
+	PhoneVerified bool         `json:"phone_verified"`
+	IsNewUser     bool         `json:"is_new_user"`
+	Waitlist      WaitlistInfo `json:"waitlist"`
 }
 
 // ExchangeAlipayResponseData 表示支付宝换取身份接口的响应数据。
@@ -70,10 +71,6 @@ type WaitlistStatusRequest struct {
 
 // WaitlistStatusData 表示排队状态接口的响应数据。
 type WaitlistStatusData struct {
-	Status      string  `json:"status"`
-	Priority    int     `json:"priority"`
-	BatchTag    string  `json:"batch_tag"`
-	Position    int     `json:"position"`
-	InvitedAt   *string `json:"invited_at"`
-	ActivatedAt *string `json:"activated_at"`
+	Status string `json:"status"`
+	WaitlistInfo
 }

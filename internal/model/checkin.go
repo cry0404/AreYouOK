@@ -34,3 +34,4 @@ type CheckInRecord struct {
 	Status      string `json:"status"`
 	CompletedAt string `json:"completed_at,omitempty"`
 }
+

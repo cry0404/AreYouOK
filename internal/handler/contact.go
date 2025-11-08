@@ -25,8 +25,8 @@ func CreateContact(ctx context.Context, c *app.RequestContext) {
 
 // DeleteContact 删除紧急联系人。
 func DeleteContact(ctx context.Context, c *app.RequestContext) {
-	contactID := c.Param("contact_id")
-	if contactID == "" {
+	priority := c.Param("priority")
+	if priority == "" {
 		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
 		return
 	}

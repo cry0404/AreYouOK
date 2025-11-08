@@ -11,7 +11,7 @@ type NotificationTaskQuery struct {
 
 // NotificationContactInfo 表示任务关联的联系人信息。
 type NotificationContactInfo struct {
-	ID          string `json:"id"`
+	Priority    int    `json:"priority"`
 	DisplayName string `json:"display_name"`
 	PhoneMasked string `json:"phone_masked"`
 }
@@ -32,14 +32,15 @@ type NotificationTask struct {
 
 // NotificationAttempt 表示通知的单次尝试记录。
 type NotificationAttempt struct {
-	ID           string `json:"id"`
-	ContactID    string `json:"contact_id"`
-	Channel      string `json:"channel"`
-	Status       string `json:"status"`
-	ResponseCode string `json:"response_code"`
-	CostCents    int    `json:"cost_cents"`
-	Deducted     bool   `json:"deducted"`
-	AttemptedAt  string `json:"attempted_at"`
+	ID               string `json:"id"`
+	ContactPriority  int    `json:"contact_priority"`
+	ContactPhoneHash string `json:"contact_phone_hash"`
+	Channel          string `json:"channel"`
+	Status           string `json:"status"`
+	ResponseCode     string `json:"response_code"`
+	CostCents        int    `json:"cost_cents"`
+	Deducted         bool   `json:"deducted"`
+	AttemptedAt      string `json:"attempted_at"`
 }
 
 // NotificationTaskDetail 表示通知任务详情。
@@ -53,25 +54,7 @@ type NotificationTaskDetail struct {
 	CostCents  int                    `json:"cost_cents"`
 	Deducted   bool                   `json:"deducted"`
 	Payload    map[string]interface{} `json:"payload"`
-	Template   NotificationTemplate   `json:"template"`
 	Attempts   []NotificationAttempt  `json:"attempts"`
-}
-
-// NotificationTemplate 表示通知模板信息。
-type NotificationTemplate struct {
-	ID       int    `json:"id"`
-	Category string `json:"category"`
-	Channel  string `json:"channel"`
-	Content  string `json:"content"`
-	Version  int    `json:"version"`
-	Status   string `json:"status"`
-}
-
-// NotificationTemplateQuery 表示模板查询参数。
-type NotificationTemplateQuery struct {
-	Category string `query:"category"`
-	Channel  string `query:"channel"`
-	Status   string `query:"status"`
 }
 
 // NotificationAckRequest 表示通知确认请求体。

@@ -2,7 +2,6 @@ package model
 
 // ContactItem 表示单个紧急联系人的信息。
 type ContactItem struct {
-	ID           string `json:"id"`
 	DisplayName  string `json:"display_name"`
 	Relationship string `json:"relationship"`
 	PhoneMasked  string `json:"phone_masked"`

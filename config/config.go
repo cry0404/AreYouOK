@@ -24,8 +24,8 @@ type Config struct {
 	PostgreSQLDatabase string `env:"POSTGRESQL_DATABASE" envDefault:"areyouok"`
 	PostgreSQLSchema   string `env:"POSTGRESQL_SCHEMA" envDefault:"public"`
 	PostgreSQLSSLMode  string `env:"POSTGRESQL_SSLMODE" envDefault:"disable"`
-	PostgreSQLMaxIdle  int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"10"`
-	PostgreSQLMaxOpen  int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"100"`
+	PostgreSQLMaxIdle  int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"50"`
+	PostgreSQLMaxOpen  int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
 
 	// Redis 配置
 	RedisAddr     string `env:"REDIS_ADDR" envDefault:"localhost:6379"`

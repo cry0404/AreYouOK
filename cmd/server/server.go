@@ -17,6 +17,7 @@ import (
 )
 
 func main() {
+	//日志部分
 	logger.Init()
 	defer logger.Sync()
 
@@ -34,7 +35,6 @@ func main() {
 		cancel()
 	}()
 
-	// 3. 初始化其他组件（数据库、Redis、RabbitMQ等）
 	if err := database.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize database", zap.Error(err))
 	}

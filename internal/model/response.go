@@ -53,3 +53,4 @@ func NewErrorResponse(code, message string, details ErrorDetail) ErrorResponse {
 func NewNotImplementedResponse() ErrorResponse {
 	return NewErrorResponse("NOT_IMPLEMENTED", "Not Implemented", nil)
 }
+

@@ -13,6 +13,11 @@ func GetCurrentUser(ctx context.Context, c *app.RequestContext) {
 	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
 }
 
+// GetUserStatus 获取当前用户的状态与引导信息。
+func GetUserStatus(ctx context.Context, c *app.RequestContext) {
+	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+}
+
 // UpdateUserSettings 更新用户个性化设置。
 func UpdateUserSettings(ctx context.Context, c *app.RequestContext) {
 	var req model.UpdateUserSettingsRequest

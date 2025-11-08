@@ -6,6 +6,13 @@ type UserPhoneInfo struct {
 	Verified     bool   `json:"verified"`
 }
 
+// WaitlistInfo 表示用户的内测排队信息。
+type WaitlistInfo struct {
+	Priority    int     `json:"priority"`
+	Position    *int    `json:"position,omitempty"`
+	ActivatedAt *string `json:"activated_at,omitempty"`
+}
+
 // UserSettings 表示用户个性化设置。
 type UserSettings struct {
 	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
@@ -25,14 +32,14 @@ type UserQuotas struct {
 
 // UserProfileData 表示用户信息接口的响应数据。
 type UserProfileData struct {
-	ID        string        `json:"id"`
-	PublicID  string        `json:"public_id"`
-	Nickname  string        `json:"nickname"`
-	AvatarURL string        `json:"avatar_url"`
-	Phone     UserPhoneInfo `json:"phone"`
-	Status    string        `json:"status"`
-	Quotas    UserQuotas    `json:"quotas"`
-	Settings  UserSettings  `json:"settings"`
+	ID       string        `json:"id"`
+	PublicID string        `json:"public_id"`
+	Nickname string        `json:"nickname"`
+	Phone    UserPhoneInfo `json:"phone"`
+	Status   string        `json:"status"`
+	Waitlist WaitlistInfo  `json:"waitlist"`
+	Quotas   UserQuotas    `json:"quotas"`
+	Settings UserSettings  `json:"settings"`
 }
 
 // UpdateUserSettingsRequest 表示更新设置的请求体。
@@ -42,4 +49,12 @@ type UpdateUserSettingsRequest struct {
 	DailyCheckInGraceUntil *string `json:"daily_check_in_grace_until"`
 	JourneyAutoNotify      *bool   `json:"journey_auto_notify"`
 	Timezone               *string `json:"timezone"`
+}
+
+// UserStatusData 表示用户状态接口的响应数据。
+type UserStatusData struct {
+	Status        string       `json:"status"`
+	PhoneVerified bool         `json:"phone_verified"`
+	HasContacts   bool         `json:"has_contacts"`
+	Waitlist      WaitlistInfo `json:"waitlist"`
 }
