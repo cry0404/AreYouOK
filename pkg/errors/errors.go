@@ -1,5 +1,9 @@
 package errors
 
+
+func (d Definition) Error() string {
+	return d.Message
+}
 // Definition 表示业务错误码及默认信息。
 type Definition struct {
 	Code    string

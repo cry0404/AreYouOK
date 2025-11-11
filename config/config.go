@@ -83,7 +83,7 @@ type Config struct {
 	// TracingEndpoint string  `env:"TRACING_ENDPOINT" envDefault:"http://localhost:14268/api/traces"`
 	// TracingSampler  float64 `env:"TRACING_SAMPLER" envDefault:"0.01"`
 
-	// 速率限制配置
+	// 速率限制配置, 配置在中间件内
 	RateLimitEnabled bool `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
 	RateLimitRPS     int  `env:"RATE_LIMIT_RPS" envDefault:"100"` // 每秒请求数
 

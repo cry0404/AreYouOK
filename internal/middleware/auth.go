@@ -13,7 +13,7 @@ import (
 
 const (
 	// IdentityKey 用于在请求上下文中存储用户ID的key
-	// JWT claims 中的 uid 字段对应 public_id（字符串格式）
+	// JWT claims 中的 uid 字段对应 public_id
 	IdentityKey = "uid"
 )
 
@@ -49,7 +49,6 @@ func initAuthMiddleware() error {
 			return uid
 		},
 
-		// 认证失败时的响应（符合 API 文档的错误格式）
 		Unauthorized: func(ctx context.Context, c *app.RequestContext, code int, message string) {
 			c.JSON(code, map[string]interface{}{
 				"error": map[string]interface{}{

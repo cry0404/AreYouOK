@@ -19,6 +19,7 @@ var (
 	client *redis.Client
 	once   sync.Once
 	err    error
+
 )
 
 func Init() error {

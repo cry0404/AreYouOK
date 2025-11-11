@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/cloudwego/hertz v0.10.3
+	github.com/google/uuid v1.6.0
 	github.com/hertz-contrib/jwt v1.0.4
 	github.com/joho/godotenv v1.5.1
 	github.com/rabbitmq/amqp091-go v1.10.0
