@@ -1,60 +1,56 @@
 package model
 
-// UserPhoneInfo 表示用户手机号的概览信息。
-type UserPhoneInfo struct {
-	NumberMasked string `json:"number_masked"`
-	Verified     bool   `json:"verified"`
+import "time"
+
+// UserStatus 用户状态枚举
+type UserStatus string
+
+const (
+	UserStatusWaitlisted UserStatus = "waitlisted" // 内测排队中
+	UserStatusOnboarding UserStatus = "onboarding" // 引导中，这里是登录验证部分
+	UserStatusContact    UserStatus = "contact"    //这里是填写紧急联系人部分
+	UserStatusActive     UserStatus = "active"     // 正常使用
+
+)
+
+// User 用户模型
+type User struct {
+	BaseModel
+	PublicID          int64             `gorm:"uniqueIndex;not null" json:"public_id"`
+	AlipayUserID      string            `gorm:"uniqueIndex;type:varchar(64);not null" json:"alipay_user_id"`
+	Nickname          string            `gorm:"type:varchar(64);not null;default:''" json:"nickname"`
+	PhoneCipher       []byte            `gorm:"type:bytea" json:"-"`                // 手机号密文，不对外暴露
+	PhoneHash         *string           `gorm:"uniqueIndex;type:char(64)" json:"-"` // 手机号哈希，用于查询
+	Status            UserStatus        `gorm:"type:varchar(16);not null;default:'waitlisted'" json:"status"`
+	EmergencyContacts EmergencyContacts `gorm:"type:jsonb;default:'[]'" json:"emergency_contacts"`
+
+	// 用户设置
+	Timezone               string    `gorm:"type:varchar(64);not null;default:'Asia/Shanghai'" json:"timezone"`
+	DailyCheckInEnabled    bool      `gorm:"not null;default:false" json:"daily_check_in_enabled"`
+	DailyCheckInDeadline   time.Time `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
+	DailyCheckInGraceUntil time.Time `gorm:"type:time;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
+	DailyCheckInRemindAt   time.Time `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
+	JourneyAutoNotify      bool      `gorm:"not null;default:true" json:"journey_auto_notify"`
+
+	// 额度
+	SMSBalance   int `gorm:"not null;default:0" json:"sms_balance"`
+	VoiceBalance int `gorm:"not null;default:0" json:"voice_balance"`
 }
 
-// WaitlistInfo 表示用户的内测排队信息。
-type WaitlistInfo struct {
-	Priority    int     `json:"priority"`
-	Position    *int    `json:"position,omitempty"`
-	ActivatedAt *string `json:"activated_at,omitempty"`
+// TableName 指定表名
+func (User) TableName() string {
+	return "users"
 }
 
-// UserSettings 表示用户个性化设置。
-type UserSettings struct {
-	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
-	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
-	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
-	Timezone               string `json:"timezone"`
-	JourneyAutoNotify      bool   `json:"journey_auto_notify"`
-}
+// EmergencyContacts 紧急联系人数组（JSONB）
+type EmergencyContacts []EmergencyContact
 
-// UserQuotas 表示用户剩余额度。
-type UserQuotas struct {
-	SMSBalance     int `json:"sms_balance"`
-	VoiceBalance   int `json:"voice_balance"`
-	SMSUnitPrice   int `json:"sms_unit_price"`
-	VoiceUnitPrice int `json:"voice_unit_price"`
-}
-
-// UserProfileData 表示用户信息接口的响应数据。
-type UserProfileData struct {
-	ID       string        `json:"id"`
-	PublicID string        `json:"public_id"`
-	Nickname string        `json:"nickname"`
-	Phone    UserPhoneInfo `json:"phone"`
-	Status   string        `json:"status"`
-	Waitlist WaitlistInfo  `json:"waitlist"`
-	Quotas   UserQuotas    `json:"quotas"`
-	Settings UserSettings  `json:"settings"`
-}
-
-// UpdateUserSettingsRequest 表示更新设置的请求体。
-type UpdateUserSettingsRequest struct {
-	DailyCheckInEnabled    *bool   `json:"daily_check_in_enabled"`
-	DailyCheckInDeadline   *string `json:"daily_check_in_deadline"`
-	DailyCheckInGraceUntil *string `json:"daily_check_in_grace_until"`
-	JourneyAutoNotify      *bool   `json:"journey_auto_notify"`
-	Timezone               *string `json:"timezone"`
-}
-
-// UserStatusData 表示用户状态接口的响应数据。
-type UserStatusData struct {
-	Status        string       `json:"status"`
-	PhoneVerified bool         `json:"phone_verified"`
-	HasContacts   bool         `json:"has_contacts"`
-	Waitlist      WaitlistInfo `json:"waitlist"`
+// EmergencyContact 紧急联系人结构
+type EmergencyContact struct {
+	DisplayName       string `json:"display_name"`
+	Relationship      string `json:"relationship"`
+	PhoneCipherBase64 string `json:"phone_cipher_base64"` // base64 编码的密文
+	PhoneHash         string `json:"phone_hash"`
+	Priority          int    `json:"priority"` // 1-3
+	CreatedAt         string `json:"created_at"`
 }

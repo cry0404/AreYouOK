@@ -1,34 +1,32 @@
 package handler
 
 import (
-	"AreYouOK/internal/model"
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// GetTodayCheckIn 查询当日打卡状态。
+// GetTodayCheckIn 查询当天打卡状态
+// GET /v1/check-ins/today
 func GetTodayCheckIn(ctx context.Context, c *app.RequestContext) {
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现查询当天打卡状态逻辑
 }
 
-// CompleteTodayCheckIn 完成当天打卡。
+// CompleteTodayCheckIn 完成当日打卡
+// POST /v1/check-ins/today/complete
 func CompleteTodayCheckIn(ctx context.Context, c *app.RequestContext) {
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现完成打卡逻辑
 }
 
-// GetCheckInHistory 查询打卡历史。
+// GetCheckInHistory 分页查询历史打卡记录
+// GET /v1/check-ins/history
 func GetCheckInHistory(ctx context.Context, c *app.RequestContext) {
-	var query model.CheckInHistoryQuery
-	if err := c.Bind(&query); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_QUERY", "Invalid query", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现查询打卡历史逻辑
 }
 
-// AckCheckInReminder 确认收到提醒。
+// AckCheckInReminder 确认已知晓打卡提醒
+// POST /v1/check-ins/ack-reminder
 func AckCheckInReminder(ctx context.Context, c *app.RequestContext) {
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现确认提醒逻辑
 }
+

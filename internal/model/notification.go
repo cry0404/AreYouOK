@@ -1,65 +1,82 @@
 package model
 
-// NotificationTaskQuery 表示通知任务查询参数。
-type NotificationTaskQuery struct {
-	Category string `query:"category"`
-	Channel  string `query:"channel"`
-	Status   string `query:"status"`
-	Limit    int    `query:"limit"`
-	Cursor   string `query:"cursor"`
-}
+import (
+	"time"
 
-// NotificationContactInfo 表示任务关联的联系人信息。
-type NotificationContactInfo struct {
-	Priority    int    `json:"priority"`
-	DisplayName string `json:"display_name"`
-	PhoneMasked string `json:"phone_masked"`
-}
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
+)
 
-// NotificationTask 表示单个通知任务。
+// NotificationCategory 通知类别枚举
+type NotificationCategory string
+
+const (
+	NotificationCategoryCheckInReminder NotificationCategory = "check_in_reminder" // 打卡提醒
+	NotificationCategoryJourneyReminder NotificationCategory = "journey_reminder"  // 行程提醒
+)
+
+// NotificationChannel 通知渠道枚举
+type NotificationChannel string
+
+const (
+	NotificationChannelSMS   NotificationChannel = "sms"
+	NotificationChannelVoice NotificationChannel = "voice"
+)
+
+// NotificationTaskStatus 通知任务状态枚举
+type NotificationTaskStatus string
+
+const (
+	NotificationTaskStatusPending    NotificationTaskStatus = "pending"    // 待处理
+	NotificationTaskStatusProcessing NotificationTaskStatus = "processing" // 处理中
+	NotificationTaskStatusSuccess    NotificationTaskStatus = "success"    // 成功
+	NotificationTaskStatusFailed     NotificationTaskStatus = "failed"     // 失败
+)
+
+// NotificationTask 通知任务模型
 type NotificationTask struct {
-	ID          string                  `json:"id"`
-	TaskCode    string                  `json:"task_code"`
-	Category    string                  `json:"category"`
-	Channel     string                  `json:"channel"`
-	Status      string                  `json:"status"`
-	CostCents   int                     `json:"cost_cents"`
-	Deducted    bool                    `json:"deducted"`
-	ScheduledAt string                  `json:"scheduled_at"`
-	ProcessedAt string                  `json:"processed_at"`
-	Contact     NotificationContactInfo `json:"contact"`
+	BaseModel
+	TaskCode         int64                  `gorm:"uniqueIndex;not null" json:"task_code"`
+	UserID           int64                  `gorm:"not null;index:idx_notification_tasks_contact" json:"user_id"`
+	ContactPriority  *int                   `gorm:"type:smallint;index:idx_notification_tasks_contact" json:"contact_priority,omitempty"`
+	ContactPhoneHash *string                `gorm:"type:char(64)" json:"contact_phone_hash,omitempty"`
+	Category         NotificationCategory   `gorm:"type:varchar(32);not null" json:"category"`
+	Channel          NotificationChannel    `gorm:"type:varchar(16);not null" json:"channel"`
+	Payload          JSONB                  `gorm:"type:jsonb;not null" json:"payload"`
+	Status           NotificationTaskStatus `gorm:"type:varchar(16);not null;default:'pending';index:idx_notification_tasks_status" json:"status"`
+	RetryCount       int                    `gorm:"type:smallint;not null;default:0" json:"retry_count"`
+	ScheduledAt      time.Time              `gorm:"type:timestamptz;not null;index:idx_notification_tasks_status" json:"scheduled_at"`
+	ProcessedAt      *time.Time             `gorm:"type:timestamptz" json:"processed_at,omitempty"`
+	CostCents        int                    `gorm:"not null;default:0" json:"cost_cents"`
+	Deducted         bool                   `gorm:"not null;default:false" json:"deducted"`
 }
 
-// NotificationAttempt 表示通知的单次尝试记录。
-type NotificationAttempt struct {
-	ID               string `json:"id"`
-	ContactPriority  int    `json:"contact_priority"`
-	ContactPhoneHash string `json:"contact_phone_hash"`
-	Channel          string `json:"channel"`
-	Status           string `json:"status"`
-	ResponseCode     string `json:"response_code"`
-	CostCents        int    `json:"cost_cents"`
-	Deducted         bool   `json:"deducted"`
-	AttemptedAt      string `json:"attempted_at"`
+// TableName 指定表名
+func (NotificationTask) TableName() string {
+	return "notification_tasks"
 }
 
-// NotificationTaskDetail 表示通知任务详情。
-type NotificationTaskDetail struct {
-	ID         string                 `json:"id"`
-	TaskCode   string                 `json:"task_code"`
-	Category   string                 `json:"category"`
-	Channel    string                 `json:"channel"`
-	Status     string                 `json:"status"`
-	RetryCount int                    `json:"retry_count"`
-	CostCents  int                    `json:"cost_cents"`
-	Deducted   bool                   `json:"deducted"`
-	Payload    map[string]interface{} `json:"payload"`
-	Attempts   []NotificationAttempt  `json:"attempts"`
+// JSONB 自定义 JSONB 类型
+type JSONB map[string]interface{}
+
+// Value 实现 driver.Valuer 接口
+func (j JSONB) Value() (driver.Value, error) {
+	if j == nil {
+		return nil, nil
+	}
+	return json.Marshal(j)
 }
 
-// NotificationAckRequest 表示通知确认请求体。
-type NotificationAckRequest struct {
-	TaskID     string `json:"task_id"`
-	Channel    string `json:"channel"`
-	ReceivedAt string `json:"received_at"`
+// Scan 实现 sql.Scanner 接口
+func (j *JSONB) Scan(value interface{}) error {
+	if value == nil {
+		*j = nil
+		return nil
+	}
+	bytes, ok := value.([]byte)
+	if !ok {
+		return errors.New("failed to unmarshal JSONB value")
+	}
+	return json.Unmarshal(bytes, j)
 }

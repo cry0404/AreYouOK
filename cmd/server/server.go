@@ -2,6 +2,7 @@ package main
 
 import (
 	"AreYouOK/config"
+	"AreYouOK/internal/middleware"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/storage/database"
@@ -47,6 +48,11 @@ func main() {
 	}()
 	// TODO: 在这里初始化 Redis 连接
 	// TODO: 在这里初始化 RabbitMQ 连接
+
+	// 初始化中间件
+	if err := middleware.Init(); err != nil {
+		logger.Logger.Fatal("Failed to initialize middlewares", zap.Error(err))
+	}
 
 	logger.Logger.Info("Server starting",
 		zap.String("service", config.Cfg.ServiceName),

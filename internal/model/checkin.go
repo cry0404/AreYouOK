@@ -1,37 +1,28 @@
 package model
 
-// CheckInTodayData 表示当日打卡状态。
-type CheckInTodayData struct {
-	Date             string  `json:"date"`
-	Status           string  `json:"status"`
-	Deadline         string  `json:"deadline"`
-	GraceUntil       string  `json:"grace_until"`
-	ReminderSentAt   *string `json:"reminder_sent_at"`
-	AlertTriggeredAt *string `json:"alert_triggered_at"`
+import "time"
+
+// CheckInStatus 打卡状态枚举
+type CheckInStatus string
+
+const (
+	CheckInStatusPending CheckInStatus = "pending" // 未打卡
+	CheckInStatusDone    CheckInStatus = "done"    // 已打卡
+	CheckInStatusTimeout CheckInStatus = "timeout" // 超时
+)
+
+// DailyCheckIn 平安打卡记录模型
+type DailyCheckIn struct {
+	BaseModel
+	UserID           int64         `gorm:"not null;index:idx_daily_check_ins_user_date_status" json:"user_id"`
+	CheckInDate      time.Time     `gorm:"type:date;not null;index:idx_daily_check_ins_user_date_status" json:"check_in_date"`
+	Status           CheckInStatus `gorm:"type:varchar(16);not null;default:'pending';index:idx_daily_check_ins_user_date_status" json:"status"`
+	CheckInAt        *time.Time    `gorm:"type:timestamptz" json:"check_in_at,omitempty"`
+	ReminderSentAt   *time.Time    `gorm:"type:timestamptz" json:"reminder_sent_at,omitempty"`
+	AlertTriggeredAt *time.Time    `gorm:"type:timestamptz;index:idx_daily_check_ins_alert" json:"alert_triggered_at,omitempty"`
 }
 
-// CompleteCheckInData 表示打卡完成后的响应数据。
-type CompleteCheckInData struct {
-	Date         string `json:"date"`
-	Status       string `json:"status"`
-	CompletedAt  string `json:"completed_at"`
-	StreakDays   int    `json:"streak_days"`
-	RewardPoints int    `json:"reward_points"`
+// TableName 指定表名
+func (DailyCheckIn) TableName() string {
+	return "daily_check_ins"
 }
-
-// CheckInHistoryQuery 表示历史记录查询参数。
-type CheckInHistoryQuery struct {
-	From   string `query:"from"`
-	To     string `query:"to"`
-	Status string `query:"status"`
-	Cursor string `query:"cursor"`
-	Limit  int    `query:"limit"`
-}
-
-// CheckInRecord 表示单条打卡历史记录。
-type CheckInRecord struct {
-	Date        string `json:"date"`
-	Status      string `json:"status"`
-	CompletedAt string `json:"completed_at,omitempty"`
-}
-

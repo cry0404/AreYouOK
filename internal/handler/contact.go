@@ -1,34 +1,26 @@
 package handler
 
 import (
-	"AreYouOK/internal/model"
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// ListContacts 列出当前用户的紧急联系人。
+// ListContacts 列表紧急联系人
+// GET /v1/contacts
 func ListContacts(ctx context.Context, c *app.RequestContext) {
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现列表联系人逻辑
 }
 
-// CreateContact 新增紧急联系人。
+// CreateContact 新增紧急联系人
+// POST /v1/contacts
 func CreateContact(ctx context.Context, c *app.RequestContext) {
-	var req model.CreateContactRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现创建联系人逻辑
 }
 
-// DeleteContact 删除紧急联系人。
+// DeleteContact 删除紧急联系人
+// DELETE /v1/contacts/:priority
 func DeleteContact(ctx context.Context, c *app.RequestContext) {
-	priority := c.Param("priority")
-	if priority == "" {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现删除联系人逻辑
 }
+

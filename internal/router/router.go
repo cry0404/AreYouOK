@@ -1,7 +1,10 @@
 package router
 
 import (
+	
+
 	"AreYouOK/internal/handler"
+	"AreYouOK/internal/middleware"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 )
@@ -9,46 +12,67 @@ import (
 func Register(h *server.Hertz) {
 	v1 := h.Group("/v1")
 
+	// 认证相关路由
 	auth := v1.Group("/auth")
-	auth.POST("/miniapp/alipay/exchange", handler.ExchangeAlipay)
-	auth.POST("/token/refresh", handler.RefreshToken)
-	auth.GET("/waitlist/status", handler.GetWaitlistStatus)
+	{
+		auth.POST("/miniapp/alipay/exchange", handler.ExchangeAlipayAuth)
+		auth.POST("/phone/send-captcha", handler.SendCaptcha)
+		auth.POST("/phone/verify-slider", handler.VerifySlider)
+		auth.POST("/phone/verify", handler.VerifyCaptcha)
+		auth.POST("/token/refresh", handler.RefreshToken)
+		auth.GET("/waitlist/status", handler.GetWaitlistStatus)
+	}
 
-	// phone 属于 auth 部分
-	phone := auth.Group("/phone")
-	phone.POST("/send-captcha", handler.SendPhoneCaptcha)
-	phone.POST("/verify-slider", handler.VerifySlider)
-	phone.POST("/verify", handler.VerifyPhone)
+	// 用户相关路由
+	users := v1.Group("/users")
+	users.Use(middleware.AuthMiddleware()) // 需要鉴权的路由组
+	{
+		users.GET("/me/status", handler.GetUserStatus)
+		users.GET("/me", handler.GetUserProfile)
+		users.PUT("/me/settings", handler.UpdateUserSettings)
+		users.GET("/me/quotas", handler.GetUserQuotas)
+	}
 
-	// authRequired 分组用于挂载需要鉴权的业务接口
-	authRequired := v1.Group("")
-	// TODO: 在此添加 JWT 鉴权、限流等中间件，例如 authRequired.Use(middleware.Auth())
+	// 紧急联系人路由
+	contacts := v1.Group("/contacts")
+	contacts.Use(middleware.AuthMiddleware())
+	{
+		contacts.GET("", handler.ListContacts)
+		contacts.POST("", handler.CreateContact)
+		contacts.DELETE("/:priority", handler.DeleteContact)
+	}
 
-	authRequired.GET("/users/me", handler.GetCurrentUser)
-	authRequired.GET("/users/me/status", handler.GetUserStatus)
-	authRequired.PUT("/users/me/settings", handler.UpdateUserSettings)
-	authRequired.GET("/users/me/quotas", handler.GetUserQuotas)
+	// 平安打卡路由
+	checkIns := v1.Group("/check-ins")
+	checkIns.Use(middleware.AuthMiddleware())
+	{
+		checkIns.GET("/today", handler.GetTodayCheckIn)
+		checkIns.POST("/today/complete", handler.CompleteTodayCheckIn)
+		checkIns.GET("/history", handler.GetCheckInHistory)
+		checkIns.POST("/ack-reminder", handler.AckCheckInReminder)
+	}
 
-	authRequired.GET("/contacts", handler.ListContacts)
-	authRequired.POST("/contacts", handler.CreateContact)
-	authRequired.DELETE("/contacts/:priority", handler.DeleteContact)
+	// 行程报备路由
+	journeys := v1.Group("/journeys")
+	journeys.Use(middleware.AuthMiddleware())
+	{
+		journeys.GET("", handler.ListJourneys)
+		journeys.POST("", handler.CreateJourney)
+		journeys.GET("/:journey_id", handler.GetJourneyDetail)
+		journeys.PATCH("/:journey_id", handler.UpdateJourney)
+		journeys.POST("/:journey_id/complete", handler.CompleteJourney)
+		journeys.POST("/:journey_id/ack-alert", handler.AckJourneyAlert)
+		journeys.GET("/:journey_id/alerts", handler.GetJourneyAlerts)
+	}
 
-	checkIns := authRequired.Group("/check-ins")
-	checkIns.GET("/today", handler.GetTodayCheckIn)
-	checkIns.POST("/today/complete", handler.CompleteTodayCheckIn)
-	checkIns.GET("/history", handler.GetCheckInHistory)
-	checkIns.POST("/ack-reminder", handler.AckCheckInReminder)
-
-	authRequired.GET("/journeys", handler.ListJourneys)
-	authRequired.POST("/journeys", handler.CreateJourney)
-	authRequired.GET("/journeys/:journey_id", handler.GetJourney)
-	authRequired.PATCH("/journeys/:journey_id", handler.UpdateJourney)
-	authRequired.POST("/journeys/:journey_id/complete", handler.CompleteJourney)
-	authRequired.POST("/journeys/:journey_id/ack-alert", handler.AckJourneyAlert)
-	authRequired.GET("/journeys/:journey_id/alerts", handler.GetJourneyAlerts)
-
-	notifications := authRequired.Group("/notifications")
-	notifications.GET("/tasks", handler.ListNotificationTasks)
-	notifications.GET("/tasks/:task_id", handler.GetNotificationTask)
-	notifications.POST("/ack", handler.AckNotification)
+	// 通知任务路由
+	notifications := v1.Group("/notifications")
+	notifications.Use(middleware.AuthMiddleware())
+	{
+		notifications.GET("/tasks", handler.ListNotificationTasks)
+		notifications.GET("/tasks/:task_id", handler.GetNotificationTaskDetail)
+		notifications.POST("/ack", handler.AckNotification)
+	}
 }
+
+

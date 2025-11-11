@@ -1,64 +1,44 @@
 package handler
 
 import (
-	"AreYouOK/internal/model"
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// ExchangeAlipay 处理支付宝身份换取请求。
-func ExchangeAlipay(ctx context.Context, c *app.RequestContext) {
-	var req model.ExchangeAlipayRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+// ExchangeAlipayAuth 支付宝授权换取
+// POST /v1/auth/miniapp/alipay/exchange
+func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
+	// TODO: 实现支付宝授权换取逻辑
 }
 
-// SendPhoneCaptcha 处理发送短信验证码请求。
-func SendPhoneCaptcha(ctx context.Context, c *app.RequestContext) {
-	var req model.SendCaptchaRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+// SendCaptcha 发送验证码
+// POST /v1/auth/phone/send-captcha
+func SendCaptcha(ctx context.Context, c *app.RequestContext) {
+	// TODO: 实现发送验证码逻辑
 }
 
-// VerifySlider 处理滑块验证请求。
+// VerifySlider 滑块验证
+// POST /v1/auth/phone/verify-slider
 func VerifySlider(ctx context.Context, c *app.RequestContext) {
-	var req model.VerifySliderRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现滑块验证逻辑
 }
 
-// VerifyPhone 处理手机号验证码验证请求。
-func VerifyPhone(ctx context.Context, c *app.RequestContext) {
-	var req model.VerifyPhoneRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+// VerifyCaptcha 验证码验证
+// POST /v1/auth/phone/verify
+func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
+	// TODO: 实现验证码验证逻辑
 }
 
-// RefreshToken 处理访问令牌刷新请求。
+// RefreshToken 刷新访问令牌
+// POST /v1/auth/token/refresh
 func RefreshToken(ctx context.Context, c *app.RequestContext) {
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现刷新 token 逻辑
 }
 
-// GetWaitlistStatus 查询内测排队状态。
+// GetWaitlistStatus 查询内测排队状态
+// GET /v1/auth/waitlist/status
 func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
-	var req model.WaitlistStatusRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_QUERY", "Invalid query", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现查询排队状态逻辑
 }
+

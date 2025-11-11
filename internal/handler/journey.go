@@ -1,84 +1,50 @@
 package handler
 
 import (
-	"AreYouOK/internal/model"
 	"context"
 
 	"github.com/cloudwego/hertz/pkg/app"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
 )
 
-// ListJourneys 查询行程列表。
+// ListJourneys 查询当前与历史行程
+// GET /v1/journeys
 func ListJourneys(ctx context.Context, c *app.RequestContext) {
-	var query model.JourneyQuery
-	if err := c.Bind(&query); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_QUERY", "Invalid query", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现列表行程逻辑
 }
 
-// CreateJourney 创建行程报备。
+// CreateJourney 创建行程报备
+// POST /v1/journeys
 func CreateJourney(ctx context.Context, c *app.RequestContext) {
-	var req model.CreateJourneyRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现创建行程逻辑
 }
 
-// GetJourney 查询行程详情。
-func GetJourney(ctx context.Context, c *app.RequestContext) {
-	journeyID := c.Param("journey_id")
-	if journeyID == "" {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+// GetJourneyDetail 查看行程详情
+// GET /v1/journeys/:journey_id
+func GetJourneyDetail(ctx context.Context, c *app.RequestContext) {
+	// TODO: 实现获取行程详情逻辑
 }
 
-// UpdateJourney 更新行程信息。
+// UpdateJourney 更新行程
+// PATCH /v1/journeys/:journey_id
 func UpdateJourney(ctx context.Context, c *app.RequestContext) {
-	journeyID := c.Param("journey_id")
-	if journeyID == "" {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
-		return
-	}
-	var req model.UpdateJourneyRequest
-	if err := c.Bind(&req); err != nil {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PAYLOAD", "Invalid payload", model.ErrorDetail{"error": err.Error()}))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现更新行程逻辑
 }
 
-// CompleteJourney 标记行程已归来。
+// CompleteJourney 归来打卡，标记行程结束
+// POST /v1/journeys/:journey_id/complete
 func CompleteJourney(ctx context.Context, c *app.RequestContext) {
-	journeyID := c.Param("journey_id")
-	if journeyID == "" {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现完成行程逻辑
 }
 
-// AckJourneyAlert 确认行程超时提醒。
+// AckJourneyAlert 确认已知晓行程超时提醒
+// POST /v1/journeys/:journey_id/ack-alert
 func AckJourneyAlert(ctx context.Context, c *app.RequestContext) {
-	journeyID := c.Param("journey_id")
-	if journeyID == "" {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现确认提醒逻辑
 }
 
-// GetJourneyAlerts 查询行程提醒执行状态。
+// GetJourneyAlerts 查询行程提醒执行状态
+// GET /v1/journeys/:journey_id/alerts
 func GetJourneyAlerts(ctx context.Context, c *app.RequestContext) {
-	journeyID := c.Param("journey_id")
-	if journeyID == "" {
-		c.JSON(consts.StatusBadRequest, model.NewErrorResponse("INVALID_PATH", "Invalid path parameter", nil))
-		return
-	}
-	c.JSON(consts.StatusNotImplemented, model.NewNotImplementedResponse())
+	// TODO: 实现获取提醒状态逻辑
 }
+
