@@ -88,7 +88,7 @@ type Config struct {
 	RateLimitRPS     int  `env:"RATE_LIMIT_RPS" envDefault:"100"` // 每秒请求数
 
 	// 验证码配置
-	CaptchaExpireSeconds   int `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"60"`
+	CaptchaExpireSeconds   int `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
 	CaptchaMaxDaily        int `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
 	CaptchaSliderThreshold int `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"` // 超过此次数需要滑块验证
 

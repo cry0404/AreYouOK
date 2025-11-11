@@ -45,7 +45,7 @@ type WaitlistInfo struct {
 // SendCaptchaRequest 发送验证码请求
 type SendCaptchaRequest struct {
 	Phone       string `json:"phone" binding:"required"`
-	Scene       string `json:"scene" binding:"required"`
+	Scene       string `json:"scene" binding:"required"` //场景，是基于登录还是注册时，可以切换不同的短信模板
 	SliderToken string `json:"slider_token,omitempty"`
 }
 
@@ -65,6 +65,7 @@ type VerifySliderResponse struct {
 type VerifyCaptchaRequest struct {
 	Phone       string `json:"phone" binding:"required"`
 	VerifyCode  string `json:"verify_code" binding:"required"`
+	Scene       string `json:"scene" binding:"required"` 
 	SliderToken string `json:"slider_token,omitempty"`
 }
 

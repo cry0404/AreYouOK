@@ -5,7 +5,7 @@ import (
 	"AreYouOK/internal/middleware"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
-	"AreYouOK/storage/database"
+	"AreYouOK/storage"
 	"context"
 	"net"
 	"os"
@@ -36,18 +36,12 @@ func main() {
 		cancel()
 	}()
 
-	if err := database.Init(); err != nil {
-		logger.Logger.Fatal("Failed to initialize database", zap.Error(err))
+	//初始化存储层
+	if err := storage.Init(); err != nil {
+		logger.Logger.Fatal("Failed to load something ", zap.Error(err))
 	}
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if err := database.Close(shutdownCtx); err != nil {
-			logger.Logger.Error("Failed to close database", zap.Error(err))
-		}
-	}()
-	// TODO: 在这里初始化 Redis 连接
-	// TODO: 在这里初始化 RabbitMQ 连接
+
+	defer storage.Close()
 
 	// 初始化中间件
 	if err := middleware.Init(); err != nil {

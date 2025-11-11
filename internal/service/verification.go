@@ -9,13 +9,30 @@ import (
 	"crypto/rand"
 	"fmt"
 	"math/big"
+	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
+// 单例模式参考，记住了
+var (
+	verificationService *VerificationService
+	verifyOnce          sync.Once
+)
+
+func Verification() *VerificationService {
+	verifyOnce.Do(func() {
+		verificationService = &VerificationService{
+			//这里还得初始化 sms 服务
+		}
+	})
+
+	return verificationService
+}
+
 type VerificationService struct {
-	//可以考虑在这里接入别的服务， sms 部分、滑块部分
+	//可以考虑在这里接入别的服务， sms 部分、 生成滑块部分
 }
 
 func generateCaptchaCode() string {
@@ -55,11 +72,12 @@ func (s *VerificationService) SendCaptcha(
 
 	code := generateCaptchaCode()
 
-	if err := cache.SetCaptcha(ctx, phoneHash, code); err != nil {
+	if err := cache.SetCaptcha(ctx, phoneHash, scene, code); err != nil {
 		return fmt.Errorf("failed to store captcha: %w", err)
 	}
 
 	//TODO: 短信发送服务
+	//根据对应的 scene 来选择发送的短信模板
 	//对应的模板，发送的报错，是否发送成功，届时可以硬编码做测试
 	return nil
 }
@@ -100,11 +118,12 @@ func (s *VerificationService) VerifySlider(
 func (s *VerificationService) VerifyCaptcha(
 	ctx context.Context,
 	phone string,
+	scene string,
 	code string,
 ) error {
 	phoneHash := utils.HashPhone(phone)
 
-	storedCode, err := cache.GetCaptcha(ctx, phoneHash)
+	storedCode, err := cache.GetCaptcha(ctx, phoneHash, scene)
 
 	if err != nil {
 		if err == redis.Nil {
@@ -117,7 +136,7 @@ func (s *VerificationService) VerifyCaptcha(
 		return errors.VerificationCodeInvalid
 	}
 
-	cache.DeleteCaptcha(ctx, phoneHash)
+	cache.DeleteCaptcha(ctx, phoneHash, scene)
 	//验证成功后删除
 	return nil
 }

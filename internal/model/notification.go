@@ -89,7 +89,7 @@ func (ContactAttempt) TableName() string {
 // JSONB 自定义 JSONB 类型
 type JSONB map[string]interface{}
 
-// Value 实现 driver.Valuer 接口
+
 func (j JSONB) Value() (driver.Value, error) {
 	if j == nil {
 		return nil, nil
@@ -97,7 +97,7 @@ func (j JSONB) Value() (driver.Value, error) {
 	return json.Marshal(j)
 }
 
-// Scan 实现 sql.Scanner 接口
+
 func (j *JSONB) Scan(value interface{}) error {
 	if value == nil {
 		*j = nil

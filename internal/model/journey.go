@@ -22,7 +22,6 @@ const (
 )
 
 // Journey 行程报备模型
-// 注意：根据 schema.sql，提醒状态字段仍在 journeys 表中
 type Journey struct {
 	BaseModel
 	UserID             int64         `gorm:"not null;index:idx_journeys_user_status" json:"user_id"`

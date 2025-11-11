@@ -6,7 +6,7 @@ import (
 )
 
 
-func Init(addr, username, password string) error {
+func Init( ) error {
 	var err error 
 	url := config.Cfg.GetRabbitMQURL()
 	Conn, err := amqp.Dial(url)

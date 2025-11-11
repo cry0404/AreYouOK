@@ -60,7 +60,7 @@ func Init() error {
 }
 
 func DB() *gorm.DB {
-	return db
+	return db //可以被导出到 repo 层做 service 中的结构
 }
 
 func Close(ctx context.Context) error {

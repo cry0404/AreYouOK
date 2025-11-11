@@ -32,12 +32,12 @@ type User struct {
 	DailyCheckInRemindAt   time.Time `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
 	JourneyAutoNotify      bool      `gorm:"not null;default:true" json:"journey_auto_notify"`
 
-	// 额度（根据 schema.sql，这些字段仍在 users 表中）
+	// 额度
 	SMSBalance   int `gorm:"not null;default:0" json:"sms_balance"`
 	VoiceBalance int `gorm:"not null;default:0" json:"voice_balance"`
 }
 
-// TableName 指定表名
+
 func (User) TableName() string {
 	return "users"
 }
