@@ -22,6 +22,7 @@ const (
 )
 
 // Journey 行程报备模型
+// 注意：根据 schema.sql，提醒状态字段仍在 journeys 表中
 type Journey struct {
 	BaseModel
 	UserID             int64         `gorm:"not null;index:idx_journeys_user_status" json:"user_id"`
@@ -33,7 +34,7 @@ type Journey struct {
 	ReminderSentAt     *time.Time    `gorm:"type:timestamptz" json:"reminder_sent_at,omitempty"`
 	AlertTriggeredAt   *time.Time    `gorm:"type:timestamptz" json:"alert_triggered_at,omitempty"`
 
-	// 行程提醒执行状态
+	// 行程提醒执行状态（根据 schema.sql，这些字段仍在 journeys 表中）
 	AlertStatus        AlertStatus `gorm:"type:varchar(16);not null;default:'pending'" json:"alert_status"`
 	AlertAttempts      int         `gorm:"not null;default:0" json:"alert_attempts"`
 	AlertLastAttemptAt *time.Time  `gorm:"type:timestamptz" json:"alert_last_attempt_at,omitempty"`

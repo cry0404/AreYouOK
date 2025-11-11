@@ -1,4 +1,4 @@
-package model
+package dto
 
 import "time"
 
@@ -31,3 +31,4 @@ type CheckInHistoryQuery struct {
 	Limit  int    `form:"limit"`
 	Cursor string `form:"cursor"`
 }
+

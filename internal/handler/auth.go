@@ -41,4 +41,3 @@ func RefreshToken(ctx context.Context, c *app.RequestContext) {
 func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现查询排队状态逻辑
 }
-

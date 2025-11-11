@@ -1,17 +1,17 @@
-package model
+package dto
 
 // ========== User 相关 DTO ==========
 
 // UserProfileData 用户资料数据
 type UserProfileData struct {
-	ID        string         `json:"id"`
-	PublicID  string         `json:"public_id"`
-	Nickname  string         `json:"nickname"`
-	Phone     PhoneInfo      `json:"phone"`
-	Status    string         `json:"status"`
-	Waitlist  WaitlistInfo   `json:"waitlist"`
-	Quotas    QuotaBalance   `json:"quotas"`
-	Settings  UserSettings   `json:"settings"`
+	ID       string          `json:"id"`
+	PublicID string          `json:"public_id"`
+	Nickname string          `json:"nickname"`
+	Phone    PhoneInfo       `json:"phone"`
+	Status   string          `json:"status"`
+	Waitlist WaitlistInfo    `json:"waitlist"`
+	Quotas   QuotaBalance    `json:"quotas"`
+	Settings UserSettingsDTO `json:"settings"`
 }
 
 // PhoneInfo 手机号信息
@@ -20,8 +20,8 @@ type PhoneInfo struct {
 	Verified     bool   `json:"verified"`
 }
 
-// UserSettings 用户设置
-type UserSettings struct {
+// UserSettingsDTO 用户设置 DTO（用于 API 响应）
+type UserSettingsDTO struct {
 	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
 	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
@@ -48,9 +48,9 @@ type UserStatusData struct {
 
 // QuotaBalance 额度余额
 type QuotaBalance struct {
-	SMSBalance   int `json:"sms_balance"`
-	VoiceBalance int `json:"voice_balance"`
-	SMSUnitPrice int `json:"sms_unit_price,omitempty"`
+	SMSBalance     int `json:"sms_balance"`
+	VoiceBalance   int `json:"voice_balance"`
+	SMSUnitPrice   int `json:"sms_unit_price,omitempty"`
 	VoiceUnitPrice int `json:"voice_unit_price,omitempty"`
 }
 
