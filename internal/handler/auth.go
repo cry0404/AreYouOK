@@ -11,6 +11,16 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 )
 
+
+
+// ExchangeAlipayAuth 支付宝授权换取
+// POST /v1/auth/miniapp/alipay/exchange
+// uid 是 user_id
+func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
+	// TODO: 实现支付宝授权换取逻辑
+} //先去完善存储层
+
+
 // SendCaptcha 发送验证码
 // POST /v1/auth/phone/send-captcha
 func SendCaptcha(ctx context.Context, c *app.RequestContext) {
@@ -130,8 +140,3 @@ func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现查询排队状态逻辑
 }
 
-// ExchangeAlipayAuth 支付宝授权换取
-// POST /v1/auth/miniapp/alipay/exchange
-func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现支付宝授权换取逻辑
-}

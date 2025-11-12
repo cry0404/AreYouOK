@@ -7,6 +7,7 @@ import (
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/slider"
 	"AreYouOK/pkg/sms"
+	"AreYouOK/pkg/snowflake"
 	"AreYouOK/storage"
 	"context"
 	"net"
@@ -45,6 +46,10 @@ func main() {
 
 	defer storage.Close()
 
+	if err := snowflake.Init(); err != nil {
+		logger.Logger.Fatal("Failed to initialize snowflake", zap.Error(err))
+	}
+	
 	// 初始化 SMS 服务
 	if err := sms.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize SMS service", zap.Error(err))

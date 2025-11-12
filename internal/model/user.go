@@ -1,7 +1,5 @@
 package model
 
-import "time"
-
 // UserStatus 用户状态枚举
 type UserStatus string
 
@@ -17,7 +15,7 @@ const (
 type User struct {
 	BaseModel
 	PublicID          int64             `gorm:"uniqueIndex;not null" json:"public_id"`
-	AlipayUserID      string            `gorm:"uniqueIndex;type:varchar(64);not null" json:"alipay_user_id"`
+	AlipayOpenID      string            `gorm:"uniqueIndex;type:varchar(64);not null" json:"alipay_open_id"`
 	Nickname          string            `gorm:"type:varchar(64);not null;default:''" json:"nickname"`
 	PhoneCipher       []byte            `gorm:"type:bytea" json:"-"`                // 手机号密文，不对外暴露
 	PhoneHash         *string           `gorm:"uniqueIndex;type:char(64)" json:"-"` // 手机号哈希，用于查询
@@ -25,18 +23,13 @@ type User struct {
 	EmergencyContacts EmergencyContacts `gorm:"type:jsonb;default:'[]'" json:"emergency_contacts"` // 紧急联系人数组（JSONB）
 
 	//自定义设置部分
-	Timezone               string    `gorm:"type:varchar(64);not null;default:'Asia/Shanghai'" json:"timezone"`
-	DailyCheckInEnabled    bool      `gorm:"not null;default:false" json:"daily_check_in_enabled"`
-	DailyCheckInDeadline   time.Time `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
-	DailyCheckInGraceUntil time.Time `gorm:"type:time;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
-	DailyCheckInRemindAt   time.Time `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
-	JourneyAutoNotify      bool      `gorm:"not null;default:true" json:"journey_auto_notify"`
-
-	// 额度
-	SMSBalance   int `gorm:"not null;default:0" json:"sms_balance"`
-	VoiceBalance int `gorm:"not null;default:0" json:"voice_balance"`
+	Timezone               string `gorm:"type:varchar(64);not null;default:'Asia/Shanghai'" json:"timezone"`
+	DailyCheckInEnabled    bool   `gorm:"not null;default:false" json:"daily_check_in_enabled"`                    // PostgreSQL 的 TIME 类型在 Go 中没有直接对应的类型，非常迷惑
+	DailyCheckInDeadline   string `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_deadline"`    // TIME 类型，格式 "HH:MM:SS"
+	DailyCheckInGraceUntil string `gorm:"type:time;not null;default:'21:00:00'" json:"daily_check_in_grace_until"` // TIME 类型，格式 "HH:MM:SS"
+	DailyCheckInRemindAt   string `gorm:"type:time;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`   // TIME 类型，格式 "HH:MM:SS"
+	JourneyAutoNotify      bool   `gorm:"not null;default:true" json:"journey_auto_notify"`
 }
-
 
 func (User) TableName() string {
 	return "users"

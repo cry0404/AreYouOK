@@ -3,7 +3,7 @@ package dto
 import "time"
 
 // ========== Auth 相关 DTO ==========
-
+// 授权时确定是否为新（isNewUser） -> 然后授权认证 
 // AuthExchangeRequest 支付宝授权换取请求
 type AuthExchangeRequest struct {
 	AuthCode string     `json:"auth_code" binding:"required"`
@@ -18,7 +18,8 @@ type DeviceInfo struct {
 }
 
 // AuthExchangeResponse 支付宝授权换取响应
-type AuthExchangeResponse struct {
+type AuthExchangeResponse struct { //对应的 jwtToken， jwt Token 的过期时间 以及 User 是怎样的
+	//需要管理创建 User 的结构然后更新登录状态
 	AccessToken  string           `json:"access_token"`
 	RefreshToken string           `json:"refresh_token"`
 	ExpiresIn    int              `json:"expires_in"`
@@ -30,7 +31,7 @@ type AuthUserSnapshot struct {
 	ID            string       `json:"id"`
 	Nickname      string       `json:"nickname"`
 	Status        string       `json:"status"`
-	PhoneVerified bool         `json:"phone_verified"`
+	PhoneVerified bool         `json:"phone_verified"` //据此来判断 status
 	IsNewUser     bool         `json:"is_new_user"`
 	Waitlist      WaitlistInfo `json:"waitlist"`
 }

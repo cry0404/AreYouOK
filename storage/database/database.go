@@ -53,6 +53,9 @@ func Init() error {
 		}
 
 		db = gormDB
+		if err := Migrate(); err != nil {
+		logger.Logger.Fatal("failed to run database migration: %w", zap.Error(err))
+	}
 		logger.Logger.Info("Database initialized successfully")
 	})
 

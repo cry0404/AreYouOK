@@ -68,6 +68,7 @@ type Config struct {
 
 	// 加密配置
 	EncryptionKey string `env:"ENCRYPTION_KEY"` // 用于加密手机号等敏感数据，32字节 AES-256
+	PhoneHashSalt string `env:"PHONEHASH_SALT"`
 
 	// Snowflake ID 生成器配置
 	SnowflakeMachineID  int64 `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
@@ -100,7 +101,7 @@ type Config struct {
 
 	// 内测配置
 	WaitlistMaxUsers int    `env:"WAITLIST_MAX_USERS" envDefault:"1000"` // 内测最大用户数
-	WaitlistBatchTag string `env:"WAITLIST_BATCH_TAG" envDefault:"beta_v1"`
+	
 }
 
 func init() {
