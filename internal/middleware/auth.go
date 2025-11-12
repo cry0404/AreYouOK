@@ -13,15 +13,12 @@ import (
 
 const (
 	// IdentityKey 用于在请求上下文中存储用户ID的key
-	// JWT claims 中的 uid 字段对应 public_id
 	IdentityKey = "uid"
 )
 
 var (
-	// authMiddleware JWT认证中间件实例
 	authMiddleware *jwt.HertzJWTMiddleware
 )
-
 
 func initAuthMiddleware() error {
 	var err error
@@ -61,7 +58,6 @@ func initAuthMiddleware() error {
 		// Token查找方式：优先从Header的Authorization，其次从Query参数，最后从Cookie
 		TokenLookup: "header: Authorization, query: token, cookie: jwt",
 
-
 		TokenHeadName: "Bearer",
 
 		TimeFunc: time.Now,
@@ -74,8 +70,6 @@ func initAuthMiddleware() error {
 	return nil
 }
 
-
-// 用于需要认证的路由组
 func AuthMiddleware() app.HandlerFunc {
 	if authMiddleware == nil {
 		panic("AuthMiddleware not initialized, call Init() first")
@@ -98,7 +92,6 @@ func GetUserID(ctx context.Context, c *app.RequestContext) (string, bool) {
 
 	return id, true
 }
-
 
 func GetAuthMiddleware() *jwt.HertzJWTMiddleware {
 	return authMiddleware

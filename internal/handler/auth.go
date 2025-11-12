@@ -42,7 +42,7 @@ func SendCaptcha(ctx context.Context, c *app.RequestContext) {
 
 }
 
-// VerifySlider 滑块验证
+// VerifySlider 滑块验证， 滑块验证不需要区分对应的场景
 // POST /v1/auth/phone/verify-slider
 func VerifySlider(ctx context.Context, c *app.RequestContext) {
 	var req dto.VerifySliderRequest
@@ -60,8 +60,14 @@ func VerifySlider(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
+	// 获取客户端 IP
+	remoteIp := c.ClientIP()
+	if remoteIp == "" {
+		remoteIp = c.RemoteAddr().String()
+	}
+
 	verifiService := service.Verification()
-	token, expiresAt, err := verifiService.VerifySlider(ctx, req.Phone, req.SliderToken)
+	token, expiresAt, err := verifiService.VerifySlider(ctx, req.Phone, req.SliderToken, remoteIp)
 	if err != nil {
 		response.Error(ctx, c, err)
 		return
@@ -112,8 +118,6 @@ func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 	})
 }
 
-
-
 // RefreshToken 刷新访问令牌
 // POST /v1/auth/token/refresh
 func RefreshToken(ctx context.Context, c *app.RequestContext) {
@@ -125,7 +129,6 @@ func RefreshToken(ctx context.Context, c *app.RequestContext) {
 func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现查询排队状态逻辑
 }
-
 
 // ExchangeAlipayAuth 支付宝授权换取
 // POST /v1/auth/miniapp/alipay/exchange

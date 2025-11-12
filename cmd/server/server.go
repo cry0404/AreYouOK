@@ -5,6 +5,8 @@ import (
 	"AreYouOK/internal/middleware"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/pkg/slider"
+	"AreYouOK/pkg/sms"
 	"AreYouOK/storage"
 	"context"
 	"net"
@@ -36,12 +38,24 @@ func main() {
 		cancel()
 	}()
 
-	//初始化存储层
+	//初始化存储层，记得关闭外部连接
 	if err := storage.Init(); err != nil {
-		logger.Logger.Fatal("Failed to load something ", zap.Error(err))
+		logger.Logger.Fatal("Failed to initialize storage", zap.Error(err))
 	}
 
 	defer storage.Close()
+
+	// 初始化 SMS 服务
+	if err := sms.Init(); err != nil {
+		logger.Logger.Warn("Failed to initialize SMS service", zap.Error(err))
+		logger.Logger.Info("SMS service will be disabled, SMS features may not work")
+	}
+
+	// 初始化滑块验证服务
+	if err := slider.Init(); err != nil {
+		logger.Logger.Warn("Failed to initialize slider service", zap.Error(err))
+		logger.Logger.Info("Slider service will be disabled, slider verification may not work")
+	}
 
 	// 初始化中间件
 	if err := middleware.Init(); err != nil {
