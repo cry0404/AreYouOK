@@ -18,7 +18,7 @@ import (
 
 	"gorm.io/plugin/dbresolver"
 
-	"AreYouOK/internal/repository/model"
+	"AreYouOK/internal/model"
 )
 
 func newJourney(db *gorm.DB, opts ...gen.DOOption) journey {

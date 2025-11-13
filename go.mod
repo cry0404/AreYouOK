@@ -12,6 +12,7 @@ require (
 	github.com/bwmarrin/snowflake v0.3.0
 	github.com/caarlos0/env/v6 v6.10.1
 	github.com/cloudwego/hertz v0.10.3
+	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/uuid v1.6.0
 	github.com/hertz-contrib/jwt v1.0.4
 	github.com/joho/godotenv v1.5.1
@@ -19,7 +20,9 @@ require (
 	github.com/redis/go-redis/v9 v9.16.0
 	go.uber.org/zap v1.27.0
 	gorm.io/driver/postgres v1.6.0
+	gorm.io/gen v0.3.27
 	gorm.io/gorm v1.31.1
+	gorm.io/plugin/dbresolver v1.6.2
 )
 
 require (
@@ -69,7 +72,5 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gorm.io/datatypes v1.2.7 // indirect
 	gorm.io/driver/mysql v1.6.0 // indirect
-	gorm.io/gen v0.3.27 // indirect
 	gorm.io/hints v1.1.2 // indirect
-	gorm.io/plugin/dbresolver v1.6.2 // indirect
 )

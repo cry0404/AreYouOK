@@ -39,7 +39,6 @@ func SendCaptcha(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	//调用对应的认证 service
 	verifiService := service.Verification()
 	if err := verifiService.SendCaptcha(ctx, req.Phone, req.Scene, req.SliderToken); err != nil {
 		response.Error(ctx, c, err)
@@ -134,9 +133,14 @@ func RefreshToken(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现刷新 token 逻辑
 }
 
-// GetWaitlistStatus 查询内测排队状态
-// GET /v1/auth/waitlist/status
-func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现查询排队状态逻辑
-}
+
+
+
+
+// 不再需要
+// // GetWaitlistStatus 查询内测排队状态
+// // GET /v1/auth/waitlist/status
+// func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
+// 	// TODO: 实现查询排队状态逻辑
+// }
 

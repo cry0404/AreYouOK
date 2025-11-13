@@ -12,6 +12,13 @@ const (
 	UserStatusActive     UserStatus = "active"     // 正常使用
 )
 
+var StatusToStringMap = map[UserStatus]string{
+	UserStatusWaitlisted: "waitlisted",
+	UserStatusOnboarding: "onboarding",
+	UserStatusContact:    "contact",
+	UserStatusActive:     "active",
+}
+
 // User 用户模型
 
 type User struct {

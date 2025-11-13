@@ -9,9 +9,10 @@ type UserProfileData struct {
 	Nickname string          `json:"nickname"`
 	Phone    PhoneInfo       `json:"phone"`
 	Status   string          `json:"status"`
-	Waitlist WaitlistInfo    `json:"waitlist"`
-	Quotas   QuotaBalance    `json:"quotas"`
+	
 	Settings UserSettingsDTO `json:"settings"`
+	//Waitlist WaitlistInfo    `json:"waitlist"`
+	//Quotas   QuotaBalance    `json:"quotas"`
 }
 
 // PhoneInfo 手机号信息
@@ -43,7 +44,7 @@ type UserStatusData struct {
 	Status        string       `json:"status"`
 	PhoneVerified bool         `json:"phone_verified"`
 	HasContacts   bool         `json:"has_contacts"`
-	Waitlist      WaitlistInfo `json:"waitlist"`
+	// Waitlist      WaitlistInfo `json:"waitlist"`
 }
 
 // QuotaBalance 额度余额

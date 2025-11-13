@@ -2,17 +2,17 @@ package database
 
 import (
 	"AreYouOK/config"
+	"AreYouOK/internal/repository/query"
 	"AreYouOK/pkg/logger"
 	"context"
 	"database/sql"
 	"fmt"
-	"sync"
-	"time"
-
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
+	"sync"
+	"time"
+	//gormlogger "gorm.io/gorm/logger"
 )
 
 var (
@@ -25,9 +25,10 @@ func Init() error {
 	dbOnce.Do(func() {
 		dsn := buildDSN()
 		gormCfg := &gorm.Config{
-			Logger:                                   newLogger(),
+			//Logger:                                   newLogger(),
 			DisableForeignKeyConstraintWhenMigrating: true,
 			PrepareStmt:                              true,
+			SkipDefaultTransaction:                   true,
 		}
 
 		var gormDB *gorm.DB
@@ -54,8 +55,9 @@ func Init() error {
 
 		db = gormDB
 		if err := Migrate(); err != nil {
-		logger.Logger.Fatal("failed to run database migration: %w", zap.Error(err))
-	}
+			logger.Logger.Fatal("failed to run database migration: %w", zap.Error(err))
+		}
+		query.SetDefault(db)
 		logger.Logger.Info("Database initialized successfully")
 	})
 
@@ -112,33 +114,33 @@ func configureConnectionPool(sqlDB *sql.DB) {
 	sqlDB.SetConnMaxLifetime(2 * time.Hour)
 }
 
-func newLogger() gormlogger.Interface {
-	var level gormlogger.LogLevel
-	switch config.Cfg.LoggerLevel {
-	case "DEBUG":
-		level = gormlogger.Info
-	case "WARN":
-		level = gormlogger.Warn
-	case "ERROR":
-		level = gormlogger.Error
-	default:
-		level = gormlogger.Warn
-	}
+// func newLogger() gormlogger.Interface {
+// 	var level gormlogger.LogLevel
+// 	switch config.Cfg.LoggerLevel {
+// 	case "DEBUG":
+// 		level = gormlogger.Info
+// 	case "WARN":
+// 		level = gormlogger.Warn
+// 	case "ERROR":
+// 		level = gormlogger.Error
+// 	default:
+// 		level = gormlogger.Warn
+// 	}
 
-	if config.Cfg.IsDevelopment() {
-		level = gormlogger.Info
-	}
+// 	if config.Cfg.IsDevelopment() {
+// 		level = gormlogger.Info
+// 	}
 
-	return gormlogger.New(zapWriter{}, gormlogger.Config{
-		SlowThreshold:             200 * time.Millisecond,
-		LogLevel:                  level,
-		IgnoreRecordNotFoundError: true,
-		Colorful:                  false,
-	})
-}
+// 	return gormlogger.New(zapWriter{}, gormlogger.Config{
+// 		SlowThreshold:             200 * time.Millisecond,
+// 		LogLevel:                  level,
+// 		IgnoreRecordNotFoundError: true,
+// 		Colorful:                  false,
+// 	})
+// }
 
-type zapWriter struct{}
+// type zapWriter struct{}
 
-func (zapWriter) Printf(format string, args ...interface{}) {
-	logger.Logger.Sugar().Infof(format, args...)
-}
+// func (zapWriter) Printf(format string, args ...interface{}) {
+// 	logger.Logger.Sugar().Infof(format, args...)
+// }

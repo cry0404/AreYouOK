@@ -1,9 +1,9 @@
 package errors
 
-
 func (d Definition) Error() string {
 	return d.Message
 }
+
 // Definition 表示业务错误码及默认信息。
 type Definition struct {
 	Code    string
@@ -19,6 +19,8 @@ var (
 	VerificationCodeInvalid    = Definition{Code: "VERIFICATION_CODE_INVALID", Message: "Verification code invalid"}
 	VerificationSliderRequired = Definition{Code: "VERIFICATION_SLIDER_REQUIRED", Message: "Slider verification required"}
 	VerificationSliderFailed   = Definition{Code: "VERIFICATION_SLIDER_FAILED", Message: "Slider verification failed"}
+	Unauthorized               = Definition{Code: "UNAUTHORIZED", Message: "Unauthorized"}
+	InvalidUserID              = Definition{Code: "INVALID_USER_ID", Message: "Invalid user ID format"}
 )
 
 // 联系人模块错误。

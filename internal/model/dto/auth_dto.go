@@ -33,15 +33,15 @@ type AuthUserSnapshot struct {
 	Status        string       `json:"status"`
 	PhoneVerified bool         `json:"phone_verified"` //据此来判断 status
 	IsNewUser     bool         `json:"is_new_user"`
-	Waitlist      WaitlistInfo `json:"waitlist"`
+	//Waitlist      WaitlistInfo `json:"waitlist"` //不再需要，直接返回
 }
 
-// WaitlistInfo 内测排队信息
-type WaitlistInfo struct {
-	Priority    int        `json:"priority"`
-	Position    int        `json:"position,omitempty"`
-	ActivatedAt *time.Time `json:"activated_at,omitempty"`
-}
+// // WaitlistInfo 内测排队信息
+// type WaitlistInfo struct {
+// 	Priority    int        `json:"priority"`
+// 	Position    int        `json:"position,omitempty"`
+// 	ActivatedAt *time.Time `json:"activated_at,omitempty"`
+// }
 
 // SendCaptchaRequest 发送验证码请求
 type SendCaptchaRequest struct {

@@ -3,6 +3,7 @@
 -- status 枚举值：
 --   waitlisted: 内测排队中, 以及没有注册
 --   onboarding: 引导中（已激活，正在完成注册流程）, 可以考虑细化一下注册到哪个地步，反正也是个枚举值
+--   contact
 --  填手机号和填紧急联系人对应的枚举值
 --   active: 正常使用
 CREATE TABLE users (

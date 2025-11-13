@@ -3,17 +3,15 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"AreYouOK/config"
+	"AreYouOK/pkg/token"
 
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/hertz-contrib/jwt"
 )
 
 const (
-	// IdentityKey 用于在请求上下文中存储用户ID的key
-	IdentityKey = "uid"
+	IdentityKey = token.IdentityKey
 )
 
 var (
@@ -21,19 +19,23 @@ var (
 )
 
 func initAuthMiddleware() error {
-	var err error
-	authMiddleware, err = jwt.New(&jwt.HertzJWTMiddleware{
-		Realm:       "AreYouOK API",
-		Key:         []byte(config.Cfg.JWTSecret),
-		Timeout:     time.Duration(config.Cfg.JWTExpireMinutes) * time.Minute,
-		MaxRefresh:  time.Duration(config.Cfg.JWTRefreshDays) * 24 * time.Hour,
-		IdentityKey: IdentityKey,
+	// 使用 token 包中共享的生成器
+	sharedGenerator := token.GetGenerator()
+	if sharedGenerator == nil {
+		return fmt.Errorf("token generator not initialized, call token.Init() first")
+	}
 
-		// 从token中提取用户ID（public_id，字符串格式）并存入上下文
+	// 基于共享生成器创建 middleware，但需要添加 HTTP 相关的配置
+	authMiddleware = &jwt.HertzJWTMiddleware{
+		Realm:       "AreYouOK API",
+		Key:         sharedGenerator.Key,
+		Timeout:     sharedGenerator.Timeout,
+		MaxRefresh:  sharedGenerator.MaxRefresh,
+		IdentityKey: sharedGenerator.IdentityKey,
+		TimeFunc:    sharedGenerator.TimeFunc,
+
 		IdentityHandler: func(ctx context.Context, c *app.RequestContext) interface{} {
 			claims := jwt.ExtractClaims(ctx, c)
-
-			// 从claims中提取uid（对应public_id，字符串格式）
 			uid, ok := claims[IdentityKey].(string)
 			if !ok {
 				if uidFloat, ok := claims[IdentityKey].(float64); ok {
@@ -42,7 +44,6 @@ func initAuthMiddleware() error {
 					return nil
 				}
 			}
-
 			return uid
 		},
 
@@ -55,16 +56,8 @@ func initAuthMiddleware() error {
 			})
 		},
 
-		// Token查找方式：优先从Header的Authorization，其次从Query参数，最后从Cookie
-		TokenLookup: "header: Authorization, query: token, cookie: jwt",
-
+		TokenLookup:   "header: Authorization, query: token, cookie: jwt",
 		TokenHeadName: "Bearer",
-
-		TimeFunc: time.Now,
-	})
-
-	if err != nil {
-		return fmt.Errorf("failed to initialize JWT middleware: %w", err)
 	}
 
 	return nil
@@ -78,7 +71,6 @@ func AuthMiddleware() app.HandlerFunc {
 }
 
 // GetUserID 从请求上下文中获取用户ID（public_id，字符串格式）
-// 在handler中使用：userID := middleware.GetUserID(ctx, c)
 func GetUserID(ctx context.Context, c *app.RequestContext) (string, bool) {
 	userID, exists := c.Get(IdentityKey)
 	if !exists {
@@ -93,6 +85,4 @@ func GetUserID(ctx context.Context, c *app.RequestContext) (string, bool) {
 	return id, true
 }
 
-func GetAuthMiddleware() *jwt.HertzJWTMiddleware {
-	return authMiddleware
-}
+

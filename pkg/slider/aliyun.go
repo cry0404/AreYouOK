@@ -42,7 +42,7 @@ func NewAliyunClient() (*AliyunClient, error) {
 // Verify 验证滑块 token
 // 根据阿里云验证码 API 文档：https://next.api.aliyun.com/api-tools/sdk/captcha
 // captchaVerifyToken: 前端滑块组件返回的验证 token（CaptchaVerifyParam）
-// remoteIp: 用户 IP 地址（当前版本 API 不需要此参数）
+// remoteIp: 用户 IP 地址（当前版本 API 不需要此参数）， 暂时只是用于日志记录
 // scene: 验证场景（SceneId）
 func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
 	if captchaVerifyToken == "" {

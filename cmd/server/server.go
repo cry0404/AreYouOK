@@ -8,6 +8,7 @@ import (
 	"AreYouOK/pkg/slider"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/pkg/snowflake"
+	"AreYouOK/pkg/token"
 	"AreYouOK/storage"
 	"context"
 	"net"
@@ -61,6 +62,11 @@ func main() {
 		logger.Logger.Warn("Failed to initialize slider service", zap.Error(err))
 		logger.Logger.Info("Slider service will be disabled, slider verification may not work")
 	}
+
+
+	if err := token.Init(); err != nil {
+		logger.Logger.Fatal("Failed to initialize token package", zap.Error(err))
+	} //token 在中间件前初始化，middleware 依赖 token
 
 	// 初始化中间件
 	if err := middleware.Init(); err != nil {

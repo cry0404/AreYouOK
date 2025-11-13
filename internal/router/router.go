@@ -20,7 +20,7 @@ func Register(h *server.Hertz) {
 		auth.POST("/phone/verify-slider", handler.VerifySlider)
 		auth.POST("/phone/verify", handler.VerifyCaptcha)
 		auth.POST("/token/refresh", handler.RefreshToken)
-		auth.GET("/waitlist/status", handler.GetWaitlistStatus)
+		//auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	}
 
 	// 用户相关路由

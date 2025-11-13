@@ -18,7 +18,7 @@ import (
 
 	"gorm.io/plugin/dbresolver"
 
-	"AreYouOK/internal/repository/model"
+	"AreYouOK/internal/model"
 )
 
 func newNotificationTask(db *gorm.DB, opts ...gen.DOOption) notificationTask {
