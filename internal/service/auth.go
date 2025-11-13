@@ -74,7 +74,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				PublicID:     publicID,
 				AlipayOpenID: alipayUserID,
 				Nickname:     nickname,
-				Status:       model.UserStatusOnboarding,
+				Status:       model.UserStatusWaitlisted, //这里最初是应该是 waitlisted
 				Timezone:     "Asia/Shanghai",
 			}
 
@@ -120,7 +120,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			Nickname:      user.Nickname,
 			Status:        model.StatusToStringMap[user.Status],
 			PhoneVerified: phoneVerified,
-			IsNewUser:     isNewUser,
+			IsNewUser:     isNewUser, //默认为 false
 		},
 	}, nil
 }
@@ -184,6 +184,8 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 	// 如果用户状态是 waitlisted，更新为 onboarding // 理论上能绑定的情况都可以
 	if user.Status == model.UserStatusWaitlisted {
 		updates["status"] = string(model.UserStatusOnboarding)
+
+		//只有最初时才会，也有可能有用户没有创建对应的联系人，处在 contact 状态
 	}
 
 
@@ -218,7 +220,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 		User: dto.AuthUserSnapshot{
 			ID:            userID,
 			Nickname:      user.Nickname,
-			Status:        model.StatusToStringMap[user.Status],
+			Status:        model.StatusToStringMap[user.Status], //根据 status 后续跳转
 			PhoneVerified: true,
 			IsNewUser:     false,
 		},

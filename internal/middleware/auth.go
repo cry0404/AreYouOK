@@ -25,7 +25,6 @@ func initAuthMiddleware() error {
 		return fmt.Errorf("token generator not initialized, call token.Init() first")
 	}
 
-	// 基于共享生成器创建 middleware，但需要添加 HTTP 相关的配置
 	authMiddleware = &jwt.HertzJWTMiddleware{
 		Realm:       "AreYouOK API",
 		Key:         sharedGenerator.Key,
