@@ -1,6 +1,10 @@
 package model
 
-import "time"
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"errors"
+)
 
 // UserStatus 用户状态枚举
 type UserStatus string
@@ -20,11 +24,10 @@ var StatusToStringMap = map[UserStatus]string{
 }
 
 // User 用户模型
-
 type User struct {
-	DailyCheckInRemindAt   time.Time `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
-	DailyCheckInGraceUntil time.Time `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
-	DailyCheckInDeadline   time.Time `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
+	DailyCheckInRemindAt   string `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
+	DailyCheckInGraceUntil string `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
+	DailyCheckInDeadline   string `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
 	PhoneHash              *string   `gorm:"uniqueIndex;type:char(64)" json:"-"`
 	BaseModel
 	Status              UserStatus        `gorm:"type:varchar(16);not null;default:'waitlisted';index:idx_users_status" json:"status"`
@@ -44,6 +47,39 @@ func (User) TableName() string {
 
 // EmergencyContacts 紧急联系人数组（JSONB）
 type EmergencyContacts []EmergencyContact
+
+// Scan 实现 sql.Scanner 接口，用于从数据库读取 JSONB 数据
+func (ec *EmergencyContacts) Scan(value interface{}) error {
+	if value == nil {
+		*ec = EmergencyContacts{}
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return errors.New("cannot scan non-string value into EmergencyContacts")
+	}
+
+	if len(bytes) == 0 {
+		*ec = EmergencyContacts{}
+		return nil
+	}
+
+	return json.Unmarshal(bytes, ec)
+}
+
+// Value 实现 driver.Valuer 接口，用于将数据写入数据库
+func (ec EmergencyContacts) Value() (driver.Value, error) {
+	if ec == nil {
+		return "[]", nil
+	}
+	return json.Marshal(ec)
+}
 
 // EmergencyContact 紧急联系人结构（存储在 users.emergency_contacts JSONB 中）
 type EmergencyContact struct {

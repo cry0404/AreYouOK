@@ -26,7 +26,8 @@ func initAuthMiddleware() error {
 		return errors.ErrTokenGeneratorNotInitialized
 	}
 
-	authMiddleware = &jwt.HertzJWTMiddleware{
+	var err error
+	authMiddleware, err = jwt.New(&jwt.HertzJWTMiddleware{
 		Realm:       "AreYouOK API",
 		Key:         sharedGenerator.Key,
 		Timeout:     sharedGenerator.Timeout,
@@ -36,21 +37,29 @@ func initAuthMiddleware() error {
 
 		IdentityHandler: func(ctx context.Context, c *app.RequestContext) interface{} {
 			claims := jwt.ExtractClaims(ctx, c)
-			uid, ok := claims[IdentityKey].(string)
-			if !ok {
-				if uidFloat, ok := claims[IdentityKey].(float64); ok {
-					uid = fmt.Sprintf("%.0f", uidFloat)
-				} else {
-					return nil
-				}
+
+			switch v := claims[IdentityKey].(type) {
+			case string:
+				return v
+			case float64:
+				return fmt.Sprintf("%.0f", v)
+			case int64:
+				return fmt.Sprintf("%d", v)
+			case int:
+				return fmt.Sprintf("%d", v)
+			default:
+				return fmt.Sprintf("%v", v)
 			}
-			return uid
+		},
+
+		HTTPStatusMessageFunc: func(err error, ctx context.Context, c *app.RequestContext) string {
+			return errors.Unauthorized.Message
 		},
 
 		Unauthorized: func(ctx context.Context, c *app.RequestContext, code int, message string) {
 			c.JSON(code, map[string]interface{}{
 				"error": map[string]interface{}{
-					"code":    "UNAUTHORIZED",
+					"code":    errors.Unauthorized.Code,
 					"message": message,
 				},
 			})
@@ -58,6 +67,10 @@ func initAuthMiddleware() error {
 
 		TokenLookup:   "header: Authorization, query: token, cookie: jwt",
 		TokenHeadName: "Bearer",
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to initialize auth middleware: %w", err)
 	}
 
 	return nil

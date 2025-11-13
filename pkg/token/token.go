@@ -49,13 +49,18 @@ func GenerateTokenPair(userID string) (accessToken, refreshToken string, expires
 		return "", "", 0, errors.ErrTokenGeneratorNotInitialized
 	}
 
-	claims := jwt.MapClaims{
+
+	now := time.Now()
+	expiresAt := now.Add(time.Duration(config.Cfg.JWTExpireMinutes) * time.Minute)
+
+	accessClaims := jwtv5.MapClaims{
 		IdentityKey: userID,
-		"iat":       time.Now().Unix(),
+		"iat":       now.Unix(),
+		"exp":       expiresAt.Unix(),
 	}
 
-	var expiresAt time.Time
-	accessToken, expiresAt, err = sharedGenerator.TokenGenerator(claims)
+	accessTokenObj := jwtv5.NewWithClaims(jwtv5.SigningMethodHS256, accessClaims)
+	accessToken, err = accessTokenObj.SignedString([]byte(config.Cfg.JWTSecret))
 	if err != nil {
 		return "", "", 0, fmt.Errorf("failed to generate access token: %w", err)
 	}
@@ -65,15 +70,16 @@ func GenerateTokenPair(userID string) (accessToken, refreshToken string, expires
 		expiresIn = 0
 	}
 
+	// 生成 refresh token
 	refreshClaims := jwtv5.MapClaims{
 		IdentityKey: userID,
-		"iat":       time.Now().Unix(),
+		"iat":       now.Unix(),
 		"type":      "refresh",
-		"exp":       time.Now().Add(time.Duration(config.Cfg.JWTRefreshDays) * 24 * time.Hour).Unix(),
+		"exp":       now.Add(time.Duration(config.Cfg.JWTRefreshDays) * 24 * time.Hour).Unix(),
 	}
 
-	token := jwtv5.NewWithClaims(jwtv5.SigningMethodHS256, refreshClaims)
-	refreshToken, err = token.SignedString([]byte(config.Cfg.JWTSecret))
+	refreshTokenObj := jwtv5.NewWithClaims(jwtv5.SigningMethodHS256, refreshClaims)
+	refreshToken, err = refreshTokenObj.SignedString([]byte(config.Cfg.JWTSecret))
 	if err != nil {
 		return "", "", 0, fmt.Errorf("failed to generate refresh token: %w", err)
 	}
@@ -98,13 +104,13 @@ func ValidateRefreshToken(tokenString string) (userID string, err error) {
 		return "", errors.ErrInvalidToken
 	}
 
-	// 从 token 中提取 claims
+
 	claims, ok := token.Claims.(jwtv5.MapClaims)
 	if !ok {
 		return "", errors.ErrInvalidTokenClaims
 	}
 
-	// 验证 token 类型是否为 refresh
+
 	tokenType, ok := claims["type"].(string)
 	if !ok || tokenType != "refresh" {
 		return "", errors.ErrInvalidTokenType
@@ -112,7 +118,7 @@ func ValidateRefreshToken(tokenString string) (userID string, err error) {
 
 	uid, ok := claims[IdentityKey].(string)
 	if !ok {
-		// 尝试从 float64 转换（JSON 数字可能被解析为 float64）
+
 		if uidFloat, ok := claims[IdentityKey].(float64); ok {
 			uid = fmt.Sprintf("%.0f", uidFloat)
 		} else {

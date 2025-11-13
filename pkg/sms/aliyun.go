@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	openapiutil "github.com/alibabacloud-go/openapi-util/service"
@@ -63,6 +64,32 @@ func (c *AliyunClient) createApiInfo(action string) *openapi.Params {
 	}
 }
 
+// 在文件顶部添加辅助函数
+func parseStatusCode(v interface{}) (int, error) {
+	switch val := v.(type) {
+	case int:
+		return val, nil
+	case int64:
+		return int(val), nil
+	case float64:
+		return int(val), nil
+	case json.Number:
+		code, err := val.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("invalid statusCode value: %w", err)
+		}
+		return int(code), nil
+	case string:
+		code, err := strconv.Atoi(val)
+		if err != nil {
+			return 0, fmt.Errorf("invalid statusCode value: %w", err)
+		}
+		return code, nil
+	default:
+		return 0, fmt.Errorf("invalid statusCode type: %T", v)
+	}
+}
+
 // SendSingle 发送单条短信
 func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) error {
 	if signName == "" {
@@ -97,9 +124,9 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
 	}
 
 	if resp["statusCode"] != nil {
-		statusCode, ok := resp["statusCode"].(int)
-		if !ok {
-			return fmt.Errorf("invalid statusCode type in response: %T", resp["statusCode"])
+		statusCode, err := parseStatusCode(resp["statusCode"])
+		if err != nil {
+			return err
 		}
 		if statusCode != 200 {
 			body := resp["body"]
@@ -223,9 +250,9 @@ func (c *AliyunClient) SendBatch(ctx context.Context, phones []string, signName,
 
 	// 检查响应状态
 	if resp["statusCode"] != nil {
-		statusCode, ok := resp["statusCode"].(int)
-		if !ok {
-			return fmt.Errorf("invalid statusCode type in response: %T", resp["statusCode"])
+		statusCode, err := parseStatusCode(resp["statusCode"])
+		if err != nil {
+			return err
 		}
 		if statusCode != 200 {
 			body := resp["body"]

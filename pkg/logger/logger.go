@@ -15,6 +15,11 @@ func Init() {
 
 	if config.Cfg.IsDevelopment() {
 		zapConfig = zap.NewDevelopmentConfig()
+
+		zapConfig.Encoding = "console"
+		zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+		zapConfig.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
 	} else {
 		zapConfig = zap.NewProductionConfig()
 	}
@@ -33,11 +38,12 @@ func Init() {
 		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
 	}
 
-	// 日志格式
-	if config.Cfg.LoggerFormat == "text" {
-		zapConfig.Encoding = "console"
-	} else {
-		zapConfig.Encoding = "json"
+	if !config.Cfg.IsDevelopment() {
+		if config.Cfg.LoggerFormat == "text" {
+			zapConfig.Encoding = "console"
+		} else {
+			zapConfig.Encoding = "json"
+		}
 	}
 
 	// 输出路径
@@ -62,8 +68,6 @@ func Init() {
 func Sync() {
 	if Logger != nil {
 		if err := Logger.Sync(); err != nil {
-			// Ignore sync errors in production, as per zap documentation
-			// https://github.com/uber-go/zap/issues/328
 			_ = err
 		}
 	}

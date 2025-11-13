@@ -7,3 +7,4 @@ test/
 config/.env
 .env
 .vscode/
+*.http
