@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"AreYouOK/pkg/token"
-
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/hertz-contrib/jwt"
+
+	"AreYouOK/pkg/errors"
+	"AreYouOK/pkg/token"
 )
 
 const (
@@ -22,7 +23,7 @@ func initAuthMiddleware() error {
 	// 使用 token 包中共享的生成器
 	sharedGenerator := token.GetGenerator()
 	if sharedGenerator == nil {
-		return fmt.Errorf("token generator not initialized, call token.Init() first")
+		return errors.ErrTokenGeneratorNotInitialized
 	}
 
 	authMiddleware = &jwt.HertzJWTMiddleware{
@@ -83,5 +84,3 @@ func GetUserID(ctx context.Context, c *app.RequestContext) (string, bool) {
 
 	return id, true
 }
-
-

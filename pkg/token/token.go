@@ -1,12 +1,14 @@
 package token
 
 import (
-	"AreYouOK/config"
 	"fmt"
 	"time"
 
 	jwtv5 "github.com/golang-jwt/jwt/v5"
 	"github.com/hertz-contrib/jwt"
+
+	"AreYouOK/config"
+	"AreYouOK/pkg/errors"
 )
 
 const (
@@ -18,7 +20,6 @@ var (
 	// 这个实例会被 middleware 和 token 包共同使用
 	sharedGenerator *jwt.HertzJWTMiddleware
 )
-
 
 func Init() error {
 	var err error
@@ -45,9 +46,8 @@ func GetGenerator() *jwt.HertzJWTMiddleware {
 // GenerateTokenPair 生成 access token 和 refresh token
 func GenerateTokenPair(userID string) (accessToken, refreshToken string, expiresIn int, err error) {
 	if sharedGenerator == nil {
-		return "", "", 0, fmt.Errorf("token generator not initialized, call token.Init() first")
+		return "", "", 0, errors.ErrTokenGeneratorNotInitialized
 	}
-
 
 	claims := jwt.MapClaims{
 		IdentityKey: userID,
@@ -64,7 +64,6 @@ func GenerateTokenPair(userID string) (accessToken, refreshToken string, expires
 	if expiresIn < 0 {
 		expiresIn = 0
 	}
-
 
 	refreshClaims := jwtv5.MapClaims{
 		IdentityKey: userID,
@@ -86,7 +85,7 @@ func GenerateTokenPair(userID string) (accessToken, refreshToken string, expires
 func ValidateRefreshToken(tokenString string) (userID string, err error) {
 	token, err := jwtv5.ParseWithClaims(tokenString, jwtv5.MapClaims{}, func(token *jwtv5.Token) (interface{}, error) {
 		if token.Method != jwtv5.SigningMethodHS256 {
-			return nil, fmt.Errorf("unexpected signing method: %v, expected HS256", token.Header["alg"])
+			return nil, fmt.Errorf("%w: %v, expected HS256", errors.ErrUnexpectedSigningMethod, token.Header["alg"])
 		}
 		return []byte(config.Cfg.JWTSecret), nil
 	})
@@ -96,21 +95,20 @@ func ValidateRefreshToken(tokenString string) (userID string, err error) {
 	}
 
 	if !token.Valid {
-		return "", fmt.Errorf("invalid token")
+		return "", errors.ErrInvalidToken
 	}
 
 	// 从 token 中提取 claims
 	claims, ok := token.Claims.(jwtv5.MapClaims)
 	if !ok {
-		return "", fmt.Errorf("invalid token claims")
+		return "", errors.ErrInvalidTokenClaims
 	}
 
 	// 验证 token 类型是否为 refresh
 	tokenType, ok := claims["type"].(string)
 	if !ok || tokenType != "refresh" {
-		return "", fmt.Errorf("invalid token type, expected refresh token")
+		return "", errors.ErrInvalidTokenType
 	}
-
 
 	uid, ok := claims[IdentityKey].(string)
 	if !ok {
@@ -118,7 +116,7 @@ func ValidateRefreshToken(tokenString string) (userID string, err error) {
 		if uidFloat, ok := claims[IdentityKey].(float64); ok {
 			uid = fmt.Sprintf("%.0f", uidFloat)
 		} else {
-			return "", fmt.Errorf("user ID not found in token")
+			return "", errors.ErrUserIDNotFound
 		}
 	}
 

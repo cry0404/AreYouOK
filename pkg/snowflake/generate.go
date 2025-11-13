@@ -1,11 +1,12 @@
 package snowflake
 
 import (
-	"AreYouOK/config"
 	"errors"
 	"sync"
 
 	"github.com/bwmarrin/snowflake"
+
+	"AreYouOK/config"
 )
 
 var (
@@ -40,12 +41,10 @@ func Init() error {
 			initErr = err
 			return
 		}
-
 	})
 
 	return initErr
 }
-
 
 func NextID() (int64, error) {
 	if node == nil {

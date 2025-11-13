@@ -4,14 +4,14 @@ package dto
 
 // UserProfileData 用户资料数据
 type UserProfileData struct {
-	ID       string          `json:"id"`
-	PublicID string          `json:"public_id"`
-	Nickname string          `json:"nickname"`
-	Phone    PhoneInfo       `json:"phone"`
-	Status   string          `json:"status"`
-	
+	ID       string    `json:"id"`
+	PublicID string    `json:"public_id"`
+	Nickname string    `json:"nickname"`
+	Phone    PhoneInfo `json:"phone"`
+	Status   string    `json:"status"`
+
 	Settings UserSettingsDTO `json:"settings"`
-	//Waitlist WaitlistInfo    `json:"waitlist"`
+	// Waitlist WaitlistInfo    `json:"waitlist"`
 	//Quotas   QuotaBalance    `json:"quotas"`
 }
 
@@ -23,10 +23,10 @@ type PhoneInfo struct {
 
 // UserSettingsDTO 用户设置 DTO（用于 API 响应）
 type UserSettingsDTO struct {
-	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
 	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
 	Timezone               string `json:"timezone"`
+	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
 	JourneyAutoNotify      bool   `json:"journey_auto_notify"`
 }
 
@@ -41,9 +41,9 @@ type UpdateUserSettingsRequest struct {
 
 // UserStatusData 用户状态数据
 type UserStatusData struct {
-	Status        string       `json:"status"`
-	PhoneVerified bool         `json:"phone_verified"`
-	HasContacts   bool         `json:"has_contacts"`
+	Status        string `json:"status"`
+	PhoneVerified bool   `json:"phone_verified"`
+	HasContacts   bool   `json:"has_contacts"`
 	// Waitlist      WaitlistInfo `json:"waitlist"`
 }
 
@@ -54,4 +54,3 @@ type QuotaBalance struct {
 	SMSUnitPrice   int `json:"sms_unit_price,omitempty"`
 	VoiceUnitPrice int `json:"voice_unit_price,omitempty"`
 }
-

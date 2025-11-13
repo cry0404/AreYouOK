@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"sync"
 
-	"AreYouOK/config"
-	"AreYouOK/pkg/logger"
-
 	"go.uber.org/zap"
+
+	"AreYouOK/config"
+	"AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
 )
 
 // Client SMS 客户端接口
@@ -45,9 +46,9 @@ func Init() error {
 			smsClient, smsErr = NewAliyunClient()
 		case "tencent":
 			// TODO: 实现腾讯云 SMS 客户端，不打算实现了
-			smsErr = fmt.Errorf("tencent SMS provider not implemented yet")
+			smsErr = errors.ErrTencentSMSNotImplemented
 		default:
-			smsErr = fmt.Errorf("unsupported SMS provider: %s", cfg.SMSProvider)
+			smsErr = fmt.Errorf("%s: %s", errors.ErrUnsupportedSMSProvider.Message, cfg.SMSProvider)
 		}
 
 		if smsErr != nil {

@@ -1,25 +1,24 @@
 package redis
 
 // 	"context"
-//"github.com/redis/go-redis/extra/redisotel/v9" 这部分可以支撑 OpenTelemetry 的检测来监控对应的性能
+// "github.com/redis/go-redis/extra/redisotel/v9" 这部分可以支撑 OpenTelemetry 的检测来监控对应的性能
 
 import (
-	"AreYouOK/config"
 	"context"
-	//"fmt"
+	// "fmt"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	//"go.uber.org/zap"
+
+	"AreYouOK/config"
 )
 
 var (
 	client *redis.Client
 	once   sync.Once
 	err    error
-
 )
 
 func Init() error {
@@ -79,7 +78,6 @@ func Key(parts ...string) string {
 	sb.WriteString(prefix)
 	for _, part := range parts {
 		if part != "" {
-
 			sb.WriteString(":")
 			sb.WriteString(part)
 		}

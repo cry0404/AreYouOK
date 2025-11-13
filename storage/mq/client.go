@@ -1,13 +1,13 @@
 package mq
 
 import (
-	"AreYouOK/config"
 	amqp "github.com/rabbitmq/amqp091-go"
+
+	"AreYouOK/config"
 )
 
-
-func Init( ) error {
-	var err error 
+func Init() error {
+	var err error
 	url := config.Cfg.GetRabbitMQURL()
 	Conn, err := amqp.Dial(url)
 
@@ -18,5 +18,4 @@ func Init( ) error {
 	_, err = Conn.Channel()
 
 	return err
-
 }

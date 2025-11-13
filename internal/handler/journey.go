@@ -47,8 +47,3 @@ func AckJourneyAlert(ctx context.Context, c *app.RequestContext) {
 func GetJourneyAlerts(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现获取提醒状态逻辑
 }
-
-
-
-
-

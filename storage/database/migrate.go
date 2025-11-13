@@ -1,11 +1,11 @@
 package database
 
 import (
-	"AreYouOK/internal/model"
-	"AreYouOK/pkg/logger"
-
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+
+	"AreYouOK/internal/model"
+	"AreYouOK/pkg/logger"
 )
 
 // Migrate 运行数据库迁移，创建所有表

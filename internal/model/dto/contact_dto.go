@@ -7,11 +7,11 @@ import "time"
 
 // ContactItem 紧急联系人项
 type ContactItem struct {
+	CreatedAt    time.Time `json:"created_at"`
 	DisplayName  string    `json:"display_name"`
 	Relationship string    `json:"relationship"`
 	PhoneMasked  string    `json:"phone_masked"`
 	Priority     int       `json:"priority"`
-	CreatedAt    time.Time `json:"created_at"`
 }
 
 // CreateContactRequest 创建联系人请求

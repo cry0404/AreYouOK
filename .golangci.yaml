@@ -1,0 +1,184 @@
+# golangci-lint 配置文件
+# 运行方式: golangci-lint run
+
+run:
+  # 超时时间
+  timeout: 5m
+  # 并发数
+  concurrency: 4
+  # 包含的测试文件
+  tests: true
+
+# 启用的 linter 列表
+linters:
+  enable:
+    # 代码质量
+    - errcheck          # 检查错误是否被处理
+    - gosimple          # 简化代码建议
+    - govet             # Go 官方 vet 工具（包含 shadow 检查）
+    - ineffassign       # 检查无效赋值
+    - staticcheck       # 静态分析工具
+    - unused            # 检查未使用的代码
+    
+    # 代码风格
+    - gofmt             # 代码格式化检查
+    - goimports         # import 语句检查
+    - gci               # import 分组和排序
+    - misspell          # 拼写检查
+    - revive            # 更强大的 golint 替代品
+    
+    # 性能
+    - prealloc          # 预分配 slice 建议
+    
+    # 安全
+    - gosec             # 安全检查
+    
+    # 其他
+    - gocritic          # 代码审查工具
+    - gocyclo           # 圈复杂度检查
+    - err113            # 错误处理最佳实践（原 goerr113）
+    - gomodguard        # 依赖检查
+    - goprintffuncname  # printf 函数名检查
+    - nakedret          # 检查裸返回
+    - noctx             # 检查 context 传递
+    - nolintlint        # 检查 nolint 注释
+    - rowserrcheck      # 检查 rows.Err()
+    - sqlclosecheck     # 检查 SQL 关闭
+    - thelper           # 测试辅助函数检查
+    - unconvert         # 检查不必要的类型转换
+    - unparam           # 检查未使用的参数
+    - whitespace        # 检查空白字符
+
+  # 禁用的 linter（可根据需要调整）
+  disable:
+    - typecheck         # 通常由编译器检查，可禁用
+
+# Linter 具体配置
+linters-settings:
+  # errcheck 配置
+  errcheck:
+    check-type-assertions: true
+    check-blank: true
+    exclude-functions:
+      - fmt:.*
+      - io/ioutil:^Read.*
+  
+  # gocritic 配置
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - dupImport  # 允许重复 import（某些情况下需要）
+  
+  # gocyclo 配置（圈复杂度）
+  gocyclo:
+    min-complexity: 15  # 超过 15 的复杂度会警告
+  
+  # goimports 配置
+  goimports:
+    local-prefixes: AreYouOK  # 你的模块名
+  
+  # gci 配置（import 分组）
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(AreYouOK)
+  
+  # revive 配置
+  revive:
+    rules:
+      - name: exported
+        severity: warning
+        disabled: false
+      - name: var-naming
+        severity: warning
+        disabled: false
+      - name: package-comments
+        severity: warning
+        disabled: false
+  
+  # gosec 配置（安全检查）
+  gosec:
+    severity: medium
+    confidence: medium
+  
+  # govet 配置
+  govet:
+    enable-all: true
+  
+  # misspell 配置
+  misspell:
+    locale: US
+  
+  # nolintlint 配置
+  nolintlint:
+    allow-leading-space: true
+    allow-unused: false
+    require-explanation: false
+    require-specific: false
+
+# 问题处理配置
+issues:
+  # 排除的目录（通常跳过生成的代码和第三方代码）
+  exclude-dirs:
+    - internal/repository/model
+    - internal/repository/query
+    - test/gorm
+  
+  # 排除的文件
+  exclude-files:
+    - ".*\\.gen\\.go$"  # 跳过所有生成的代码
+  
+  # 排除的问题（可根据需要添加）
+  exclude-rules:
+    # 排除生成的代码
+    - path: _gen\.go$
+      linters:
+        - errcheck
+        - gosec
+        - unused
+    
+    # 排除测试文件中的某些检查
+    - path: _test\.go$
+      linters:
+        - errcheck
+        - gosec
+  
+  # 排除的问题模式
+  exclude:
+    # 排除 "Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|.*print)" is not checked
+    - Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*printf?|.*print)
+    # 排除 "exported function .* should have comment"
+    - exported function .* should have comment
+    # 排除 "comment on exported .* should be of the form"
+    - comment on exported .* should be of the form
+  
+  # 最大问题数（0 表示不限制）
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  
+  # 不显示新代码的问题（用于 CI）
+  new: false
+  
+  # 自动修复
+  fix: false
+  
+  # 按行去重
+  uniq-by-line: true
+
+# 输出配置
+output:
+  formats:
+    - format: colored-line-number
+  print-issued-lines: true
+  print-linter-name: true
+  sort-results: false
+
+# 服务器配置（用于缓存，可选）
+# server:
+#   listen: 127.0.0.1:8080

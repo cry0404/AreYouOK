@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"sync"
 
-	"AreYouOK/config"
-	"AreYouOK/pkg/logger"
-
 	"go.uber.org/zap"
+
+	"AreYouOK/config"
+	"AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
 )
 
 // Client 滑块验证客户端接口
@@ -38,7 +39,7 @@ func Init() error {
 			sliderClient = &MockClient{}
 			sliderErr = nil
 		default:
-			sliderErr = fmt.Errorf("unsupported captcha provider: %s", cfg.CaptchaProvider)
+			sliderErr = fmt.Errorf("%w: %s", errors.ErrUnsupportedCaptchaProvider, cfg.CaptchaProvider)
 		}
 
 		if sliderErr != nil {
@@ -60,7 +61,6 @@ func GetClient() Client {
 	}
 	return sliderClient
 }
-
 
 func Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
 	return GetClient().Verify(ctx, captchaVerifyToken, remoteIp, scene)

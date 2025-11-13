@@ -1,15 +1,9 @@
 package service
 
 import (
-	"AreYouOK/config"
-	"AreYouOK/internal/cache"
-	"AreYouOK/pkg/errors"
-	"AreYouOK/pkg/logger"
-	"AreYouOK/pkg/slider"
-	"AreYouOK/pkg/sms"
-	"AreYouOK/utils"
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"math/big"
 	"sync"
@@ -17,6 +11,14 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
+
+	"AreYouOK/config"
+	"AreYouOK/internal/cache"
+	pkgerrors "AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
+	"AreYouOK/pkg/slider"
+	"AreYouOK/pkg/sms"
+	"AreYouOK/utils"
 )
 
 // 单例模式参考，记住了
@@ -28,7 +30,7 @@ var (
 func Verification() *VerificationService {
 	verifyOnce.Do(func() {
 		verificationService = &VerificationService{
-			//这里还得初始化 sms 服务
+			// 这里还得初始化 sms 服务
 		}
 	})
 
@@ -36,12 +38,15 @@ func Verification() *VerificationService {
 }
 
 type VerificationService struct {
-	//可以考虑在这里接入别的服务， sms 部分、 生成滑块部分
+	// 可以考虑在这里接入别的服务， sms 部分、 生成滑块部分
 }
 
 func generateCaptchaCode() string {
 	max := big.NewInt(1000000)
-	n, _ := rand.Int(rand.Reader, max)
+	n, err := rand.Int(rand.Reader, max)
+	if err != nil {
+		return fmt.Sprintf("%06d", time.Now().UnixNano()%1000000)
+	}
 	return fmt.Sprintf("%06d", n.Int64())
 }
 
@@ -59,18 +64,18 @@ func (s *VerificationService) SendCaptcha(
 	}
 
 	if count > config.Cfg.CaptchaMaxDaily {
-		return errors.CaptchaRateLimited
+		return pkgerrors.CaptchaRateLimited
 	}
 
 	needSlider := count > config.Cfg.CaptchaSliderThreshold
 
 	if needSlider {
 		if sliderToken == "" {
-			return errors.VerificationSliderRequired
-		} //这个地方还需要考虑前端那边需不需要重复统计，不然默认超过两次后还是会请求这个节点一次, 可以考虑返回后再是否加载
+			return pkgerrors.VerificationSliderRequired
+		} // 这个地方还需要考虑前端那边需不需要重复统计，不然默认超过两次后还是会请求这个节点一次, 可以考虑返回后再是否加载
 
 		if !cache.ValidateSliderVerificationToken(ctx, phoneHash, sliderToken) {
-			return errors.VerificationSliderFailed
+			return pkgerrors.VerificationSliderFailed
 		}
 	}
 
@@ -94,7 +99,6 @@ func (s *VerificationService) SendCaptcha(
 		if config.Cfg.IsDevelopment() {
 			return fmt.Errorf("failed to send SMS: %w", err)
 		}
-
 	}
 
 	return nil
@@ -117,14 +121,14 @@ func (s *VerificationService) VerifySlider(
 			zap.String("phone", phone),
 			zap.Error(err),
 		)
-		return "", time.Time{}, errors.VerificationSliderFailed
+		return "", time.Time{}, pkgerrors.VerificationSliderFailed
 	}
 
 	if !valid {
 		logger.Logger.Warn("Slider verification failed",
 			zap.String("phone", phone),
 		)
-		return "", time.Time{}, errors.VerificationSliderFailed
+		return "", time.Time{}, pkgerrors.VerificationSliderFailed
 	}
 
 	// 验证成功后，生成并存储验证 token
@@ -134,7 +138,7 @@ func (s *VerificationService) VerifySlider(
 	}
 
 	expiresAt := time.Now().Add(5 * time.Minute)
-	//持有 verifyToken 后即可持续请求
+	// 持有 verifyToken 后即可持续请求
 	return verifyToken, expiresAt, nil
 }
 
@@ -156,17 +160,17 @@ func (s *VerificationService) VerifyCaptcha(
 	storedCode, err := cache.GetCaptcha(ctx, phoneHash, scene)
 
 	if err != nil {
-		if err == redis.Nil {
-			return errors.VerificationCodeExpired
+		if errors.Is(err, redis.Nil) {
+			return pkgerrors.VerificationCodeExpired
 		}
 		return fmt.Errorf("failed to get captcha: %w", err)
 	}
 
 	if storedCode != code {
-		return errors.VerificationCodeInvalid
+		return pkgerrors.VerificationCodeInvalid
 	}
 
 	cache.DeleteCaptcha(ctx, phoneHash, scene)
-	//验证成功后删除
+	// 验证成功后删除
 	return nil
 }

@@ -1,10 +1,10 @@
 package router
 
 import (
+	"github.com/cloudwego/hertz/pkg/app/server"
+
 	"AreYouOK/internal/handler"
 	"AreYouOK/internal/middleware"
-
-	"github.com/cloudwego/hertz/pkg/app/server"
 )
 
 func Register(h *server.Hertz) {
@@ -18,7 +18,7 @@ func Register(h *server.Hertz) {
 		auth.POST("/phone/verify-slider", handler.VerifySlider)
 		auth.POST("/phone/verify", middleware.AuthMiddleware(), handler.VerifyCaptcha)
 		auth.POST("/token/refresh", handler.RefreshToken)
-		//auth.GET("/waitlist/status", handler.GetWaitlistStatus)
+		// auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	}
 
 	// 用户相关路由

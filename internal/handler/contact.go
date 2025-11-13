@@ -23,8 +23,3 @@ func CreateContact(ctx context.Context, c *app.RequestContext) {
 func DeleteContact(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现删除联系人逻辑
 }
-
-
-
-
-

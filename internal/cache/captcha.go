@@ -1,13 +1,15 @@
 package cache
 
 import (
-	//"AreYouOK/config" 后续考虑要不要可定义配置过期时间
-	"AreYouOK/config"
-	"AreYouOK/storage/redis"
+	// "AreYouOK/config" 后续考虑要不要可定义配置过期时间
 	"context"
+	"errors"
 	"time"
 
 	ri "github.com/redis/go-redis/v9"
+
+	"AreYouOK/config"
+	"AreYouOK/storage/redis"
 )
 
 /*
@@ -41,25 +43,23 @@ const (
 	cap = "captcha"
 )
 
-
 // SetCaptcha 存储验证码
 // Key: ayok:captcha:{phoneHash}
-// TTL: 120秒 
+// TTL: 120秒
 // scene: 代表具体的场景，注册还是登录，对应不同的短信模板
- func SetCaptcha(ctx context.Context, phoneHash, scene, code string) error {
+func SetCaptcha(ctx context.Context, phoneHash, scene, code string) error {
 	key := redis.Key(cap, phoneHash, scene)
 	ttl := time.Duration(config.Cfg.CaptchaExpireSeconds) * time.Second
 
 	return redis.Client().Set(ctx, key, code, ttl).Err()
- }
+}
 
- func GetCaptcha(ctx context.Context, phoneHash, scene string) (string, error) {
-	key := redis.Key(cap, phoneHash,scene)
+func GetCaptcha(ctx context.Context, phoneHash, scene string) (string, error) {
+	key := redis.Key(cap, phoneHash, scene)
 	return redis.Client().Get(ctx, key).Result()
- }
+}
 
-
-func DeleteCaptcha(ctx context.Context, phoneHash,scene string) error {
+func DeleteCaptcha(ctx context.Context, phoneHash, scene string) error {
 	key := redis.Key(cap, phoneHash, scene)
 	return redis.Client().Del(ctx, key).Err()
 }
@@ -75,12 +75,12 @@ func IncrCaptchaCount(ctx context.Context, phoneHash string) (int, error) {
 	count, err := redis.Client().Incr(ctx, key).Result()
 
 	if err != nil {
-		return 0, err //具体在业务层处理报错
+		return 0, err // 具体在业务层处理报错
 	}
 
-	if count ==1 { //说明这是今天第一次访问，设定第二天才过期
+	if count == 1 { // 说明这是今天第一次访问，设定第二天才过期
 		now := time.Now()
-		tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1,0,0,0,0, now.Location())
+		tomorrow := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
 		ttl := tomorrow.Sub(now)
 		redis.Client().Expire(ctx, key, ttl)
 	}
@@ -93,8 +93,8 @@ func GetCaptchaCount(ctx context.Context, phoneHash string) (int, error) {
 	key := redis.Key(cap, "count", phoneHash, date)
 
 	count, err := redis.Client().Get(ctx, key).Int()
-	if err == ri.Nil {
-		return 0, nil //调用顺序逻辑问题，理论上来讲不可能发生这种情况
+	if errors.Is(err, ri.Nil) {
+		return 0, nil // 调用顺序逻辑问题，理论上来讲不可能发生这种情况
 	}
 
 	return count, err

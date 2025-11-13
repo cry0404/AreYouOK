@@ -1,18 +1,19 @@
 package database
 
 import (
-	"AreYouOK/config"
-	"AreYouOK/internal/repository/query"
-	"AreYouOK/pkg/logger"
 	"context"
 	"database/sql"
 	"fmt"
+	"sync"
+	"time"
+
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"sync"
-	"time"
-	//gormlogger "gorm.io/gorm/logger"
+
+	"AreYouOK/config"
+	"AreYouOK/internal/repository/query"
+	"AreYouOK/pkg/logger"
 )
 
 var (
@@ -65,7 +66,7 @@ func Init() error {
 }
 
 func DB() *gorm.DB {
-	return db //可以被导出到 repo 层做 service 中的结构
+	return db // 可以被导出到 repo 层做 service 中的结构
 }
 
 func Close(ctx context.Context) error {

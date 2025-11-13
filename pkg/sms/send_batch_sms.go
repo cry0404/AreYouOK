@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"AreYouOK/config"
+	"AreYouOK/pkg/errors"
 )
 
 // SendBatchCaptchaSMS 批量发送验证码短信
@@ -14,11 +15,11 @@ import (
 // scene: 场景（register/login），用于选择不同的模板
 func SendBatchCaptchaSMS(ctx context.Context, phones []string, codes []string, scene string) error {
 	if len(phones) != len(codes) {
-		return fmt.Errorf("phones and codes count mismatch")
+		return errors.ErrPhonesCodesMismatch
 	}
 
 	if len(phones) == 0 {
-		return fmt.Errorf("phones list is empty")
+		return errors.ErrPhonesListEmpty
 	}
 
 	cfg := config.Cfg
@@ -47,7 +48,7 @@ func SendBatchCaptchaSMS(ctx context.Context, phones []string, codes []string, s
 // reminderMessage: 提醒消息内容（可选，如果模板需要）
 func SendBatchCheckInReminder(ctx context.Context, phones []string, reminderMessage string) error {
 	if len(phones) == 0 {
-		return fmt.Errorf("phones list is empty")
+		return errors.ErrPhonesListEmpty
 	}
 
 	cfg := config.Cfg

@@ -1,15 +1,6 @@
 package main
 
 import (
-	"AreYouOK/config"
-	"AreYouOK/internal/middleware"
-	"AreYouOK/internal/router"
-	"AreYouOK/pkg/logger"
-	"AreYouOK/pkg/slider"
-	"AreYouOK/pkg/sms"
-	"AreYouOK/pkg/snowflake"
-	"AreYouOK/pkg/token"
-	"AreYouOK/storage"
 	"context"
 	"net"
 	"os"
@@ -19,10 +10,20 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"go.uber.org/zap"
+
+	"AreYouOK/config"
+	"AreYouOK/internal/middleware"
+	"AreYouOK/internal/router"
+	"AreYouOK/pkg/logger"
+	"AreYouOK/pkg/slider"
+	"AreYouOK/pkg/sms"
+	"AreYouOK/pkg/snowflake"
+	"AreYouOK/pkg/token"
+	"AreYouOK/storage"
 )
 
 func main() {
-	//日志部分
+	// 日志部分
 	logger.Init()
 	defer logger.Sync()
 
@@ -40,7 +41,7 @@ func main() {
 		cancel()
 	}()
 
-	//初始化存储层，记得关闭外部连接
+	// 初始化存储层，记得关闭外部连接
 	if err := storage.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize storage", zap.Error(err))
 	}
@@ -50,7 +51,7 @@ func main() {
 	if err := snowflake.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize snowflake", zap.Error(err))
 	}
-	
+
 	// 初始化 SMS 服务
 	if err := sms.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize SMS service", zap.Error(err))
@@ -63,10 +64,9 @@ func main() {
 		logger.Logger.Info("Slider service will be disabled, slider verification may not work")
 	}
 
-
 	if err := token.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize token package", zap.Error(err))
-	} //token 在中间件前初始化，middleware 依赖 token
+	} // token 在中间件前初始化，middleware 依赖 token
 
 	// 初始化中间件
 	if err := middleware.Init(); err != nil {

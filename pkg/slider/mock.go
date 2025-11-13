@@ -2,7 +2,8 @@ package slider
 
 import (
 	"context"
-	"fmt"
+
+	"AreYouOK/pkg/errors"
 )
 
 // MockClient 开发环境使用的 Mock 客户端
@@ -13,10 +14,9 @@ type MockClient struct{}
 // 在开发环境中，如果 captchaVerifyToken 不为空，则返回成功
 func (m *MockClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
 	if captchaVerifyToken == "" {
-		return false, fmt.Errorf("captchaVerifyToken is required")
+		return false, errors.ErrCaptchaTokenRequired
 	}
 
 	// Mock: 只要 token 不为空就认为验证通过
 	return true, nil
 }
-

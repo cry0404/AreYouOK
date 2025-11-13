@@ -5,16 +5,16 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"AreYouOK/pkg/logger"
-
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	openapiutil "github.com/alibabacloud-go/openapi-util/service"
 	util "github.com/alibabacloud-go/tea-utils/v2/service"
 	"github.com/alibabacloud-go/tea/tea"
 	credential "github.com/aliyun/credentials-go/credentials"
 	"go.uber.org/zap"
-)
 
+	"AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
+)
 
 type AliyunClient struct {
 	client *openapi.Client
@@ -65,12 +65,11 @@ func (c *AliyunClient) createApiInfo(action string) *openapi.Params {
 
 // SendSingle 发送单条短信
 func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) error {
-
 	if signName == "" {
-		return fmt.Errorf("signName is required")
+		return errors.ErrSignNameRequired
 	}
 	if templateCode == "" {
-		return fmt.Errorf("templateCode is required")
+		return errors.ErrTemplateCodeRequired
 	}
 
 	params := c.createApiInfo("SendSms")
@@ -97,9 +96,11 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
 		return fmt.Errorf("failed to send SMS: %w", err)
 	}
 
-
 	if resp["statusCode"] != nil {
-		statusCode := resp["statusCode"].(int)
+		statusCode, ok := resp["statusCode"].(int)
+		if !ok {
+			return fmt.Errorf("invalid statusCode type in response: %T", resp["statusCode"])
+		}
 		if statusCode != 200 {
 			body := resp["body"]
 			logger.Logger.Error("SMS API returned error",
@@ -110,9 +111,11 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
 		}
 	}
 
-
 	if resp["body"] != nil {
-		bodyBytes, _ := json.Marshal(resp["body"])
+		bodyBytes, err := json.Marshal(resp["body"])
+		if err != nil {
+			return fmt.Errorf("failed to marshal response body: %w", err)
+		}
 		var bodyMap map[string]interface{}
 		if err := json.Unmarshal(bodyBytes, &bodyMap); err == nil {
 			if code, ok := bodyMap["Code"].(string); ok && code != "OK" {
@@ -146,17 +149,17 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
 func (c *AliyunClient) SendBatch(ctx context.Context, phones []string, signName, templateCode string, templateParams []string) error {
 	// 参数校验
 	if signName == "" {
-		return fmt.Errorf("signName is required")
+		return errors.ErrSignNameRequired
 	}
 	if templateCode == "" {
-		return fmt.Errorf("templateCode is required")
+		return errors.ErrTemplateCodeRequired
 	}
 	if len(phones) == 0 {
-		return fmt.Errorf("phones list is empty")
+		return errors.ErrPhonesListEmpty
 	}
 
 	if len(templateParams) != len(phones) {
-		return fmt.Errorf("templateParams count (%d) must match phones count (%d)", len(templateParams), len(phones))
+		return fmt.Errorf("%s: %d vs %d", errors.ErrTemplateParamsMismatch.Message, len(templateParams), len(phones))
 	}
 
 	// 构建 PhoneNumberJson: ["13800138000","13800138001",...]
@@ -181,7 +184,7 @@ func (c *AliyunClient) SendBatch(ctx context.Context, phones []string, signName,
 	for i, param := range templateParams {
 		// 如果参数不是有效的 JSON，尝试包装它
 		var testJSON interface{}
-		if err := json.Unmarshal([]byte(param), &testJSON); err != nil {
+		if jsonErr := json.Unmarshal([]byte(param), &testJSON); jsonErr != nil {
 			// 如果不是 JSON，包装成 JSON 对象
 			templateParamsArray[i] = fmt.Sprintf(`{"param":"%s"}`, param)
 		} else {
@@ -220,7 +223,10 @@ func (c *AliyunClient) SendBatch(ctx context.Context, phones []string, signName,
 
 	// 检查响应状态
 	if resp["statusCode"] != nil {
-		statusCode := resp["statusCode"].(int)
+		statusCode, ok := resp["statusCode"].(int)
+		if !ok {
+			return fmt.Errorf("invalid statusCode type in response: %T", resp["statusCode"])
+		}
 		if statusCode != 200 {
 			body := resp["body"]
 			logger.Logger.Error("SMS API returned error",
@@ -233,7 +239,10 @@ func (c *AliyunClient) SendBatch(ctx context.Context, phones []string, signName,
 
 	// 解析响应体
 	if resp["body"] != nil {
-		bodyBytes, _ := json.Marshal(resp["body"])
+		bodyBytes, err := json.Marshal(resp["body"])
+		if err != nil {
+			return fmt.Errorf("failed to marshal response body: %w", err)
+		}
 		var bodyMap map[string]interface{}
 		if err := json.Unmarshal(bodyBytes, &bodyMap); err == nil {
 			if code, ok := bodyMap["Code"].(string); ok && code != "OK" {

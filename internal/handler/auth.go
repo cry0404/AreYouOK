@@ -1,27 +1,27 @@
 package handler
 
 import (
+	"context"
+
+	"github.com/cloudwego/hertz/pkg/app"
+
 	"AreYouOK/internal/middleware"
 	"AreYouOK/internal/model/dto"
 	"AreYouOK/internal/service"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/response"
 	"AreYouOK/utils"
-	"context"
-
-	"github.com/cloudwego/hertz/pkg/app"
 )
 
 // ExchangeAlipayAuth 支付宝授权换取
 // POST /v1/auth/miniapp/alipay/exchange
 // uid 是 user_id
 func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
-
 	var req dto.AuthExchangeRequest
 
 	if err := c.BindAndValidate(&req); err != nil {
 		response.BindError(ctx, c, err)
-		return //判断 binding “required” 是否填写
+		return // 判断 binding “required” 是否填写
 	}
 
 	authService := service.Auth()
@@ -33,8 +33,7 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	}
 
 	response.Success(ctx, c, result)
-
-} //先去完善存储层
+} // 先去完善存储层
 
 // SendCaptcha 发送验证码
 // POST /v1/auth/phone/send-captcha
@@ -63,7 +62,6 @@ func SendCaptcha(ctx context.Context, c *app.RequestContext) {
 	response.Success(ctx, c, map[string]interface{}{
 		"message": "Captcha sent successfully",
 	})
-
 }
 
 // VerifySlider 滑块验证， 滑块验证不需要区分对应的场景
@@ -147,7 +145,6 @@ func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 	}
 
 	response.Success(ctx, c, result)
-
 }
 
 // RefreshToken 刷新访问令牌

@@ -1,11 +1,12 @@
 package response
 
 import (
-	"AreYouOK/pkg/errors"
 	"context"
 	"net/http"
 
 	"github.com/cloudwego/hertz/pkg/app"
+
+	"AreYouOK/pkg/errors"
 )
 
 // ErrorResponse 统一的错误响应格式
@@ -14,9 +15,9 @@ type ErrorResponse struct {
 }
 
 type ErrorDetail struct {
+	Details map[string]interface{} `json:"details,omitempty"`
 	Code    string                 `json:"code"`
 	Message string                 `json:"message"`
-	Details map[string]interface{} `json:"details,omitempty"`
 }
 
 // SuccessResponse 统一的成功响应格式
@@ -29,9 +30,7 @@ func errorToHTTPStatus(err error) int {
 	// 检查是否是 Definition 类型
 	def, ok := err.(errors.Definition)
 	if !ok {
-
 		if errMsg := err.Error(); errMsg != "" {
-
 			return http.StatusInternalServerError
 		}
 		return http.StatusInternalServerError

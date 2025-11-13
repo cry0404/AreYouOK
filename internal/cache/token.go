@@ -1,10 +1,11 @@
 package cache
 
 import (
-	"AreYouOK/config"
-	"AreYouOK/storage/redis"
 	"context"
 	"time"
+
+	"AreYouOK/config"
+	"AreYouOK/storage/redis"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 func SetRefreshToken(ctx context.Context, userID, refreshToken string) error {
 	key := redis.Key(tokenPrefix, "refresh", userID)
 	ttl := time.Duration(config.Cfg.JWTRefreshDays) * 24 * time.Hour
-	
+
 	return redis.Client().Set(ctx, key, refreshToken, ttl).Err()
 }
 

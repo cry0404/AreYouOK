@@ -1,11 +1,13 @@
 package repository
 
 import (
-	"AreYouOK/storage/database"
 	"fmt"
 	"os"
 
 	"gorm.io/gen"
+
+	"AreYouOK/pkg/errors"
+	"AreYouOK/storage/database"
 )
 
 // ========== User 相关查询接口 ==========
@@ -178,7 +180,6 @@ type QuotaTransactionQuerier interface {
 }
 
 func Generate() error {
-
 	if err := database.Init(); err != nil {
 		return fmt.Errorf("failed to initialize database: %w", err)
 	}
@@ -190,11 +191,11 @@ func Generate() error {
 
 	db := database.DB()
 	if db == nil {
-		return fmt.Errorf("database connection is nil")
+		return errors.ErrDatabaseConnectionNil
 	}
 
 	g := gen.NewGenerator(gen.Config{
-		OutPath:           "./internal/repository/query", // 生成代码的输出路径
+		OutPath: "./internal/repository/query", // 生成代码的输出路径
 		//ModelPkgPath:      "./internal/model",
 		Mode:              gen.WithDefaultQuery | gen.WithQueryInterface | gen.WithoutContext,
 		FieldNullable:     true, // 字段可以为 null
@@ -206,7 +207,7 @@ func Generate() error {
 
 	g.UseDB(db)
 
-	//从表生成模型
+	// 从表生成模型
 	userModel := g.GenerateModel("users")
 	checkInModel := g.GenerateModel("daily_check_ins")
 	journeyModel := g.GenerateModel("journeys")

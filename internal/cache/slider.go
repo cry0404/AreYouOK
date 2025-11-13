@@ -1,11 +1,12 @@
 package cache
 
 import (
-	"AreYouOK/storage/redis"
 	"context"
 	"time"
 
 	"github.com/google/uuid"
+
+	"AreYouOK/storage/redis"
 )
 
 /*

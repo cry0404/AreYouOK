@@ -3,7 +3,7 @@ package dto
 import "time"
 
 // ========== Auth 相关 DTO ==========
-// 授权时确定是否为新（isNewUser） -> 然后授权认证 
+// 授权时确定是否为新（isNewUser） -> 然后授权认证
 // AuthExchangeRequest 支付宝授权换取请求
 type AuthExchangeRequest struct {
 	AuthCode string     `json:"auth_code" binding:"required"`
@@ -18,21 +18,20 @@ type DeviceInfo struct {
 }
 
 // AuthExchangeResponse 支付宝授权换取响应
-type AuthExchangeResponse struct { //对应的 jwtToken， jwt Token 的过期时间 以及 User 是怎样的
-	//需要管理创建 User 的结构然后更新登录状态
+type AuthExchangeResponse struct {
 	AccessToken  string           `json:"access_token"`
 	RefreshToken string           `json:"refresh_token"`
-	ExpiresIn    int              `json:"expires_in"`
 	User         AuthUserSnapshot `json:"user"`
+	ExpiresIn    int              `json:"expires_in"`
 }
 
 // AuthUserSnapshot 授权时的用户快照
 type AuthUserSnapshot struct {
-	ID            string       `json:"id"`
-	Nickname      string       `json:"nickname"`
-	Status        string       `json:"status"`
-	PhoneVerified bool         `json:"phone_verified"` //据此来判断 status
-	IsNewUser     bool         `json:"is_new_user"`
+	ID            string `json:"id"`
+	Nickname      string `json:"nickname"`
+	Status        string `json:"status"`
+	PhoneVerified bool   `json:"phone_verified"` //据此来判断 status
+	IsNewUser     bool   `json:"is_new_user"`
 	//Waitlist      WaitlistInfo `json:"waitlist"` //不再需要，直接返回
 }
 
@@ -58,15 +57,15 @@ type VerifySliderRequest struct {
 
 // VerifySliderResponse 滑块验证响应
 type VerifySliderResponse struct {
-	SliderVerificationToken string    `json:"slider_verification_token"`
 	ExpiresAt               time.Time `json:"expires_at"`
+	SliderVerificationToken string    `json:"slider_verification_token"`
 }
 
 // VerifyCaptchaRequest 验证码验证请求
 type VerifyCaptchaRequest struct {
 	Phone       string `json:"phone" binding:"required"`
 	VerifyCode  string `json:"verify_code" binding:"required"`
-	Scene       string `json:"scene" binding:"required"` 
+	Scene       string `json:"scene" binding:"required"`
 	SliderToken string `json:"slider_token,omitempty"`
 }
 
@@ -75,8 +74,8 @@ type VerifyCaptchaRequest struct {
 type VerifyCaptchaResponse struct {
 	AccessToken  string           `json:"access_token"`
 	RefreshToken string           `json:"refresh_token"`
-	ExpiresIn    int              `json:"expires_in"`
 	User         AuthUserSnapshot `json:"user"`
+	ExpiresIn    int              `json:"expires_in"`
 }
 
 // RefreshTokenRequest 刷新 token 请求
@@ -86,8 +85,8 @@ type RefreshTokenRequest struct {
 
 // WaitlistStatusResponse 内测排队状态响应
 type WaitlistStatusResponse struct {
+	ActivatedAt *time.Time `json:"activated_at,omitempty"`
 	Status      string     `json:"status"`
 	Priority    int        `json:"priority"`
 	Position    int        `json:"position,omitempty"`
-	ActivatedAt *time.Time `json:"activated_at,omitempty"`
 }

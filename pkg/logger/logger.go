@@ -1,13 +1,15 @@
 package logger
 
 import (
-	"AreYouOK/config"
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+
+	"AreYouOK/config"
 )
-//也可考虑 hertz 本身自带的日志组件 ？
+
+// 也可考虑 hertz 本身自带的日志组件 ？
 var Logger *zap.Logger
+
 func Init() {
 	var zapConfig zap.Config
 
@@ -57,9 +59,12 @@ func Init() {
 	)
 }
 
-
 func Sync() {
 	if Logger != nil {
-		_ = Logger.Sync()
+		if err := Logger.Sync(); err != nil {
+			// Ignore sync errors in production, as per zap documentation
+			// https://github.com/uber-go/zap/issues/328
+			_ = err
+		}
 	}
 }

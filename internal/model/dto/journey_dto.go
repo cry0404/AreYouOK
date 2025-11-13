@@ -6,13 +6,13 @@ import "time"
 
 // JourneyItem 行程项
 type JourneyItem struct {
+	ExpectedReturnTime time.Time  `json:"expected_return_time"`
+	CreatedAt          time.Time  `json:"created_at"`
+	ActualReturnTime   *time.Time `json:"actual_return_time,omitempty"`
 	ID                 string     `json:"id"`
 	Title              string     `json:"title"`
 	Note               string     `json:"note"`
 	Status             string     `json:"status"`
-	ExpectedReturnTime time.Time  `json:"expected_return_time"`
-	ActualReturnTime   *time.Time `json:"actual_return_time,omitempty"`
-	CreatedAt          time.Time  `json:"created_at"`
 }
 
 // CreateJourneyRequest 创建行程请求
@@ -34,21 +34,21 @@ type JourneyDetail struct {
 	JourneyItem
 	ReminderSentAt     *time.Time `json:"reminder_sent_at,omitempty"`
 	AlertTriggeredAt   *time.Time `json:"alert_triggered_at,omitempty"`
+	AlertLastAttemptAt *time.Time `json:"alert_last_attempt_at,omitempty"`
 	AlertStatus        string     `json:"alert_status"`
 	AlertAttempts      int        `json:"alert_attempts"`
-	AlertLastAttemptAt *time.Time `json:"alert_last_attempt_at,omitempty"`
 }
 
 // JourneyAlertData 行程提醒数据
 type JourneyAlertData struct {
+	AlertLastAttemptAt *time.Time `json:"alert_last_attempt_at,omitempty"`
 	AlertStatus        string     `json:"alert_status"`
 	AlertAttempts      int        `json:"alert_attempts"`
-	AlertLastAttemptAt *time.Time `json:"alert_last_attempt_at,omitempty"`
 }
 
 // JourneyListQuery 行程列表查询参数
 type JourneyListQuery struct {
 	Status string `form:"status"`
-	Limit  int    `form:"limit"`
 	Cursor string `form:"cursor"`
+	Limit  int    `form:"limit"`
 }

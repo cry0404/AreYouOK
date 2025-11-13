@@ -1,5 +1,7 @@
 package errors
 
+import "fmt"
+
 func (d Definition) Error() string {
 	return d.Message
 }
@@ -8,6 +10,11 @@ func (d Definition) Error() string {
 type Definition struct {
 	Code    string
 	Message string
+}
+
+// Wrap 包装错误，保留原始错误信息
+func (d Definition) Wrap(err error) error {
+	return fmt.Errorf("%s: %w", d.Message, err)
 }
 
 // 认证相关错误。
@@ -63,27 +70,71 @@ var (
 	OnboardingStepInvalid = Definition{Code: "ONBOARDING_STEP_INVALID", Message: "Onboarding step invalid"}
 )
 
+// 系统错误（用于内部错误，通常需要包装）
+var (
+	ErrTokenGeneratorNotInitialized = Definition{Code: "TOKEN_GENERATOR_NOT_INITIALIZED", Message: "Token generator not initialized, call token.Init() first"}
+	ErrInvalidToken                 = Definition{Code: "INVALID_TOKEN", Message: "Invalid token"}
+	ErrInvalidTokenClaims           = Definition{Code: "INVALID_TOKEN_CLAIMS", Message: "Invalid token claims"}
+	ErrInvalidTokenType             = Definition{Code: "INVALID_TOKEN_TYPE", Message: "Invalid token type, expected refresh token"}
+	ErrUserIDNotFound               = Definition{Code: "USER_ID_NOT_FOUND", Message: "User ID not found in token"}
+	ErrUnexpectedSigningMethod      = Definition{Code: "UNEXPECTED_SIGNING_METHOD", Message: "Unexpected signing method"}
+	ErrUserNotFound                 = Definition{Code: "USER_NOT_FOUND", Message: "User not found"}
+	ErrDatabaseConnectionNil        = Definition{Code: "DATABASE_CONNECTION_NIL", Message: "Database connection is nil"}
+	ErrFailedToUnmarshalJSONB       = Definition{Code: "FAILED_TO_UNMARSHAL_JSONB", Message: "Failed to unmarshal JSONB value"}
+	ErrCaptchaTokenRequired         = Definition{Code: "CAPTCHA_TOKEN_REQUIRED", Message: "captchaVerifyToken is required"}
+	ErrCaptchaResponseNil           = Definition{Code: "CAPTCHA_RESPONSE_NIL", Message: "captcha verification response is nil"}
+	ErrCaptchaVerificationFailed    = Definition{Code: "CAPTCHA_VERIFICATION_FAILED", Message: "captcha verification failed"}
+	ErrUnsupportedCaptchaProvider   = Definition{Code: "UNSUPPORTED_CAPTCHA_PROVIDER", Message: "Unsupported captcha provider"}
+	ErrSignNameRequired             = Definition{Code: "SIGN_NAME_REQUIRED", Message: "signName is required"}
+	ErrTemplateCodeRequired         = Definition{Code: "TEMPLATE_CODE_REQUIRED", Message: "templateCode is required"}
+	ErrPhonesListEmpty              = Definition{Code: "PHONES_LIST_EMPTY", Message: "phones list is empty"}
+	ErrTemplateParamsMismatch       = Definition{Code: "TEMPLATE_PARAMS_MISMATCH", Message: "templateParams count must match phones count"}
+	ErrPhonesCodesMismatch          = Definition{Code: "PHONES_CODES_MISMATCH", Message: "phones and codes count mismatch"}
+	ErrTencentSMSNotImplemented     = Definition{Code: "TENCENT_SMS_NOT_IMPLEMENTED", Message: "tencent SMS provider not implemented yet"}
+	ErrUnsupportedSMSProvider       = Definition{Code: "UNSUPPORTED_SMS_PROVIDER", Message: "Unsupported SMS provider"}
+)
+
 // Lookup 提供错误码查询能力。
 var Lookup = map[string]Definition{
-	AuthCodeInvalid.Code:            AuthCodeInvalid,
-	PhoneAlreadyRegistered.Code:     PhoneAlreadyRegistered,
-	CaptchaRateLimited.Code:         CaptchaRateLimited,
-	VerificationCodeExpired.Code:    VerificationCodeExpired,
-	VerificationCodeInvalid.Code:    VerificationCodeInvalid,
-	VerificationSliderRequired.Code: VerificationSliderRequired,
-	VerificationSliderFailed.Code:   VerificationSliderFailed,
-	ContactLimitReached.Code:        ContactLimitReached,
-	ContactPriorityConflict.Code:    ContactPriorityConflict,
-	CheckInDisabled.Code:            CheckInDisabled,
-	CheckInAlreadyDone.Code:         CheckInAlreadyDone,
-	JourneyOverlap.Code:             JourneyOverlap,
-	JourneyNotModifiable.Code:       JourneyNotModifiable,
-	NotifyAckInvalid.Code:           NotifyAckInvalid,
-	QuotaInsufficient.Code:          QuotaInsufficient,
-	QuotaChannelInvalid.Code:        QuotaChannelInvalid,
-	WaitlistFull.Code:               WaitlistFull,
-	WaitlistNotInvited.Code:         WaitlistNotInvited,
-	OnboardingStepInvalid.Code:      OnboardingStepInvalid,
+	AuthCodeInvalid.Code:                 AuthCodeInvalid,
+	PhoneAlreadyRegistered.Code:          PhoneAlreadyRegistered,
+	CaptchaRateLimited.Code:              CaptchaRateLimited,
+	VerificationCodeExpired.Code:         VerificationCodeExpired,
+	VerificationCodeInvalid.Code:         VerificationCodeInvalid,
+	VerificationSliderRequired.Code:      VerificationSliderRequired,
+	VerificationSliderFailed.Code:        VerificationSliderFailed,
+	ContactLimitReached.Code:             ContactLimitReached,
+	ContactPriorityConflict.Code:         ContactPriorityConflict,
+	CheckInDisabled.Code:                 CheckInDisabled,
+	CheckInAlreadyDone.Code:              CheckInAlreadyDone,
+	JourneyOverlap.Code:                  JourneyOverlap,
+	JourneyNotModifiable.Code:            JourneyNotModifiable,
+	NotifyAckInvalid.Code:                NotifyAckInvalid,
+	QuotaInsufficient.Code:               QuotaInsufficient,
+	QuotaChannelInvalid.Code:             QuotaChannelInvalid,
+	WaitlistFull.Code:                    WaitlistFull,
+	WaitlistNotInvited.Code:              WaitlistNotInvited,
+	OnboardingStepInvalid.Code:           OnboardingStepInvalid,
+	ErrTokenGeneratorNotInitialized.Code: ErrTokenGeneratorNotInitialized,
+	ErrInvalidToken.Code:                 ErrInvalidToken,
+	ErrInvalidTokenClaims.Code:           ErrInvalidTokenClaims,
+	ErrInvalidTokenType.Code:             ErrInvalidTokenType,
+	ErrUserIDNotFound.Code:               ErrUserIDNotFound,
+	ErrUnexpectedSigningMethod.Code:      ErrUnexpectedSigningMethod,
+	ErrUserNotFound.Code:                 ErrUserNotFound,
+	ErrDatabaseConnectionNil.Code:        ErrDatabaseConnectionNil,
+	ErrFailedToUnmarshalJSONB.Code:       ErrFailedToUnmarshalJSONB,
+	ErrCaptchaTokenRequired.Code:         ErrCaptchaTokenRequired,
+	ErrCaptchaResponseNil.Code:           ErrCaptchaResponseNil,
+	ErrCaptchaVerificationFailed.Code:    ErrCaptchaVerificationFailed,
+	ErrUnsupportedCaptchaProvider.Code:   ErrUnsupportedCaptchaProvider,
+	ErrSignNameRequired.Code:             ErrSignNameRequired,
+	ErrTemplateCodeRequired.Code:         ErrTemplateCodeRequired,
+	ErrPhonesListEmpty.Code:              ErrPhonesListEmpty,
+	ErrTemplateParamsMismatch.Code:       ErrTemplateParamsMismatch,
+	ErrPhonesCodesMismatch.Code:          ErrPhonesCodesMismatch,
+	ErrTencentSMSNotImplemented.Code:     ErrTencentSMSNotImplemented,
+	ErrUnsupportedSMSProvider.Code:       ErrUnsupportedSMSProvider,
 }
 
 // Get 根据错误码返回 Definition，若不存在则返回空 Definition。

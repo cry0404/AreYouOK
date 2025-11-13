@@ -16,7 +16,7 @@ import (
 )
 
 var (
-	Q                = new(Query) 
+	Q                = new(Query)
 	DailyCheckIn     *dailyCheckIn
 	Journey          *journey
 	NotificationTask *notificationTask

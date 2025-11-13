@@ -23,7 +23,3 @@ func GetNotificationTaskDetail(ctx context.Context, c *app.RequestContext) {
 func AckNotification(ctx context.Context, c *app.RequestContext) {
 	// TODO: 实现确认通知逻辑
 }
-
-
-
-

@@ -4,13 +4,14 @@ import (
 	"context"
 	"fmt"
 
-	"AreYouOK/pkg/logger"
-
 	captcha "github.com/alibabacloud-go/captcha-20230305/client"
 	openapi "github.com/alibabacloud-go/darabonba-openapi/v2/client"
 	"github.com/alibabacloud-go/tea/tea"
 	credential "github.com/aliyun/credentials-go/credentials"
 	"go.uber.org/zap"
+
+	"AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
 )
 
 // AliyunClient 阿里云验证码客户端实现
@@ -46,7 +47,7 @@ func NewAliyunClient() (*AliyunClient, error) {
 // scene: 验证场景（SceneId）
 func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
 	if captchaVerifyToken == "" {
-		return false, fmt.Errorf("captchaVerifyToken is required")
+		return false, errors.ErrCaptchaTokenRequired
 	}
 
 	// 直接使用前端返回的 token 作为 CaptchaVerifyParam
@@ -68,7 +69,7 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp,
 
 	// 检查响应
 	if response == nil || response.Body == nil {
-		return false, fmt.Errorf("captcha verification response is nil")
+		return false, errors.ErrCaptchaResponseNil
 	}
 
 	body := response.Body
@@ -93,11 +94,11 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp,
 			zap.String("message", message),
 			zap.String("scene", scene),
 		)
-		return false, fmt.Errorf("captcha verification failed: %s - %s", *body.Code, message)
+		return false, fmt.Errorf("%w: %s - %s", errors.ErrCaptchaVerificationFailed, *body.Code, message)
 	}
 
 	logger.Logger.Warn("Captcha verification failed: verify result is false",
 		zap.String("scene", scene),
 	)
-	return false, fmt.Errorf("captcha verification failed")
+	return false, errors.ErrCaptchaVerificationFailed
 }

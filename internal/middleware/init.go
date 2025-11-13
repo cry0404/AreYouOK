@@ -1,9 +1,10 @@
 package middleware
+
 // TODO: 统一的关闭逻辑
 import (
-	"AreYouOK/pkg/logger"
-
 	"go.uber.org/zap"
+
+	"AreYouOK/pkg/logger"
 )
 
 // 或者在导入包的时候直接默认 init 初始化？

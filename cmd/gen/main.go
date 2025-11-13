@@ -6,7 +6,6 @@ import (
 )
 
 func main() {
-
 	logger.Init()
 	defer logger.Sync()
 

@@ -1,16 +1,17 @@
 package utils
 
 import (
-	"AreYouOK/config"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"encoding/base64"
-	"io"
 	"errors"
+	"io"
+
+	"AreYouOK/config"
 )
 
-//需要之后研究下 aes 加密是如何实现的
+// 需要之后研究下 aes 加密是如何实现的
 //返回对应的 encryptPhone 值
 
 var errInvalidCipherText = errors.New("invalid ciphertext payload")
@@ -19,7 +20,7 @@ func EncryptPhone(plain string) (encoded string, err error) {
 	key := []byte(config.Cfg.EncryptionKey)
 
 	block, err := aes.NewCipher(key)
-	//加密的块
+	// 加密的块
 	if err != nil {
 		return "", err
 	}
