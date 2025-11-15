@@ -25,10 +25,10 @@ var StatusToStringMap = map[UserStatus]string{
 
 // User 用户模型
 type User struct {
-	DailyCheckInRemindAt   string `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
-	DailyCheckInGraceUntil string `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
-	DailyCheckInDeadline   string `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
-	PhoneHash              *string   `gorm:"uniqueIndex;type:char(64)" json:"-"`
+	DailyCheckInRemindAt   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
+	DailyCheckInGraceUntil string  `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
+	DailyCheckInDeadline   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
+	PhoneHash              *string `gorm:"uniqueIndex;type:char(64)" json:"-"`
 	BaseModel
 	Status              UserStatus        `gorm:"type:varchar(16);not null;default:'waitlisted';index:idx_users_status" json:"status"`
 	Timezone            string            `gorm:"type:varchar(64);not null;default:'Asia/Shanghai'" json:"timezone"`

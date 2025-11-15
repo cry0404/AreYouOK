@@ -12,7 +12,7 @@ type UserProfileData struct {
 
 	Settings UserSettingsDTO `json:"settings"`
 	// Waitlist WaitlistInfo    `json:"waitlist"`
-	//Quotas   QuotaBalance    `json:"quotas"`
+	Quotas QuotaBalance `json:"quotas"`
 }
 
 // PhoneInfo 手机号信息
@@ -21,7 +21,7 @@ type PhoneInfo struct {
 	Verified     bool   `json:"verified"`
 }
 
-// UserSettingsDTO 用户设置 DTO（用于 API 响应）
+// UserSettingsDTO 用户设置
 type UserSettingsDTO struct {
 	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
@@ -49,8 +49,8 @@ type UserStatusData struct {
 
 // QuotaBalance 额度余额
 type QuotaBalance struct {
-	SMSBalance     int `json:"sms_balance"`
-	VoiceBalance   int `json:"voice_balance"`
-	SMSUnitPrice   int `json:"sms_unit_price,omitempty"`
-	VoiceUnitPrice int `json:"voice_unit_price,omitempty"`
+	SMSBalance     int     `json:"sms_balance"`
+	VoiceBalance   int     `json:"voice_balance"`
+	SMSUnitPrice   float32 `json:"sms_unit_price,omitempty"`
+	VoiceUnitPrice float32 `json:"voice_unit_price,omitempty"`
 }

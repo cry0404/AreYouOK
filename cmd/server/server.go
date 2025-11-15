@@ -84,10 +84,13 @@ func main() {
 
 	router.Register(h)
 
+	// 优雅关闭：在单独的 goroutine 中监听关闭信号并调用 Shutdown
 	go func() {
 		<-ctx.Done()
+		logger.Logger.Info("Initiating graceful shutdown...")
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
+
 		if err := h.Shutdown(shutdownCtx); err != nil {
 			logger.Logger.Error("Failed to shutdown HTTP server", zap.Error(err))
 		}

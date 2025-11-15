@@ -6,6 +6,9 @@
 --   contact
 --  填手机号和填紧急联系人对应的枚举值
 --   active: 正常使用
+
+-- 内部 id 加外部 id 模式，id 是数据库自增主键，用于内部外键关联查询
+-- 外部，处理 api 请求时使用的是 public_id ，用于 api 对外暴露，防止枚举遍历
 CREATE TABLE users (
   id BIGSERIAL PRIMARY KEY, -- 关联的主键 id
   public_id BIGINT NOT NULL,

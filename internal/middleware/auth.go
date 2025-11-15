@@ -8,6 +8,7 @@ import (
 	"github.com/hertz-contrib/jwt"
 
 	"AreYouOK/pkg/errors"
+
 	"AreYouOK/pkg/token"
 )
 

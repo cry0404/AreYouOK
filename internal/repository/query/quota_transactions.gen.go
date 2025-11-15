@@ -5,6 +5,7 @@
 package query
 
 import (
+	"AreYouOK/internal/model"
 	"context"
 	"database/sql"
 	"strings"
@@ -17,8 +18,6 @@ import (
 	"gorm.io/gen/field"
 
 	"gorm.io/plugin/dbresolver"
-
-	"AreYouOK/internal/model"
 )
 
 func newQuotaTransaction(db *gorm.DB, opts ...gen.DOOption) quotaTransaction {
@@ -29,16 +28,16 @@ func newQuotaTransaction(db *gorm.DB, opts ...gen.DOOption) quotaTransaction {
 
 	tableName := _quotaTransaction.quotaTransactionDo.TableName()
 	_quotaTransaction.ALL = field.NewAsterisk(tableName)
-	_quotaTransaction.ID = field.NewInt64(tableName, "id")
 	_quotaTransaction.CreatedAt = field.NewTime(tableName, "created_at")
 	_quotaTransaction.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_quotaTransaction.DeletedAt = field.NewField(tableName, "deleted_at")
-	_quotaTransaction.UserID = field.NewInt64(tableName, "user_id")
+	_quotaTransaction.ID = field.NewInt64(tableName, "id")
 	_quotaTransaction.Channel = field.NewString(tableName, "channel")
 	_quotaTransaction.TransactionType = field.NewString(tableName, "transaction_type")
 	_quotaTransaction.Reason = field.NewString(tableName, "reason")
-	_quotaTransaction.Amount = field.NewInt64(tableName, "amount")
-	_quotaTransaction.BalanceAfter = field.NewInt64(tableName, "balance_after")
+	_quotaTransaction.UserID = field.NewInt64(tableName, "user_id")
+	_quotaTransaction.Amount = field.NewInt(tableName, "amount")
+	_quotaTransaction.BalanceAfter = field.NewInt(tableName, "balance_after")
 
 	_quotaTransaction.fillFieldMap()
 
@@ -49,16 +48,16 @@ type quotaTransaction struct {
 	quotaTransactionDo
 
 	ALL             field.Asterisk
-	ID              field.Int64
 	CreatedAt       field.Time
 	UpdatedAt       field.Time
 	DeletedAt       field.Field
-	UserID          field.Int64
+	ID              field.Int64
 	Channel         field.String
 	TransactionType field.String
 	Reason          field.String
-	Amount          field.Int64
-	BalanceAfter    field.Int64
+	UserID          field.Int64
+	Amount          field.Int
+	BalanceAfter    field.Int
 
 	fieldMap map[string]field.Expr
 }
@@ -75,16 +74,16 @@ func (q quotaTransaction) As(alias string) *quotaTransaction {
 
 func (q *quotaTransaction) updateTableName(table string) *quotaTransaction {
 	q.ALL = field.NewAsterisk(table)
-	q.ID = field.NewInt64(table, "id")
 	q.CreatedAt = field.NewTime(table, "created_at")
 	q.UpdatedAt = field.NewTime(table, "updated_at")
 	q.DeletedAt = field.NewField(table, "deleted_at")
-	q.UserID = field.NewInt64(table, "user_id")
+	q.ID = field.NewInt64(table, "id")
 	q.Channel = field.NewString(table, "channel")
 	q.TransactionType = field.NewString(table, "transaction_type")
 	q.Reason = field.NewString(table, "reason")
-	q.Amount = field.NewInt64(table, "amount")
-	q.BalanceAfter = field.NewInt64(table, "balance_after")
+	q.UserID = field.NewInt64(table, "user_id")
+	q.Amount = field.NewInt(table, "amount")
+	q.BalanceAfter = field.NewInt(table, "balance_after")
 
 	q.fillFieldMap()
 
@@ -102,14 +101,14 @@ func (q *quotaTransaction) GetFieldByName(fieldName string) (field.OrderExpr, bo
 
 func (q *quotaTransaction) fillFieldMap() {
 	q.fieldMap = make(map[string]field.Expr, 10)
-	q.fieldMap["id"] = q.ID
 	q.fieldMap["created_at"] = q.CreatedAt
 	q.fieldMap["updated_at"] = q.UpdatedAt
 	q.fieldMap["deleted_at"] = q.DeletedAt
-	q.fieldMap["user_id"] = q.UserID
+	q.fieldMap["id"] = q.ID
 	q.fieldMap["channel"] = q.Channel
 	q.fieldMap["transaction_type"] = q.TransactionType
 	q.fieldMap["reason"] = q.Reason
+	q.fieldMap["user_id"] = q.UserID
 	q.fieldMap["amount"] = q.Amount
 	q.fieldMap["balance_after"] = q.BalanceAfter
 }
@@ -189,10 +188,15 @@ type IQuotaTransactionDo interface {
 	schema.Tabler
 
 	GetBalanceByUserID(userID int64) (result []map[string]interface{}, err error)
+	GetBalanceByPublicID(publicID int64) (result []map[string]interface{}, err error)
 	ListByUserID(userID int64, limit int, offset int) (result []*model.QuotaTransaction, err error)
+	ListByPublicID(publicID int64, cursorID int64, limit int) (result []*model.QuotaTransaction, err error)
+	ListByUserIDAndChannel(userID int64, channel string, limit int, offset int) (result []*model.QuotaTransaction, err error)
+	GetLatestTransactionByUserID(userID int64) (result *model.QuotaTransaction, err error)
 }
 
 // GetBalanceByUserID 计算用户余额（按渠道分组）
+//
 // SELECT
 //
 //	channel,
@@ -207,7 +211,33 @@ func (q quotaTransactionDo) GetBalanceByUserID(userID int64) (result []map[strin
 
 	var generateSQL strings.Builder
 	params = append(params, userID)
-	generateSQL.WriteString("计算用户余额（按渠道分组） SELECT channel, COALESCE(SUM(CASE WHEN transaction_type = 'grant' THEN amount ELSE 0 END) - SUM(CASE WHEN transaction_type = 'deduct' THEN amount ELSE 0 END), 0) as balance FROM quota_transactions WHERE user_id = ? GROUP BY channel ")
+	generateSQL.WriteString("SELECT channel, COALESCE(SUM(CASE WHEN transaction_type = 'grant' THEN amount ELSE 0 END) - SUM(CASE WHEN transaction_type = 'deduct' THEN amount ELSE 0 END), 0) as balance FROM quota_transactions WHERE user_id = ? GROUP BY channel ")
+
+	var executeSQL *gorm.DB
+	executeSQL = q.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetBalanceByPublicID 根据 PublicID 计算用户余额（API 常用）
+//
+// SELECT
+//
+//	qt.channel,
+//	COALESCE(SUM(CASE WHEN qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
+//	         SUM(CASE WHEN qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as balance
+//
+// FROM @@table qt
+// INNER JOIN users u ON u.id = qt.user_id
+// WHERE u.public_id = @publicID
+// GROUP BY qt.channel
+func (q quotaTransactionDo) GetBalanceByPublicID(publicID int64) (result []map[string]interface{}, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT qt.channel, COALESCE(SUM(CASE WHEN qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as balance FROM quota_transactions qt INNER JOIN users u ON u.id = qt.user_id WHERE u.public_id = ? GROUP BY qt.channel ")
 
 	var executeSQL *gorm.DB
 	executeSQL = q.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
@@ -217,6 +247,7 @@ func (q quotaTransactionDo) GetBalanceByUserID(userID int64) (result []map[strin
 }
 
 // ListByUserID 按用户查询流水（分页）
+//
 // SELECT * FROM @@table
 // WHERE user_id = @userID
 // ORDER BY created_at DESC
@@ -228,10 +259,88 @@ func (q quotaTransactionDo) ListByUserID(userID int64, limit int, offset int) (r
 	params = append(params, userID)
 	params = append(params, limit)
 	params = append(params, offset)
-	generateSQL.WriteString("按用户查询流水（分页） SELECT * FROM quota_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ? ")
+	generateSQL.WriteString("SELECT * FROM quota_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT ? OFFSET ? ")
 
 	var executeSQL *gorm.DB
 	executeSQL = q.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// ListByPublicID 根据 PublicID 查询流水（API 常用，支持游标分页）
+//
+// SELECT qt.* FROM @@table qt
+// INNER JOIN users u ON u.id = qt.user_id
+// WHERE u.public_id = @publicID
+//
+//	{{if cursorID > 0}}
+//	AND qt.id < @cursorID
+//	{{end}}
+//
+// ORDER BY qt.created_at DESC
+// LIMIT @limit
+func (q quotaTransactionDo) ListByPublicID(publicID int64, cursorID int64, limit int) (result []*model.QuotaTransaction, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT qt.* FROM quota_transactions qt INNER JOIN users u ON u.id = qt.user_id WHERE u.public_id = ? ")
+	if cursorID > 0 {
+		params = append(params, cursorID)
+		generateSQL.WriteString("AND qt.id < ? ")
+	}
+	params = append(params, limit)
+	generateSQL.WriteString("ORDER BY qt.created_at DESC LIMIT ? ")
+
+	var executeSQL *gorm.DB
+	executeSQL = q.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// ListByUserIDAndChannel 按用户和渠道查询流水
+//
+// SELECT * FROM @@table
+// WHERE user_id = @userID
+//
+//	AND channel = @channel
+//
+// ORDER BY created_at DESC
+// LIMIT @limit OFFSET @offset
+func (q quotaTransactionDo) ListByUserIDAndChannel(userID int64, channel string, limit int, offset int) (result []*model.QuotaTransaction, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	params = append(params, channel)
+	params = append(params, limit)
+	params = append(params, offset)
+	generateSQL.WriteString("SELECT * FROM quota_transactions WHERE user_id = ? AND channel = ? ORDER BY created_at DESC LIMIT ? OFFSET ? ")
+
+	var executeSQL *gorm.DB
+	executeSQL = q.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetLatestTransactionByUserID 获取用户最新的流水记录
+//
+// SELECT * FROM @@table
+// WHERE user_id = @userID
+// ORDER BY created_at DESC
+// LIMIT 1
+func (q quotaTransactionDo) GetLatestTransactionByUserID(userID int64) (result *model.QuotaTransaction, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	generateSQL.WriteString("SELECT * FROM quota_transactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = q.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
 	err = executeSQL.Error
 
 	return

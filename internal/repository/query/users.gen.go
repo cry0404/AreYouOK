@@ -5,6 +5,7 @@
 package query
 
 import (
+	"AreYouOK/internal/model"
 	"context"
 	"database/sql"
 	"strings"
@@ -17,8 +18,6 @@ import (
 	"gorm.io/gen/field"
 
 	"gorm.io/plugin/dbresolver"
-
-	"AreYouOK/internal/model"
 )
 
 func newUser(db *gorm.DB, opts ...gen.DOOption) user {
@@ -29,22 +28,22 @@ func newUser(db *gorm.DB, opts ...gen.DOOption) user {
 
 	tableName := _user.userDo.TableName()
 	_user.ALL = field.NewAsterisk(tableName)
-	_user.ID = field.NewInt64(tableName, "id")
+	_user.DailyCheckInRemindAt = field.NewString(tableName, "daily_check_in_remind_at")
+	_user.DailyCheckInGraceUntil = field.NewString(tableName, "daily_check_in_grace_until")
+	_user.DailyCheckInDeadline = field.NewString(tableName, "daily_check_in_deadline")
+	_user.PhoneHash = field.NewString(tableName, "phone_hash")
 	_user.CreatedAt = field.NewTime(tableName, "created_at")
 	_user.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_user.DeletedAt = field.NewField(tableName, "deleted_at")
-	_user.PublicID = field.NewInt64(tableName, "public_id")
-	_user.AlipayOpenID = field.NewString(tableName, "alipay_open_id")
-	_user.Nickname = field.NewString(tableName, "nickname")
-	_user.PhoneCipher = field.NewField(tableName, "phone_cipher")
-	_user.PhoneHash = field.NewString(tableName, "phone_hash")
+	_user.ID = field.NewInt64(tableName, "id")
 	_user.Status = field.NewString(tableName, "status")
-	_user.EmergencyContacts = field.NewString(tableName, "emergency_contacts")
 	_user.Timezone = field.NewString(tableName, "timezone")
+	_user.Nickname = field.NewString(tableName, "nickname")
+	_user.AlipayOpenID = field.NewString(tableName, "alipay_open_id")
+	_user.PhoneCipher = field.NewBytes(tableName, "phone_cipher")
+	_user.EmergencyContacts = field.NewField(tableName, "emergency_contacts")
+	_user.PublicID = field.NewInt64(tableName, "public_id")
 	_user.DailyCheckInEnabled = field.NewBool(tableName, "daily_check_in_enabled")
-	_user.DailyCheckInDeadline = field.NewString(tableName, "daily_check_in_deadline")
-	_user.DailyCheckInGraceUntil = field.NewString(tableName, "daily_check_in_grace_until")
-	_user.DailyCheckInRemindAt = field.NewString(tableName, "daily_check_in_remind_at")
 	_user.JourneyAutoNotify = field.NewBool(tableName, "journey_auto_notify")
 
 	_user.fillFieldMap()
@@ -56,22 +55,22 @@ type user struct {
 	userDo
 
 	ALL                    field.Asterisk
-	ID                     field.Int64
+	DailyCheckInRemindAt   field.String
+	DailyCheckInGraceUntil field.String
+	DailyCheckInDeadline   field.String
+	PhoneHash              field.String
 	CreatedAt              field.Time
 	UpdatedAt              field.Time
 	DeletedAt              field.Field
-	PublicID               field.Int64
-	AlipayOpenID           field.String
-	Nickname               field.String
-	PhoneCipher            field.Field
-	PhoneHash              field.String
+	ID                     field.Int64
 	Status                 field.String
-	EmergencyContacts      field.String
 	Timezone               field.String
+	Nickname               field.String
+	AlipayOpenID           field.String
+	PhoneCipher            field.Bytes
+	EmergencyContacts      field.Field
+	PublicID               field.Int64
 	DailyCheckInEnabled    field.Bool
-	DailyCheckInDeadline   field.String
-	DailyCheckInGraceUntil field.String
-	DailyCheckInRemindAt   field.String
 	JourneyAutoNotify      field.Bool
 
 	fieldMap map[string]field.Expr
@@ -89,22 +88,22 @@ func (u user) As(alias string) *user {
 
 func (u *user) updateTableName(table string) *user {
 	u.ALL = field.NewAsterisk(table)
-	u.ID = field.NewInt64(table, "id")
+	u.DailyCheckInRemindAt = field.NewString(table, "daily_check_in_remind_at")
+	u.DailyCheckInGraceUntil = field.NewString(table, "daily_check_in_grace_until")
+	u.DailyCheckInDeadline = field.NewString(table, "daily_check_in_deadline")
+	u.PhoneHash = field.NewString(table, "phone_hash")
 	u.CreatedAt = field.NewTime(table, "created_at")
 	u.UpdatedAt = field.NewTime(table, "updated_at")
 	u.DeletedAt = field.NewField(table, "deleted_at")
-	u.PublicID = field.NewInt64(table, "public_id")
-	u.AlipayOpenID = field.NewString(table, "alipay_open_id")
-	u.Nickname = field.NewString(table, "nickname")
-	u.PhoneCipher = field.NewField(table, "phone_cipher")
-	u.PhoneHash = field.NewString(table, "phone_hash")
+	u.ID = field.NewInt64(table, "id")
 	u.Status = field.NewString(table, "status")
-	u.EmergencyContacts = field.NewString(table, "emergency_contacts")
 	u.Timezone = field.NewString(table, "timezone")
+	u.Nickname = field.NewString(table, "nickname")
+	u.AlipayOpenID = field.NewString(table, "alipay_open_id")
+	u.PhoneCipher = field.NewBytes(table, "phone_cipher")
+	u.EmergencyContacts = field.NewField(table, "emergency_contacts")
+	u.PublicID = field.NewInt64(table, "public_id")
 	u.DailyCheckInEnabled = field.NewBool(table, "daily_check_in_enabled")
-	u.DailyCheckInDeadline = field.NewString(table, "daily_check_in_deadline")
-	u.DailyCheckInGraceUntil = field.NewString(table, "daily_check_in_grace_until")
-	u.DailyCheckInRemindAt = field.NewString(table, "daily_check_in_remind_at")
 	u.JourneyAutoNotify = field.NewBool(table, "journey_auto_notify")
 
 	u.fillFieldMap()
@@ -123,22 +122,22 @@ func (u *user) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 
 func (u *user) fillFieldMap() {
 	u.fieldMap = make(map[string]field.Expr, 17)
-	u.fieldMap["id"] = u.ID
+	u.fieldMap["daily_check_in_remind_at"] = u.DailyCheckInRemindAt
+	u.fieldMap["daily_check_in_grace_until"] = u.DailyCheckInGraceUntil
+	u.fieldMap["daily_check_in_deadline"] = u.DailyCheckInDeadline
+	u.fieldMap["phone_hash"] = u.PhoneHash
 	u.fieldMap["created_at"] = u.CreatedAt
 	u.fieldMap["updated_at"] = u.UpdatedAt
 	u.fieldMap["deleted_at"] = u.DeletedAt
-	u.fieldMap["public_id"] = u.PublicID
-	u.fieldMap["alipay_open_id"] = u.AlipayOpenID
-	u.fieldMap["nickname"] = u.Nickname
-	u.fieldMap["phone_cipher"] = u.PhoneCipher
-	u.fieldMap["phone_hash"] = u.PhoneHash
+	u.fieldMap["id"] = u.ID
 	u.fieldMap["status"] = u.Status
-	u.fieldMap["emergency_contacts"] = u.EmergencyContacts
 	u.fieldMap["timezone"] = u.Timezone
+	u.fieldMap["nickname"] = u.Nickname
+	u.fieldMap["alipay_open_id"] = u.AlipayOpenID
+	u.fieldMap["phone_cipher"] = u.PhoneCipher
+	u.fieldMap["emergency_contacts"] = u.EmergencyContacts
+	u.fieldMap["public_id"] = u.PublicID
 	u.fieldMap["daily_check_in_enabled"] = u.DailyCheckInEnabled
-	u.fieldMap["daily_check_in_deadline"] = u.DailyCheckInDeadline
-	u.fieldMap["daily_check_in_grace_until"] = u.DailyCheckInGraceUntil
-	u.fieldMap["daily_check_in_remind_at"] = u.DailyCheckInRemindAt
 	u.fieldMap["journey_auto_notify"] = u.JourneyAutoNotify
 }
 
@@ -218,17 +217,24 @@ type IUserDo interface {
 
 	GetByAlipayOpenID(openID string) (result *model.User, err error)
 	GetByPhoneHash(phoneHash string) (result *model.User, err error)
+	GetByPublicID(publicID int64) (result *model.User, err error)
+	GetByID(id int64) (result *model.User, err error)
+	ListByStatus(status string, limit int, offset int) (result []*model.User, err error)
+	ListActiveUsersWithCheckInEnabled() (result []*model.User, err error)
+	CountByStatus() (result []map[string]interface{}, err error)
 	GetWithQuotas(userID int64) (result map[string]interface{}, err error)
+	GetByPublicIDWithQuotas(publicID int64) (result map[string]interface{}, err error)
 }
 
 // GetByAlipayOpenID 根据支付宝 OpenID 查询用户
+//
 // SELECT * FROM @@table WHERE alipay_open_id = @openID LIMIT 1
 func (u userDo) GetByAlipayOpenID(openID string) (result *model.User, err error) {
 	var params []interface{}
 
 	var generateSQL strings.Builder
 	params = append(params, openID)
-	generateSQL.WriteString("根据支付宝 OpenID 查询用户 SELECT * FROM users WHERE alipay_open_id = ? LIMIT 1 ")
+	generateSQL.WriteString("SELECT * FROM users WHERE alipay_open_id = ? LIMIT 1 ")
 
 	var executeSQL *gorm.DB
 	executeSQL = u.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
@@ -238,13 +244,14 @@ func (u userDo) GetByAlipayOpenID(openID string) (result *model.User, err error)
 }
 
 // GetByPhoneHash 根据手机号哈希查询用户
+//
 // SELECT * FROM @@table WHERE phone_hash = @phoneHash LIMIT 1
 func (u userDo) GetByPhoneHash(phoneHash string) (result *model.User, err error) {
 	var params []interface{}
 
 	var generateSQL strings.Builder
 	params = append(params, phoneHash)
-	generateSQL.WriteString("根据手机号哈希查询用户 SELECT * FROM users WHERE phone_hash = ? LIMIT 1 ")
+	generateSQL.WriteString("SELECT * FROM users WHERE phone_hash = ? LIMIT 1 ")
 
 	var executeSQL *gorm.DB
 	executeSQL = u.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
@@ -253,7 +260,107 @@ func (u userDo) GetByPhoneHash(phoneHash string) (result *model.User, err error)
 	return
 }
 
+// GetByPublicID 根据 PublicID 查询用户（最常用，API 中 userID 是 public_id）
+//
+// SELECT * FROM @@table WHERE public_id = @publicID LIMIT 1
+func (u userDo) GetByPublicID(publicID int64) (result *model.User, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT * FROM users WHERE public_id = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = u.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetByID 根据数据库主键 ID 查询用户
+//
+// SELECT * FROM @@table WHERE id = @id LIMIT 1
+func (u userDo) GetByID(id int64) (result *model.User, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, id)
+	generateSQL.WriteString("SELECT * FROM users WHERE id = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = u.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// ListByStatus 根据状态查询用户列表（用于管理后台或定时任务）
+//
+// SELECT * FROM @@table
+// WHERE status = @status
+// {{if limit > 0}}
+// LIMIT @limit
+// {{end}}
+// {{if offset > 0}}
+// OFFSET @offset
+// {{end}}
+func (u userDo) ListByStatus(status string, limit int, offset int) (result []*model.User, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, status)
+	generateSQL.WriteString("SELECT * FROM users WHERE status = ? ")
+	if limit > 0 {
+		params = append(params, limit)
+		generateSQL.WriteString("LIMIT ? ")
+	}
+	if offset > 0 {
+		params = append(params, offset)
+		generateSQL.WriteString("OFFSET ? ")
+	}
+
+	var executeSQL *gorm.DB
+	executeSQL = u.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// ListActiveUsersWithCheckInEnabled 查询开启打卡的活跃用户（用于定时任务）
+//
+// SELECT * FROM @@table
+// WHERE status = 'active'
+//
+//	AND daily_check_in_enabled = true
+func (u userDo) ListActiveUsersWithCheckInEnabled() (result []*model.User, err error) {
+	var generateSQL strings.Builder
+	generateSQL.WriteString("SELECT * FROM users WHERE status = 'active' AND daily_check_in_enabled = true ")
+
+	var executeSQL *gorm.DB
+	executeSQL = u.UnderlyingDB().Raw(generateSQL.String()).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// CountByStatus 统计各状态的用户数量
+//
+// SELECT status, COUNT(*) as count
+// FROM @@table
+// GROUP BY status
+func (u userDo) CountByStatus() (result []map[string]interface{}, err error) {
+	var generateSQL strings.Builder
+	generateSQL.WriteString("SELECT status, COUNT(*) as count FROM users GROUP BY status ")
+
+	var executeSQL *gorm.DB
+	executeSQL = u.UnderlyingDB().Raw(generateSQL.String()).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
 // GetWithQuotas 获取用户及额度信息（JOIN quota_transactions 计算余额）
+//
 // SELECT u.*,
 //
 //	COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
@@ -271,7 +378,36 @@ func (u userDo) GetWithQuotas(userID int64) (result map[string]interface{}, err 
 
 	var generateSQL strings.Builder
 	params = append(params, userID)
-	generateSQL.WriteString("获取用户及额度信息（JOIN quota_transactions 计算余额） SELECT u.*, COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance, COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance FROM users u LEFT JOIN quota_transactions qt ON qt.user_id = u.id WHERE u.id = ? GROUP BY u.id LIMIT 1 ")
+	generateSQL.WriteString("SELECT u.*, COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance, COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance FROM users u LEFT JOIN quota_transactions qt ON qt.user_id = u.id WHERE u.id = ? GROUP BY u.id LIMIT 1 ")
+
+	result = make(map[string]interface{})
+	var executeSQL *gorm.DB
+	executeSQL = u.UnderlyingDB().Raw(generateSQL.String(), params...).Take(result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetByPublicIDWithQuotas 根据 PublicID 获取用户及额度信息（API 常用）
+//
+// SELECT u.*,
+//
+//	COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
+//	         SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance,
+//	COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
+//	         SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance
+//
+// FROM @@table u
+// LEFT JOIN quota_transactions qt ON qt.user_id = u.id
+// WHERE u.public_id = @publicID
+// GROUP BY u.id
+// LIMIT 1
+func (u userDo) GetByPublicIDWithQuotas(publicID int64) (result map[string]interface{}, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT u.*, COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance, COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance FROM users u LEFT JOIN quota_transactions qt ON qt.user_id = u.id WHERE u.public_id = ? GROUP BY u.id LIMIT 1 ")
 
 	result = make(map[string]interface{})
 	var executeSQL *gorm.DB

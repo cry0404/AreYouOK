@@ -3,7 +3,7 @@ package dto
 import "time"
 
 // ========== Contact 相关 DTO ==========
-// 注意：根据 schema.sql，紧急联系人存储在 users.emergency_contacts JSONB 字段中，不是独立表
+// 存储在 user 中的部分，得先确定是哪个用户，根据索引
 
 // ContactItem 紧急联系人项
 type ContactItem struct {

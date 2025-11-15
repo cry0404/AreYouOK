@@ -73,3 +73,11 @@ func DecryptPhone(raw []byte) (string, error) {
 
 	return string(plain), nil
 }
+
+// maskPhone 脱敏手机号，格式：138****0000
+func MaskPhone(phone string) string {
+	if len(phone) != 11 {
+		return phone
+	}
+	return phone[:3] + "****" + phone[7:]
+}

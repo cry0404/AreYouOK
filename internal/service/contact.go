@@ -205,25 +205,24 @@ func (s *ContactService) DeleteContact(
 	userID string,
 	priority int,
 ) error {
+
 	if priority < 1 || priority > 3 {
 		return pkgerrors.ContactPriorityConflict
 	}
 
 	var userIDInt int64
 
-	if _, err := fmt.Scanf(userID, "%d", &userIDInt); err != nil {
+	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
 		return pkgerrors.InvalidUserID
 	}
 
 	user, err := query.User.GetByPublicID(userIDInt)
 
 	if err != nil {
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				return pkgerrors.ErrUserIDNotFound
-			}
-			return fmt.Errorf("failed to query user: %w", err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.ErrUserIDNotFound
 		}
+		return fmt.Errorf("failed to query user: %w", err)
 	}
 
 	contacts := user.EmergencyContacts

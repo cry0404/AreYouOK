@@ -5,6 +5,7 @@
 package query
 
 import (
+	"AreYouOK/internal/model"
 	"context"
 	"database/sql"
 	"strings"
@@ -17,8 +18,6 @@ import (
 	"gorm.io/gen/field"
 
 	"gorm.io/plugin/dbresolver"
-
-	"AreYouOK/internal/model"
 )
 
 func newJourney(db *gorm.DB, opts ...gen.DOOption) journey {
@@ -29,21 +28,21 @@ func newJourney(db *gorm.DB, opts ...gen.DOOption) journey {
 
 	tableName := _journey.journeyDo.TableName()
 	_journey.ALL = field.NewAsterisk(tableName)
-	_journey.ID = field.NewInt64(tableName, "id")
+	_journey.ExpectedReturnTime = field.NewTime(tableName, "expected_return_time")
+	_journey.ActualReturnTime = field.NewTime(tableName, "actual_return_time")
+	_journey.ReminderSentAt = field.NewTime(tableName, "reminder_sent_at")
+	_journey.AlertTriggeredAt = field.NewTime(tableName, "alert_triggered_at")
+	_journey.AlertLastAttemptAt = field.NewTime(tableName, "alert_last_attempt_at")
 	_journey.CreatedAt = field.NewTime(tableName, "created_at")
 	_journey.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_journey.DeletedAt = field.NewField(tableName, "deleted_at")
-	_journey.UserID = field.NewInt64(tableName, "user_id")
+	_journey.ID = field.NewInt64(tableName, "id")
 	_journey.Title = field.NewString(tableName, "title")
 	_journey.Note = field.NewString(tableName, "note")
-	_journey.ExpectedReturnTime = field.NewTime(tableName, "expected_return_time")
-	_journey.ActualReturnTime = field.NewTime(tableName, "actual_return_time")
 	_journey.Status = field.NewString(tableName, "status")
-	_journey.ReminderSentAt = field.NewTime(tableName, "reminder_sent_at")
-	_journey.AlertTriggeredAt = field.NewTime(tableName, "alert_triggered_at")
 	_journey.AlertStatus = field.NewString(tableName, "alert_status")
-	_journey.AlertAttempts = field.NewInt64(tableName, "alert_attempts")
-	_journey.AlertLastAttemptAt = field.NewTime(tableName, "alert_last_attempt_at")
+	_journey.UserID = field.NewInt64(tableName, "user_id")
+	_journey.AlertAttempts = field.NewInt(tableName, "alert_attempts")
 
 	_journey.fillFieldMap()
 
@@ -54,21 +53,21 @@ type journey struct {
 	journeyDo
 
 	ALL                field.Asterisk
-	ID                 field.Int64
+	ExpectedReturnTime field.Time
+	ActualReturnTime   field.Time
+	ReminderSentAt     field.Time
+	AlertTriggeredAt   field.Time
+	AlertLastAttemptAt field.Time
 	CreatedAt          field.Time
 	UpdatedAt          field.Time
 	DeletedAt          field.Field
-	UserID             field.Int64
+	ID                 field.Int64
 	Title              field.String
 	Note               field.String
-	ExpectedReturnTime field.Time
-	ActualReturnTime   field.Time
 	Status             field.String
-	ReminderSentAt     field.Time
-	AlertTriggeredAt   field.Time
 	AlertStatus        field.String
-	AlertAttempts      field.Int64
-	AlertLastAttemptAt field.Time
+	UserID             field.Int64
+	AlertAttempts      field.Int
 
 	fieldMap map[string]field.Expr
 }
@@ -85,21 +84,21 @@ func (j journey) As(alias string) *journey {
 
 func (j *journey) updateTableName(table string) *journey {
 	j.ALL = field.NewAsterisk(table)
-	j.ID = field.NewInt64(table, "id")
+	j.ExpectedReturnTime = field.NewTime(table, "expected_return_time")
+	j.ActualReturnTime = field.NewTime(table, "actual_return_time")
+	j.ReminderSentAt = field.NewTime(table, "reminder_sent_at")
+	j.AlertTriggeredAt = field.NewTime(table, "alert_triggered_at")
+	j.AlertLastAttemptAt = field.NewTime(table, "alert_last_attempt_at")
 	j.CreatedAt = field.NewTime(table, "created_at")
 	j.UpdatedAt = field.NewTime(table, "updated_at")
 	j.DeletedAt = field.NewField(table, "deleted_at")
-	j.UserID = field.NewInt64(table, "user_id")
+	j.ID = field.NewInt64(table, "id")
 	j.Title = field.NewString(table, "title")
 	j.Note = field.NewString(table, "note")
-	j.ExpectedReturnTime = field.NewTime(table, "expected_return_time")
-	j.ActualReturnTime = field.NewTime(table, "actual_return_time")
 	j.Status = field.NewString(table, "status")
-	j.ReminderSentAt = field.NewTime(table, "reminder_sent_at")
-	j.AlertTriggeredAt = field.NewTime(table, "alert_triggered_at")
 	j.AlertStatus = field.NewString(table, "alert_status")
-	j.AlertAttempts = field.NewInt64(table, "alert_attempts")
-	j.AlertLastAttemptAt = field.NewTime(table, "alert_last_attempt_at")
+	j.UserID = field.NewInt64(table, "user_id")
+	j.AlertAttempts = field.NewInt(table, "alert_attempts")
 
 	j.fillFieldMap()
 
@@ -117,21 +116,21 @@ func (j *journey) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 
 func (j *journey) fillFieldMap() {
 	j.fieldMap = make(map[string]field.Expr, 15)
-	j.fieldMap["id"] = j.ID
+	j.fieldMap["expected_return_time"] = j.ExpectedReturnTime
+	j.fieldMap["actual_return_time"] = j.ActualReturnTime
+	j.fieldMap["reminder_sent_at"] = j.ReminderSentAt
+	j.fieldMap["alert_triggered_at"] = j.AlertTriggeredAt
+	j.fieldMap["alert_last_attempt_at"] = j.AlertLastAttemptAt
 	j.fieldMap["created_at"] = j.CreatedAt
 	j.fieldMap["updated_at"] = j.UpdatedAt
 	j.fieldMap["deleted_at"] = j.DeletedAt
-	j.fieldMap["user_id"] = j.UserID
+	j.fieldMap["id"] = j.ID
 	j.fieldMap["title"] = j.Title
 	j.fieldMap["note"] = j.Note
-	j.fieldMap["expected_return_time"] = j.ExpectedReturnTime
-	j.fieldMap["actual_return_time"] = j.ActualReturnTime
 	j.fieldMap["status"] = j.Status
-	j.fieldMap["reminder_sent_at"] = j.ReminderSentAt
-	j.fieldMap["alert_triggered_at"] = j.AlertTriggeredAt
 	j.fieldMap["alert_status"] = j.AlertStatus
+	j.fieldMap["user_id"] = j.UserID
 	j.fieldMap["alert_attempts"] = j.AlertAttempts
-	j.fieldMap["alert_last_attempt_at"] = j.AlertLastAttemptAt
 }
 
 func (j journey) clone(db *gorm.DB) journey {
@@ -208,12 +207,57 @@ type IJourneyDo interface {
 	UnderlyingDB() *gorm.DB
 	schema.Tabler
 
+	GetByID(id int64) (result *model.Journey, err error)
+	GetByPublicIDAndJourneyID(publicID int64, journeyID int64) (result *model.Journey, err error)
 	ListByUserIDAndStatus(userID int64, status string, limit int, offset int) (result []*model.Journey, err error)
+	ListByPublicIDAndStatus(publicID int64, status string, cursorID int64, limit int) (result []*model.Journey, err error)
+	GetOngoingJourneyByUserID(userID int64) (result *model.Journey, err error)
+	GetOngoingJourneyByPublicID(publicID int64) (result *model.Journey, err error)
 	ListOngoingJourneys() (result []*model.Journey, err error)
 	ListTimeoutJourneys() (result []*model.Journey, err error)
+	CountByUserIDAndStatus(userID int64) (result []map[string]interface{}, err error)
+}
+
+// GetByID 根据数据库主键 ID 查询行程
+//
+// SELECT * FROM @@table WHERE id = @id LIMIT 1
+func (j journeyDo) GetByID(id int64) (result *model.Journey, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, id)
+	generateSQL.WriteString("SELECT * FROM journeys WHERE id = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = j.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetByPublicIDAndJourneyID 根据 PublicID 和 Journey ID 查询行程（API 常用）
+//
+// SELECT j.* FROM @@table j
+// INNER JOIN users u ON u.id = j.user_id
+// WHERE u.public_id = @publicID AND j.id = @journeyID
+// LIMIT 1
+func (j journeyDo) GetByPublicIDAndJourneyID(publicID int64, journeyID int64) (result *model.Journey, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	params = append(params, journeyID)
+	generateSQL.WriteString("SELECT j.* FROM journeys j INNER JOIN users u ON u.id = j.user_id WHERE u.public_id = ? AND j.id = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = j.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
 }
 
 // ListByUserIDAndStatus 按用户和状态查询行程（分页）
+//
 // SELECT * FROM @@table
 // WHERE user_id = @userID
 //
@@ -228,7 +272,7 @@ func (j journeyDo) ListByUserIDAndStatus(userID int64, status string, limit int,
 
 	var generateSQL strings.Builder
 	params = append(params, userID)
-	generateSQL.WriteString("按用户和状态查询行程（分页） SELECT * FROM journeys WHERE user_id = ? ")
+	generateSQL.WriteString("SELECT * FROM journeys WHERE user_id = ? ")
 	if status != "" {
 		params = append(params, status)
 		generateSQL.WriteString("AND status = ? ")
@@ -244,14 +288,101 @@ func (j journeyDo) ListByUserIDAndStatus(userID int64, status string, limit int,
 	return
 }
 
+// ListByPublicIDAndStatus 根据 PublicID 和状态查询行程（API 常用，支持游标分页）
+//
+// SELECT j.* FROM @@table j
+// INNER JOIN users u ON u.id = j.user_id
+// WHERE u.public_id = @publicID
+//
+//	{{if status != ""}}
+//	AND j.status = @status
+//	{{end}}
+//	{{if cursorID > 0}}
+//	AND j.id < @cursorID
+//	{{end}}
+//
+// ORDER BY j.created_at DESC
+// LIMIT @limit
+func (j journeyDo) ListByPublicIDAndStatus(publicID int64, status string, cursorID int64, limit int) (result []*model.Journey, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT j.* FROM journeys j INNER JOIN users u ON u.id = j.user_id WHERE u.public_id = ? ")
+	if status != "" {
+		params = append(params, status)
+		generateSQL.WriteString("AND j.status = ? ")
+	}
+	if cursorID > 0 {
+		params = append(params, cursorID)
+		generateSQL.WriteString("AND j.id < ? ")
+	}
+	params = append(params, limit)
+	generateSQL.WriteString("ORDER BY j.created_at DESC LIMIT ? ")
+
+	var executeSQL *gorm.DB
+	executeSQL = j.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetOngoingJourneyByUserID 查询用户进行中的行程（用于检查行程重叠）
+//
+// SELECT * FROM @@table
+// WHERE user_id = @userID
+//
+//	AND status = 'ongoing'
+//
+// ORDER BY expected_return_time ASC
+// LIMIT 1
+func (j journeyDo) GetOngoingJourneyByUserID(userID int64) (result *model.Journey, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	generateSQL.WriteString("SELECT * FROM journeys WHERE user_id = ? AND status = 'ongoing' ORDER BY expected_return_time ASC LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = j.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetOngoingJourneyByPublicID 根据 PublicID 查询用户进行中的行程（API 常用）
+//
+// SELECT j.* FROM @@table j
+// INNER JOIN users u ON u.id = j.user_id
+// WHERE u.public_id = @publicID
+//
+//	AND j.status = 'ongoing'
+//
+// ORDER BY j.expected_return_time ASC
+// LIMIT 1
+func (j journeyDo) GetOngoingJourneyByPublicID(publicID int64) (result *model.Journey, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT j.* FROM journeys j INNER JOIN users u ON u.id = j.user_id WHERE u.public_id = ? AND j.status = 'ongoing' ORDER BY j.expected_return_time ASC LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = j.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
 // GetOngoingJourneys 查询进行中的行程（用于定时任务）
+//
 // SELECT * FROM @@table
 // WHERE status = 'ongoing'
 //
 //	AND expected_return_time < NOW()
 func (j journeyDo) ListOngoingJourneys() (result []*model.Journey, err error) {
 	var generateSQL strings.Builder
-	generateSQL.WriteString("GetOngoingJourneys 查询进行中的行程（用于定时任务） SELECT * FROM journeys WHERE status = 'ongoing' AND expected_return_time < NOW() ")
+	generateSQL.WriteString("SELECT * FROM journeys WHERE status = 'ongoing' AND expected_return_time < NOW() ")
 
 	var executeSQL *gorm.DB
 	executeSQL = j.UnderlyingDB().Raw(generateSQL.String()).Find(&result) // ignore_security_alert
@@ -261,16 +392,37 @@ func (j journeyDo) ListOngoingJourneys() (result []*model.Journey, err error) {
 }
 
 // ListTimeoutJourneys 查询超时的行程（用于定时任务）
+//
 // SELECT * FROM @@table
 // WHERE status = 'ongoing'
 //
 //	AND expected_return_time < NOW() - INTERVAL '10 minutes'
 func (j journeyDo) ListTimeoutJourneys() (result []*model.Journey, err error) {
 	var generateSQL strings.Builder
-	generateSQL.WriteString("查询超时的行程（用于定时任务） SELECT * FROM journeys WHERE status = 'ongoing' AND expected_return_time < NOW() - INTERVAL '10 minutes' ")
+	generateSQL.WriteString("SELECT * FROM journeys WHERE status = 'ongoing' AND expected_return_time < NOW() - INTERVAL '10 minutes' ")
 
 	var executeSQL *gorm.DB
 	executeSQL = j.UnderlyingDB().Raw(generateSQL.String()).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// CountByUserIDAndStatus 统计用户行程数量（按状态）
+//
+// SELECT status, COUNT(*) as count
+// FROM @@table
+// WHERE user_id = @userID
+// GROUP BY status
+func (j journeyDo) CountByUserIDAndStatus(userID int64) (result []map[string]interface{}, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	generateSQL.WriteString("SELECT status, COUNT(*) as count FROM journeys WHERE user_id = ? GROUP BY status ")
+
+	var executeSQL *gorm.DB
+	executeSQL = j.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
 	err = executeSQL.Error
 
 	return

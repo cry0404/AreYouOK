@@ -120,3 +120,8 @@ func BindError(ctx context.Context, c *app.RequestContext, err error) {
 		},
 	})
 }
+
+// NoContent 返回 204 No Content（用于 DELETE 等操作）
+func NoContent(ctx context.Context, c *app.RequestContext) {
+	c.Status(http.StatusNoContent)
+}

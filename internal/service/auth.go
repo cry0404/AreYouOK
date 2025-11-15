@@ -45,7 +45,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 ) (*dto.AuthExchangeResponse, error) {
 	// TODO: 用 authCode 调用支付宝的 api 来获取用户信息
 	alipayUserID := "mock_alipay_userID" + authCode
-	nickname := "cry4o4n0tfound"
+	nickname := "cry"
 	// 先 mock 等待贝妮那边处理好
 	// 查询用户是否存在
 	user, err := query.User.Where(query.User.AlipayOpenID.Eq(alipayUserID)).First()

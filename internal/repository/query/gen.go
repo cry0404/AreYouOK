@@ -17,6 +17,7 @@ import (
 
 var (
 	Q                = new(Query)
+	ContactAttempt   *contactAttempt
 	DailyCheckIn     *dailyCheckIn
 	Journey          *journey
 	NotificationTask *notificationTask
@@ -26,6 +27,7 @@ var (
 
 func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	*Q = *Use(db, opts...)
+	ContactAttempt = &Q.ContactAttempt
 	DailyCheckIn = &Q.DailyCheckIn
 	Journey = &Q.Journey
 	NotificationTask = &Q.NotificationTask
@@ -36,6 +38,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 	return &Query{
 		db:               db,
+		ContactAttempt:   newContactAttempt(db, opts...),
 		DailyCheckIn:     newDailyCheckIn(db, opts...),
 		Journey:          newJourney(db, opts...),
 		NotificationTask: newNotificationTask(db, opts...),
@@ -47,6 +50,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 type Query struct {
 	db *gorm.DB
 
+	ContactAttempt   contactAttempt
 	DailyCheckIn     dailyCheckIn
 	Journey          journey
 	NotificationTask notificationTask
@@ -59,6 +63,7 @@ func (q *Query) Available() bool { return q.db != nil }
 func (q *Query) clone(db *gorm.DB) *Query {
 	return &Query{
 		db:               db,
+		ContactAttempt:   q.ContactAttempt.clone(db),
 		DailyCheckIn:     q.DailyCheckIn.clone(db),
 		Journey:          q.Journey.clone(db),
 		NotificationTask: q.NotificationTask.clone(db),
@@ -78,6 +83,7 @@ func (q *Query) WriteDB() *Query {
 func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 	return &Query{
 		db:               db,
+		ContactAttempt:   q.ContactAttempt.replaceDB(db),
 		DailyCheckIn:     q.DailyCheckIn.replaceDB(db),
 		Journey:          q.Journey.replaceDB(db),
 		NotificationTask: q.NotificationTask.replaceDB(db),
@@ -87,6 +93,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 }
 
 type queryCtx struct {
+	ContactAttempt   IContactAttemptDo
 	DailyCheckIn     IDailyCheckInDo
 	Journey          IJourneyDo
 	NotificationTask INotificationTaskDo
@@ -96,6 +103,7 @@ type queryCtx struct {
 
 func (q *Query) WithContext(ctx context.Context) *queryCtx {
 	return &queryCtx{
+		ContactAttempt:   q.ContactAttempt.WithContext(ctx),
 		DailyCheckIn:     q.DailyCheckIn.WithContext(ctx),
 		Journey:          q.Journey.WithContext(ctx),
 		NotificationTask: q.NotificationTask.WithContext(ctx),

@@ -5,6 +5,7 @@
 package query
 
 import (
+	"AreYouOK/internal/model"
 	"context"
 	"database/sql"
 	"strings"
@@ -17,8 +18,6 @@ import (
 	"gorm.io/gen/field"
 
 	"gorm.io/plugin/dbresolver"
-
-	"AreYouOK/internal/model"
 )
 
 func newDailyCheckIn(db *gorm.DB, opts ...gen.DOOption) dailyCheckIn {
@@ -29,16 +28,16 @@ func newDailyCheckIn(db *gorm.DB, opts ...gen.DOOption) dailyCheckIn {
 
 	tableName := _dailyCheckIn.dailyCheckInDo.TableName()
 	_dailyCheckIn.ALL = field.NewAsterisk(tableName)
-	_dailyCheckIn.ID = field.NewInt64(tableName, "id")
-	_dailyCheckIn.CreatedAt = field.NewTime(tableName, "created_at")
-	_dailyCheckIn.UpdatedAt = field.NewTime(tableName, "updated_at")
-	_dailyCheckIn.DeletedAt = field.NewField(tableName, "deleted_at")
-	_dailyCheckIn.UserID = field.NewInt64(tableName, "user_id")
 	_dailyCheckIn.CheckInDate = field.NewTime(tableName, "check_in_date")
-	_dailyCheckIn.Status = field.NewString(tableName, "status")
 	_dailyCheckIn.CheckInAt = field.NewTime(tableName, "check_in_at")
 	_dailyCheckIn.ReminderSentAt = field.NewTime(tableName, "reminder_sent_at")
 	_dailyCheckIn.AlertTriggeredAt = field.NewTime(tableName, "alert_triggered_at")
+	_dailyCheckIn.CreatedAt = field.NewTime(tableName, "created_at")
+	_dailyCheckIn.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_dailyCheckIn.DeletedAt = field.NewField(tableName, "deleted_at")
+	_dailyCheckIn.ID = field.NewInt64(tableName, "id")
+	_dailyCheckIn.Status = field.NewString(tableName, "status")
+	_dailyCheckIn.UserID = field.NewInt64(tableName, "user_id")
 
 	_dailyCheckIn.fillFieldMap()
 
@@ -49,16 +48,16 @@ type dailyCheckIn struct {
 	dailyCheckInDo
 
 	ALL              field.Asterisk
-	ID               field.Int64
-	CreatedAt        field.Time
-	UpdatedAt        field.Time
-	DeletedAt        field.Field
-	UserID           field.Int64
 	CheckInDate      field.Time
-	Status           field.String
 	CheckInAt        field.Time
 	ReminderSentAt   field.Time
 	AlertTriggeredAt field.Time
+	CreatedAt        field.Time
+	UpdatedAt        field.Time
+	DeletedAt        field.Field
+	ID               field.Int64
+	Status           field.String
+	UserID           field.Int64
 
 	fieldMap map[string]field.Expr
 }
@@ -75,16 +74,16 @@ func (d dailyCheckIn) As(alias string) *dailyCheckIn {
 
 func (d *dailyCheckIn) updateTableName(table string) *dailyCheckIn {
 	d.ALL = field.NewAsterisk(table)
-	d.ID = field.NewInt64(table, "id")
-	d.CreatedAt = field.NewTime(table, "created_at")
-	d.UpdatedAt = field.NewTime(table, "updated_at")
-	d.DeletedAt = field.NewField(table, "deleted_at")
-	d.UserID = field.NewInt64(table, "user_id")
 	d.CheckInDate = field.NewTime(table, "check_in_date")
-	d.Status = field.NewString(table, "status")
 	d.CheckInAt = field.NewTime(table, "check_in_at")
 	d.ReminderSentAt = field.NewTime(table, "reminder_sent_at")
 	d.AlertTriggeredAt = field.NewTime(table, "alert_triggered_at")
+	d.CreatedAt = field.NewTime(table, "created_at")
+	d.UpdatedAt = field.NewTime(table, "updated_at")
+	d.DeletedAt = field.NewField(table, "deleted_at")
+	d.ID = field.NewInt64(table, "id")
+	d.Status = field.NewString(table, "status")
+	d.UserID = field.NewInt64(table, "user_id")
 
 	d.fillFieldMap()
 
@@ -102,16 +101,16 @@ func (d *dailyCheckIn) GetFieldByName(fieldName string) (field.OrderExpr, bool) 
 
 func (d *dailyCheckIn) fillFieldMap() {
 	d.fieldMap = make(map[string]field.Expr, 10)
-	d.fieldMap["id"] = d.ID
-	d.fieldMap["created_at"] = d.CreatedAt
-	d.fieldMap["updated_at"] = d.UpdatedAt
-	d.fieldMap["deleted_at"] = d.DeletedAt
-	d.fieldMap["user_id"] = d.UserID
 	d.fieldMap["check_in_date"] = d.CheckInDate
-	d.fieldMap["status"] = d.Status
 	d.fieldMap["check_in_at"] = d.CheckInAt
 	d.fieldMap["reminder_sent_at"] = d.ReminderSentAt
 	d.fieldMap["alert_triggered_at"] = d.AlertTriggeredAt
+	d.fieldMap["created_at"] = d.CreatedAt
+	d.fieldMap["updated_at"] = d.UpdatedAt
+	d.fieldMap["deleted_at"] = d.DeletedAt
+	d.fieldMap["id"] = d.ID
+	d.fieldMap["status"] = d.Status
+	d.fieldMap["user_id"] = d.UserID
 }
 
 func (d dailyCheckIn) clone(db *gorm.DB) dailyCheckIn {
@@ -188,23 +187,68 @@ type IDailyCheckInDo interface {
 	UnderlyingDB() *gorm.DB
 	schema.Tabler
 
-	GetTodayCheckIn(userID int64, date string) (result *model.DailyCheckIn, err error)
+	GetTodayCheckIn(userID int64) (result *model.DailyCheckIn, err error)
+	GetTodayCheckInByPublicID(publicID int64) (result *model.DailyCheckIn, err error)
+	GetByUserIDAndDate(userID int64, date string) (result *model.DailyCheckIn, err error)
 	ListByUserIDAndDateRange(userID int64, fromDate string, toDate string, status string, limit int, offset int) (result []*model.DailyCheckIn, err error)
+	ListByPublicIDAndDateRange(publicID int64, fromDate string, toDate string, status string, limit int, offset int) (result []*model.DailyCheckIn, err error)
+	GetStreakDays(userID int64) (result int, err error)
 	ListPendingCheckIns() (result []*model.DailyCheckIn, err error)
 	ListTimeoutCheckIns() (result []*model.DailyCheckIn, err error)
+	CountByUserIDAndStatus(userID int64) (result []map[string]interface{}, err error)
 }
 
-// GetTodayCheckIn 获取今日打卡记录
+// GetTodayCheckIn 获取今日打卡记录（根据 userID 是数据库主键）
+//
+// SELECT * FROM @@table
+// WHERE user_id = @userID AND check_in_date = CURRENT_DATE
+// LIMIT 1
+func (d dailyCheckInDo) GetTodayCheckIn(userID int64) (result *model.DailyCheckIn, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	generateSQL.WriteString("SELECT * FROM daily_check_ins WHERE user_id = ? AND check_in_date = CURRENT_DATE LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = d.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetTodayCheckInByPublicID 根据 PublicID 获取今日打卡记录（API 常用）
+//
+// SELECT dci.* FROM @@table dci
+// INNER JOIN users u ON u.id = dci.user_id
+// WHERE u.public_id = @publicID AND dci.check_in_date = CURRENT_DATE
+// LIMIT 1
+func (d dailyCheckInDo) GetTodayCheckInByPublicID(publicID int64) (result *model.DailyCheckIn, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT dci.* FROM daily_check_ins dci INNER JOIN users u ON u.id = dci.user_id WHERE u.public_id = ? AND dci.check_in_date = CURRENT_DATE LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = d.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetByUserIDAndDate 根据用户ID和日期查询打卡记录
+//
 // SELECT * FROM @@table
 // WHERE user_id = @userID AND check_in_date = @date::date
 // LIMIT 1
-func (d dailyCheckInDo) GetTodayCheckIn(userID int64, date string) (result *model.DailyCheckIn, err error) {
+func (d dailyCheckInDo) GetByUserIDAndDate(userID int64, date string) (result *model.DailyCheckIn, err error) {
 	var params []interface{}
 
 	var generateSQL strings.Builder
 	params = append(params, userID)
 	params = append(params, date)
-	generateSQL.WriteString("获取今日打卡记录 SELECT * FROM daily_check_ins WHERE user_id = ? AND check_in_date = ?::date LIMIT 1 ")
+	generateSQL.WriteString("SELECT * FROM daily_check_ins WHERE user_id = ? AND check_in_date = ?::date LIMIT 1 ")
 
 	var executeSQL *gorm.DB
 	executeSQL = d.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
@@ -214,6 +258,7 @@ func (d dailyCheckInDo) GetTodayCheckIn(userID int64, date string) (result *mode
 }
 
 // ListByUserIDAndDateRange 按用户和日期范围查询打卡记录（分页）
+//
 // SELECT * FROM @@table
 // WHERE user_id = @userID
 //
@@ -232,7 +277,7 @@ func (d dailyCheckInDo) ListByUserIDAndDateRange(userID int64, fromDate string, 
 	params = append(params, userID)
 	params = append(params, fromDate)
 	params = append(params, toDate)
-	generateSQL.WriteString("按用户和日期范围查询打卡记录（分页） SELECT * FROM daily_check_ins WHERE user_id = ? AND check_in_date >= ?::date AND check_in_date <= ?::date ")
+	generateSQL.WriteString("SELECT * FROM daily_check_ins WHERE user_id = ? AND check_in_date >= ?::date AND check_in_date <= ?::date ")
 	if status != "" {
 		params = append(params, status)
 		generateSQL.WriteString("AND status = ? ")
@@ -248,17 +293,87 @@ func (d dailyCheckInDo) ListByUserIDAndDateRange(userID int64, fromDate string, 
 	return
 }
 
-// ListPendingCheckIns 查询待打卡的记录（用于定时任务）
-// SELECT * FROM @@table
-// WHERE status = 'pending'
+// ListByPublicIDAndDateRange 根据 PublicID 和日期范围查询打卡记录（API 常用）
 //
-//	AND check_in_date = CURRENT_DATE
-//	AND user_id IN (
-//	  SELECT id FROM users WHERE daily_check_in_enabled = true AND status = 'active'
-//	)
+// SELECT dci.* FROM @@table dci
+// INNER JOIN users u ON u.id = dci.user_id
+// WHERE u.public_id = @publicID
+//
+//	AND dci.check_in_date >= @fromDate::date
+//	AND dci.check_in_date <= @toDate::date
+//	{{if status != ""}}
+//	AND dci.status = @status
+//	{{end}}
+//
+// ORDER BY dci.check_in_date DESC
+// LIMIT @limit OFFSET @offset
+func (d dailyCheckInDo) ListByPublicIDAndDateRange(publicID int64, fromDate string, toDate string, status string, limit int, offset int) (result []*model.DailyCheckIn, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	params = append(params, fromDate)
+	params = append(params, toDate)
+	generateSQL.WriteString("SELECT dci.* FROM daily_check_ins dci INNER JOIN users u ON u.id = dci.user_id WHERE u.public_id = ? AND dci.check_in_date >= ?::date AND dci.check_in_date <= ?::date ")
+	if status != "" {
+		params = append(params, status)
+		generateSQL.WriteString("AND dci.status = ? ")
+	}
+	params = append(params, limit)
+	params = append(params, offset)
+	generateSQL.WriteString("ORDER BY dci.check_in_date DESC LIMIT ? OFFSET ? ")
+
+	var executeSQL *gorm.DB
+	executeSQL = d.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetStreakDays 计算用户连续打卡天数（用于奖励计算）
+//
+// WITH RECURSIVE streak AS (
+//
+//	SELECT check_in_date, 1 as days
+//	FROM @@table
+//	WHERE user_id = @userID AND status = 'done'
+//	ORDER BY check_in_date DESC
+//	LIMIT 1
+//	UNION ALL
+//	SELECT dci.check_in_date, s.days + 1
+//	FROM @@table dci
+//	INNER JOIN streak s ON dci.check_in_date = s.check_in_date - INTERVAL '1 day'
+//	WHERE dci.user_id = @userID AND dci.status = 'done'
+//
+// )
+// SELECT MAX(days) as streak_days FROM streak
+func (d dailyCheckInDo) GetStreakDays(userID int64) (result int, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	params = append(params, userID)
+	generateSQL.WriteString("WITH RECURSIVE streak AS ( SELECT check_in_date, 1 as days FROM daily_check_ins WHERE user_id = ? AND status = 'done' ORDER BY check_in_date DESC LIMIT 1 UNION ALL SELECT dci.check_in_date, s.days + 1 FROM daily_check_ins dci INNER JOIN streak s ON dci.check_in_date = s.check_in_date - INTERVAL '1 day' WHERE dci.user_id = ? AND dci.status = 'done' ) SELECT MAX(days) as streak_days FROM streak ")
+
+	var executeSQL *gorm.DB
+	executeSQL = d.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// ListPendingCheckIns 查询待打卡的记录（用于定时任务）
+//
+// SELECT dci.* FROM @@table dci
+// INNER JOIN users u ON u.id = dci.user_id
+// WHERE dci.status = 'pending'
+//
+//	AND dci.check_in_date = CURRENT_DATE
+//	AND u.daily_check_in_enabled = true
+//	AND u.status = 'active'
 func (d dailyCheckInDo) ListPendingCheckIns() (result []*model.DailyCheckIn, err error) {
 	var generateSQL strings.Builder
-	generateSQL.WriteString("查询待打卡的记录（用于定时任务） SELECT * FROM daily_check_ins WHERE status = 'pending' AND check_in_date = CURRENT_DATE AND user_id IN ( SELECT id FROM users WHERE daily_check_in_enabled = true AND status = 'active' ) ")
+	generateSQL.WriteString("SELECT dci.* FROM daily_check_ins dci INNER JOIN users u ON u.id = dci.user_id WHERE dci.status = 'pending' AND dci.check_in_date = CURRENT_DATE AND u.daily_check_in_enabled = true AND u.status = 'active' ")
 
 	var executeSQL *gorm.DB
 	executeSQL = d.UnderlyingDB().Raw(generateSQL.String()).Find(&result) // ignore_security_alert
@@ -268,20 +383,41 @@ func (d dailyCheckInDo) ListPendingCheckIns() (result []*model.DailyCheckIn, err
 }
 
 // ListTimeoutCheckIns 查询超时未打卡的记录（用于定时任务）
-// SELECT * FROM @@table
-// WHERE status = 'pending'
 //
-//	AND check_in_date = CURRENT_DATE
-//	AND reminder_sent_at IS NOT NULL
-//	AND user_id IN (
-//	  SELECT id FROM users WHERE daily_check_in_enabled = true AND status = 'active'
-//	)
+// SELECT dci.* FROM @@table dci
+// INNER JOIN users u ON u.id = dci.user_id
+// WHERE dci.status = 'pending'
+//
+//	AND dci.check_in_date = CURRENT_DATE
+//	AND dci.reminder_sent_at IS NOT NULL
+//	AND u.daily_check_in_enabled = true
+//	AND u.status = 'active'
 func (d dailyCheckInDo) ListTimeoutCheckIns() (result []*model.DailyCheckIn, err error) {
 	var generateSQL strings.Builder
-	generateSQL.WriteString("查询超时未打卡的记录（用于定时任务） SELECT * FROM daily_check_ins WHERE status = 'pending' AND check_in_date = CURRENT_DATE AND reminder_sent_at IS NOT NULL AND user_id IN ( SELECT id FROM users WHERE daily_check_in_enabled = true AND status = 'active' ) ")
+	generateSQL.WriteString("SELECT dci.* FROM daily_check_ins dci INNER JOIN users u ON u.id = dci.user_id WHERE dci.status = 'pending' AND dci.check_in_date = CURRENT_DATE AND dci.reminder_sent_at IS NOT NULL AND u.daily_check_in_enabled = true AND u.status = 'active' ")
 
 	var executeSQL *gorm.DB
 	executeSQL = d.UnderlyingDB().Raw(generateSQL.String()).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// CountByUserIDAndStatus 统计用户打卡记录数量（按状态）
+//
+// SELECT status, COUNT(*) as count
+// FROM @@table
+// WHERE user_id = @userID
+// GROUP BY status
+func (d dailyCheckInDo) CountByUserIDAndStatus(userID int64) (result []map[string]interface{}, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	generateSQL.WriteString("SELECT status, COUNT(*) as count FROM daily_check_ins WHERE user_id = ? GROUP BY status ")
+
+	var executeSQL *gorm.DB
+	executeSQL = d.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
 	err = executeSQL.Error
 
 	return

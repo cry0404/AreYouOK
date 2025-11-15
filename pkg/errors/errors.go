@@ -34,6 +34,7 @@ var (
 var (
 	ContactLimitReached     = Definition{Code: "CONTACT_LIMIT_REACHED", Message: "Contact limit reached"}
 	ContactPriorityConflict = Definition{Code: "CONTACT_PRIORITY_CONFLICT", Message: "Contact priority conflict"}
+	ContactMinRequired      = Definition{Code: "CONTACT_MIN_REQUIRED", Message: "At least one contact is required"}
 )
 
 // 平安打卡模块错误。
@@ -104,6 +105,7 @@ var Lookup = map[string]Definition{
 	VerificationSliderRequired.Code:      VerificationSliderRequired,
 	VerificationSliderFailed.Code:        VerificationSliderFailed,
 	ContactLimitReached.Code:             ContactLimitReached,
+	ContactMinRequired.Code:              ContactMinRequired,
 	ContactPriorityConflict.Code:         ContactPriorityConflict,
 	CheckInDisabled.Code:                 CheckInDisabled,
 	CheckInAlreadyDone.Code:              CheckInAlreadyDone,

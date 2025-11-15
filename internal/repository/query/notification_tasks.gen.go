@@ -5,6 +5,7 @@
 package query
 
 import (
+	"AreYouOK/internal/model"
 	"context"
 	"database/sql"
 	"strings"
@@ -17,8 +18,6 @@ import (
 	"gorm.io/gen/field"
 
 	"gorm.io/plugin/dbresolver"
-
-	"AreYouOK/internal/model"
 )
 
 func newNotificationTask(db *gorm.DB, opts ...gen.DOOption) notificationTask {
@@ -29,22 +28,22 @@ func newNotificationTask(db *gorm.DB, opts ...gen.DOOption) notificationTask {
 
 	tableName := _notificationTask.notificationTaskDo.TableName()
 	_notificationTask.ALL = field.NewAsterisk(tableName)
-	_notificationTask.ID = field.NewInt64(tableName, "id")
+	_notificationTask.ScheduledAt = field.NewTime(tableName, "scheduled_at")
+	_notificationTask.ProcessedAt = field.NewTime(tableName, "processed_at")
+	_notificationTask.ContactPriority = field.NewInt(tableName, "contact_priority")
+	_notificationTask.ContactPhoneHash = field.NewString(tableName, "contact_phone_hash")
+	_notificationTask.Payload = field.NewField(tableName, "payload")
 	_notificationTask.CreatedAt = field.NewTime(tableName, "created_at")
 	_notificationTask.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_notificationTask.DeletedAt = field.NewField(tableName, "deleted_at")
-	_notificationTask.TaskCode = field.NewInt64(tableName, "task_code")
-	_notificationTask.UserID = field.NewInt64(tableName, "user_id")
-	_notificationTask.ContactPriority = field.NewInt16(tableName, "contact_priority")
-	_notificationTask.ContactPhoneHash = field.NewString(tableName, "contact_phone_hash")
-	_notificationTask.Category = field.NewString(tableName, "category")
+	_notificationTask.ID = field.NewInt64(tableName, "id")
 	_notificationTask.Channel = field.NewString(tableName, "channel")
-	_notificationTask.Payload = field.NewString(tableName, "payload")
+	_notificationTask.Category = field.NewString(tableName, "category")
 	_notificationTask.Status = field.NewString(tableName, "status")
-	_notificationTask.RetryCount = field.NewInt16(tableName, "retry_count")
-	_notificationTask.ScheduledAt = field.NewTime(tableName, "scheduled_at")
-	_notificationTask.ProcessedAt = field.NewTime(tableName, "processed_at")
-	_notificationTask.CostCents = field.NewInt64(tableName, "cost_cents")
+	_notificationTask.RetryCount = field.NewInt(tableName, "retry_count")
+	_notificationTask.UserID = field.NewInt64(tableName, "user_id")
+	_notificationTask.TaskCode = field.NewInt64(tableName, "task_code")
+	_notificationTask.CostCents = field.NewInt(tableName, "cost_cents")
 	_notificationTask.Deducted = field.NewBool(tableName, "deducted")
 
 	_notificationTask.fillFieldMap()
@@ -56,22 +55,22 @@ type notificationTask struct {
 	notificationTaskDo
 
 	ALL              field.Asterisk
-	ID               field.Int64
+	ScheduledAt      field.Time
+	ProcessedAt      field.Time
+	ContactPriority  field.Int
+	ContactPhoneHash field.String
+	Payload          field.Field
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
 	DeletedAt        field.Field
-	TaskCode         field.Int64
-	UserID           field.Int64
-	ContactPriority  field.Int16
-	ContactPhoneHash field.String
-	Category         field.String
+	ID               field.Int64
 	Channel          field.String
-	Payload          field.String
+	Category         field.String
 	Status           field.String
-	RetryCount       field.Int16
-	ScheduledAt      field.Time
-	ProcessedAt      field.Time
-	CostCents        field.Int64
+	RetryCount       field.Int
+	UserID           field.Int64
+	TaskCode         field.Int64
+	CostCents        field.Int
 	Deducted         field.Bool
 
 	fieldMap map[string]field.Expr
@@ -89,22 +88,22 @@ func (n notificationTask) As(alias string) *notificationTask {
 
 func (n *notificationTask) updateTableName(table string) *notificationTask {
 	n.ALL = field.NewAsterisk(table)
-	n.ID = field.NewInt64(table, "id")
+	n.ScheduledAt = field.NewTime(table, "scheduled_at")
+	n.ProcessedAt = field.NewTime(table, "processed_at")
+	n.ContactPriority = field.NewInt(table, "contact_priority")
+	n.ContactPhoneHash = field.NewString(table, "contact_phone_hash")
+	n.Payload = field.NewField(table, "payload")
 	n.CreatedAt = field.NewTime(table, "created_at")
 	n.UpdatedAt = field.NewTime(table, "updated_at")
 	n.DeletedAt = field.NewField(table, "deleted_at")
-	n.TaskCode = field.NewInt64(table, "task_code")
-	n.UserID = field.NewInt64(table, "user_id")
-	n.ContactPriority = field.NewInt16(table, "contact_priority")
-	n.ContactPhoneHash = field.NewString(table, "contact_phone_hash")
-	n.Category = field.NewString(table, "category")
+	n.ID = field.NewInt64(table, "id")
 	n.Channel = field.NewString(table, "channel")
-	n.Payload = field.NewString(table, "payload")
+	n.Category = field.NewString(table, "category")
 	n.Status = field.NewString(table, "status")
-	n.RetryCount = field.NewInt16(table, "retry_count")
-	n.ScheduledAt = field.NewTime(table, "scheduled_at")
-	n.ProcessedAt = field.NewTime(table, "processed_at")
-	n.CostCents = field.NewInt64(table, "cost_cents")
+	n.RetryCount = field.NewInt(table, "retry_count")
+	n.UserID = field.NewInt64(table, "user_id")
+	n.TaskCode = field.NewInt64(table, "task_code")
+	n.CostCents = field.NewInt(table, "cost_cents")
 	n.Deducted = field.NewBool(table, "deducted")
 
 	n.fillFieldMap()
@@ -123,21 +122,21 @@ func (n *notificationTask) GetFieldByName(fieldName string) (field.OrderExpr, bo
 
 func (n *notificationTask) fillFieldMap() {
 	n.fieldMap = make(map[string]field.Expr, 17)
-	n.fieldMap["id"] = n.ID
+	n.fieldMap["scheduled_at"] = n.ScheduledAt
+	n.fieldMap["processed_at"] = n.ProcessedAt
+	n.fieldMap["contact_priority"] = n.ContactPriority
+	n.fieldMap["contact_phone_hash"] = n.ContactPhoneHash
+	n.fieldMap["payload"] = n.Payload
 	n.fieldMap["created_at"] = n.CreatedAt
 	n.fieldMap["updated_at"] = n.UpdatedAt
 	n.fieldMap["deleted_at"] = n.DeletedAt
-	n.fieldMap["task_code"] = n.TaskCode
-	n.fieldMap["user_id"] = n.UserID
-	n.fieldMap["contact_priority"] = n.ContactPriority
-	n.fieldMap["contact_phone_hash"] = n.ContactPhoneHash
-	n.fieldMap["category"] = n.Category
+	n.fieldMap["id"] = n.ID
 	n.fieldMap["channel"] = n.Channel
-	n.fieldMap["payload"] = n.Payload
+	n.fieldMap["category"] = n.Category
 	n.fieldMap["status"] = n.Status
 	n.fieldMap["retry_count"] = n.RetryCount
-	n.fieldMap["scheduled_at"] = n.ScheduledAt
-	n.fieldMap["processed_at"] = n.ProcessedAt
+	n.fieldMap["user_id"] = n.UserID
+	n.fieldMap["task_code"] = n.TaskCode
 	n.fieldMap["cost_cents"] = n.CostCents
 	n.fieldMap["deducted"] = n.Deducted
 }
@@ -216,12 +215,74 @@ type INotificationTaskDo interface {
 	UnderlyingDB() *gorm.DB
 	schema.Tabler
 
+	GetByID(id int64) (result *model.NotificationTask, err error)
+	GetByTaskCode(taskCode int64) (result *model.NotificationTask, err error)
+	GetByPublicIDAndTaskID(publicID int64, taskID int64) (result *model.NotificationTask, err error)
 	ListByUserID(userID int64, category string, channel string, status string, limit int, offset int) (result []*model.NotificationTask, err error)
+	ListByPublicID(publicID int64, category string, channel string, status string, cursorID int64, limit int) (result []*model.NotificationTask, err error)
 	ListPendingTasks(limit int) (result []*model.NotificationTask, err error)
+	ListFailedTasksForRetry(limit int) (result []*model.NotificationTask, err error)
 	GetWithAttempts(taskID int64) (result map[string]interface{}, err error)
+	CountByUserIDAndStatus(userID int64) (result []map[string]interface{}, err error)
+}
+
+// GetByID 根据数据库主键 ID 查询通知任务
+//
+// SELECT * FROM @@table WHERE id = @id LIMIT 1
+func (n notificationTaskDo) GetByID(id int64) (result *model.NotificationTask, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, id)
+	generateSQL.WriteString("SELECT * FROM notification_tasks WHERE id = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetByTaskCode 根据 TaskCode 查询通知任务（幂等性检查）
+//
+// SELECT * FROM @@table WHERE task_code = @taskCode LIMIT 1
+func (n notificationTaskDo) GetByTaskCode(taskCode int64) (result *model.NotificationTask, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, taskCode)
+	generateSQL.WriteString("SELECT * FROM notification_tasks WHERE task_code = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// GetByPublicIDAndTaskID 根据 PublicID 和 Task ID 查询通知任务（API 常用）
+//
+// SELECT nt.* FROM @@table nt
+// INNER JOIN users u ON u.id = nt.user_id
+// WHERE u.public_id = @publicID AND nt.id = @taskID
+// LIMIT 1
+func (n notificationTaskDo) GetByPublicIDAndTaskID(publicID int64, taskID int64) (result *model.NotificationTask, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	params = append(params, taskID)
+	generateSQL.WriteString("SELECT nt.* FROM notification_tasks nt INNER JOIN users u ON u.id = nt.user_id WHERE u.public_id = ? AND nt.id = ? LIMIT 1 ")
+
+	var executeSQL *gorm.DB
+	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Take(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
 }
 
 // ListByUserID 按用户查询通知任务（分页，支持筛选）
+//
 // SELECT * FROM @@table
 // WHERE user_id = @userID
 //
@@ -242,7 +303,7 @@ func (n notificationTaskDo) ListByUserID(userID int64, category string, channel 
 
 	var generateSQL strings.Builder
 	params = append(params, userID)
-	generateSQL.WriteString("按用户查询通知任务（分页，支持筛选） SELECT * FROM notification_tasks WHERE user_id = ? ")
+	generateSQL.WriteString("SELECT * FROM notification_tasks WHERE user_id = ? ")
 	if category != "" {
 		params = append(params, category)
 		generateSQL.WriteString("AND category = ? ")
@@ -266,7 +327,61 @@ func (n notificationTaskDo) ListByUserID(userID int64, category string, channel 
 	return
 }
 
+// ListByPublicID 根据 PublicID 查询通知任务（API 常用，支持游标分页）
+//
+// SELECT nt.* FROM @@table nt
+// INNER JOIN users u ON u.id = nt.user_id
+// WHERE u.public_id = @publicID
+//
+//	{{if category != ""}}
+//	AND nt.category = @category
+//	{{end}}
+//	{{if channel != ""}}
+//	AND nt.channel = @channel
+//	{{end}}
+//	{{if status != ""}}
+//	AND nt.status = @status
+//	{{end}}
+//	{{if cursorID > 0}}
+//	AND nt.id < @cursorID
+//	{{end}}
+//
+// ORDER BY nt.created_at DESC
+// LIMIT @limit
+func (n notificationTaskDo) ListByPublicID(publicID int64, category string, channel string, status string, cursorID int64, limit int) (result []*model.NotificationTask, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, publicID)
+	generateSQL.WriteString("SELECT nt.* FROM notification_tasks nt INNER JOIN users u ON u.id = nt.user_id WHERE u.public_id = ? ")
+	if category != "" {
+		params = append(params, category)
+		generateSQL.WriteString("AND nt.category = ? ")
+	}
+	if channel != "" {
+		params = append(params, channel)
+		generateSQL.WriteString("AND nt.channel = ? ")
+	}
+	if status != "" {
+		params = append(params, status)
+		generateSQL.WriteString("AND nt.status = ? ")
+	}
+	if cursorID > 0 {
+		params = append(params, cursorID)
+		generateSQL.WriteString("AND nt.id < ? ")
+	}
+	params = append(params, limit)
+	generateSQL.WriteString("ORDER BY nt.created_at DESC LIMIT ? ")
+
+	var executeSQL *gorm.DB
+	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
 // ListPendingTasks 查询待处理的任务（用于消息消费）
+//
 // SELECT * FROM @@table
 // WHERE status = 'pending'
 //
@@ -279,7 +394,31 @@ func (n notificationTaskDo) ListPendingTasks(limit int) (result []*model.Notific
 
 	var generateSQL strings.Builder
 	params = append(params, limit)
-	generateSQL.WriteString("查询待处理的任务（用于消息消费） SELECT * FROM notification_tasks WHERE status = 'pending' AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT ? ")
+	generateSQL.WriteString("SELECT * FROM notification_tasks WHERE status = 'pending' AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT ? ")
+
+	var executeSQL *gorm.DB
+	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// ListFailedTasksForRetry 查询失败需要重试的任务
+//
+// SELECT * FROM @@table
+// WHERE status = 'failed'
+//
+//	AND retry_count < 3
+//	AND scheduled_at <= NOW()
+//
+// ORDER BY scheduled_at ASC
+// LIMIT @limit
+func (n notificationTaskDo) ListFailedTasksForRetry(limit int) (result []*model.NotificationTask, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, limit)
+	generateSQL.WriteString("SELECT * FROM notification_tasks WHERE status = 'failed' AND retry_count < 3 AND scheduled_at <= NOW() ORDER BY scheduled_at ASC LIMIT ? ")
 
 	var executeSQL *gorm.DB
 	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
@@ -289,6 +428,7 @@ func (n notificationTaskDo) ListPendingTasks(limit int) (result []*model.Notific
 }
 
 // GetWithAttempts 获取任务及尝试记录（JOIN contact_attempts）
+//
 // SELECT t.*,
 //
 //	json_agg(
@@ -316,11 +456,31 @@ func (n notificationTaskDo) GetWithAttempts(taskID int64) (result map[string]int
 
 	var generateSQL strings.Builder
 	params = append(params, taskID)
-	generateSQL.WriteString("获取任务及尝试记录（JOIN contact_attempts） SELECT t.*, json_agg( json_build_object( 'id', ca.id, 'contact_priority', ca.contact_priority, 'contact_phone_hash', ca.contact_phone_hash, 'channel', ca.channel, 'status', ca.status, 'response_code', ca.response_code, 'response_message', ca.response_message, 'cost_cents', ca.cost_cents, 'deducted', ca.deducted, 'attempted_at', ca.attempted_at ) ORDER BY ca.attempted_at DESC ) FILTER (WHERE ca.id IS NOT NULL) as attempts FROM notification_tasks t LEFT JOIN contact_attempts ca ON ca.task_id = t.id WHERE t.id = ? GROUP BY t.id LIMIT 1 ")
+	generateSQL.WriteString("SELECT t.*, json_agg( json_build_object( 'id', ca.id, 'contact_priority', ca.contact_priority, 'contact_phone_hash', ca.contact_phone_hash, 'channel', ca.channel, 'status', ca.status, 'response_code', ca.response_code, 'response_message', ca.response_message, 'cost_cents', ca.cost_cents, 'deducted', ca.deducted, 'attempted_at', ca.attempted_at ) ORDER BY ca.attempted_at DESC ) FILTER (WHERE ca.id IS NOT NULL) as attempts FROM notification_tasks t LEFT JOIN contact_attempts ca ON ca.task_id = t.id WHERE t.id = ? GROUP BY t.id LIMIT 1 ")
 
 	result = make(map[string]interface{})
 	var executeSQL *gorm.DB
 	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Take(result) // ignore_security_alert
+	err = executeSQL.Error
+
+	return
+}
+
+// CountByUserIDAndStatus 统计用户通知任务数量（按状态）
+//
+// SELECT status, COUNT(*) as count
+// FROM @@table
+// WHERE user_id = @userID
+// GROUP BY status
+func (n notificationTaskDo) CountByUserIDAndStatus(userID int64) (result []map[string]interface{}, err error) {
+	var params []interface{}
+
+	var generateSQL strings.Builder
+	params = append(params, userID)
+	generateSQL.WriteString("SELECT status, COUNT(*) as count FROM notification_tasks WHERE user_id = ? GROUP BY status ")
+
+	var executeSQL *gorm.DB
+	executeSQL = n.UnderlyingDB().Raw(generateSQL.String(), params...).Find(&result) // ignore_security_alert
 	err = executeSQL.Error
 
 	return
