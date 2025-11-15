@@ -45,7 +45,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 ) (*dto.AuthExchangeResponse, error) {
 	// TODO: 用 authCode 调用支付宝的 api 来获取用户信息
 	alipayUserID := "mock_alipay_userID" + authCode
-	nickname := "cry"
+	nickname := "cry4o4n0tfound"
 	// 先 mock 等待贝妮那边处理好
 	// 查询用户是否存在
 	user, err := query.User.Where(query.User.AlipayOpenID.Eq(alipayUserID)).First()
@@ -68,12 +68,13 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				return nil, fmt.Errorf("failed to generate user ID: %w", err)
 			}
 
-			// 创建新用户， 更新 isNewuser
+			// 创建新用户，内测名额未满时，状态为 onboarding（可以开始注册流程）
+			// 如果内测名额已满，会在上面返回 WaitlistFull 错误
 			user = &model.User{
 				PublicID:     publicID,
 				AlipayOpenID: alipayUserID,
 				Nickname:     nickname,
-				Status:       model.UserStatusWaitlisted, // 这里最初是应该是 waitlisted
+				Status:       model.UserStatusOnboarding, // 内测名额未满，可以开始注册流程
 				Timezone:     "Asia/Shanghai",
 			}
 
@@ -88,6 +89,25 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			)
 		} else {
 			return nil, fmt.Errorf("failed to query user: %w", err)
+		}
+	} else {
+		// 用户已存在，检查是否需要激活（waitlisted → onboarding）
+		// 如果用户状态是 waitlisted，且当前内测名额未满，则激活用户
+		if user.Status == model.UserStatusWaitlisted {
+			userCount, countErr := query.User.Count()
+			if countErr == nil && userCount < int64(config.Cfg.WaitlistMaxUsers) {
+				// 内测名额未满，激活用户
+				updates := map[string]interface{}{
+					"status": string(model.UserStatusOnboarding),
+				}
+				if _, updateErr := query.User.Where(query.User.PublicID.Eq(user.PublicID)).Updates(updates); updateErr == nil {
+					user.Status = model.UserStatusOnboarding
+					logger.Logger.Info("User activated from waitlist",
+						zap.Int64("public_id", user.PublicID),
+						zap.String("alipay_user_id", alipayUserID),
+					)
+				}
+			}
 		}
 	}
 
@@ -177,11 +197,12 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 		"phone_hash":   phoneHash,
 	}
 
-	// 如果用户状态是 waitlisted，更新为 onboarding // 理论上能绑定的情况都可以
-	if user.Status == model.UserStatusWaitlisted {
-		updates["status"] = string(model.UserStatusOnboarding)
-
-		// 只有最初时才会，也有可能有用户没有创建对应的联系人，处在 contact 状态
+	// 状态流转：绑定手机号后的状态转换
+	// waitlisted → contact：绑定手机号后，直接进入填写紧急联系人阶段
+	// onboarding → contact：如果用户之前已经是 onboarding 状态（已授权但未绑定手机号），绑定后进入填写紧急联系人阶段
+	// 注意：绑定手机号后，用户应该进入 contact 状态，因为下一步就是填写紧急联系人
+	if user.Status == model.UserStatusWaitlisted || user.Status == model.UserStatusOnboarding {
+		updates["status"] = string(model.UserStatusContact)
 	}
 
 	if _, updateErr := query.User.Where(query.User.PublicID.Eq(userIDInt)).Updates(updates); updateErr != nil {
@@ -189,7 +210,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 	}
 
 	// 重新查询用户获取最新状态
-	user, err = query.User.Where(query.User.PublicID.Eq(userIDInt)).First()
+	user, err = query.User.GetByPublicID(userIDInt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query updated user: %w", err)
 	}
