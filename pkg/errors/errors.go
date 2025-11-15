@@ -30,6 +30,10 @@ var (
 	InvalidUserID              = Definition{Code: "INVALID_USER_ID", Message: "Invalid user ID format"}
 )
 
+
+// 打卡相关错误
+
+
 // 联系人模块错误。
 var (
 	ContactLimitReached     = Definition{Code: "CONTACT_LIMIT_REACHED", Message: "Contact limit reached"}
@@ -41,6 +45,8 @@ var (
 var (
 	CheckInDisabled    = Definition{Code: "CHECK_IN_DISABLED", Message: "Check-in disabled"}
 	CheckInAlreadyDone = Definition{Code: "CHECK_IN_ALREADY_DONE", Message: "Check-in already done"}
+	CheckInExpired  = Definition{Code: "CHECK_IN_EXPIRED", Message: "Check-in time has expired"}
+
 )
 
 // 行程报备模块错误。

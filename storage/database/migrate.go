@@ -8,7 +8,7 @@ import (
 	"AreYouOK/pkg/logger"
 )
 
-// Migrate 运行数据库迁移，创建所有表
+
 func Migrate() error {
 	db := DB()
 	if db == nil {

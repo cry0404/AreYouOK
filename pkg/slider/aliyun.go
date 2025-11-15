@@ -67,14 +67,14 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp,
 		return false, fmt.Errorf("failed to verify captcha: %w", err)
 	}
 
-	// 检查响应
+
 	if response == nil || response.Body == nil {
 		return false, errors.ErrCaptchaResponseNil
 	}
 
 	body := response.Body
 
-	// 检查验证结果
+
 	if body.Result != nil && body.Result.VerifyResult != nil && *body.Result.VerifyResult {
 		logger.Logger.Info("Captcha verification successful",
 			zap.String("scene", scene),
@@ -83,7 +83,7 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp,
 		return true, nil
 	}
 
-	// 检查错误码
+
 	if body.Code != nil && *body.Code != "200" {
 		message := ""
 		if body.Message != nil {

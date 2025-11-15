@@ -40,7 +40,9 @@ services:
       - areyouok-network
 
   rabbitmq:
-    image: rabbitmq:4-management-alpine
+    build:
+      context: ./rabbitmq
+      dockerfile: Dockerfile
     container_name: areyouok-rabbitmq
     restart: unless-stopped
     environment:
