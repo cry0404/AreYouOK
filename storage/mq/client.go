@@ -13,8 +13,11 @@ import (
 
 // rabbitmq 设计，先声明 conn，一个 conn 多个 channel
 
-	//conn *amqp.Connection //唯一的 connection
+//conn *amqp.Connection //唯一的 connection
 
+var (
+	conn        *amqp.Connection
+)
 
 func Init() error {
 	var err error
