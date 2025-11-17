@@ -13,10 +13,10 @@ import (
 
 // rabbitmq 设计，先声明 conn，一个 conn 多个 channel
 
-//conn *amqp.Connection //唯一的 connection
+// conn *amqp.Connection //唯一的 connection
 
 var (
-	conn        *amqp.Connection
+	conn *amqp.Connection
 )
 
 func Init() error {
@@ -45,23 +45,20 @@ func Init() error {
 }
 
 // 声明交换机 exchange，然后声明交换机对应的队列，然后根据 key 绑定队列到交换机
-func InitExchangesAndQueues() error {	
+func InitExchangesAndQueues() error {
 	ch, err := conn.Channel()
 	if err != nil {
 		return fmt.Errorf("failed to open channel: %w", err)
 	}
 	defer ch.Close()
 
-
 	if err := declareExchanges(ch); err != nil {
 		return err
 	}
 
-
 	if err := declareQueues(ch); err != nil {
 		return err
 	}
-
 
 	if err := bindQueues(ch); err != nil {
 		return err
@@ -71,15 +68,15 @@ func InitExchangesAndQueues() error {
 
 func declareExchanges(ch *amqp.Channel) error {
 	exchanges := []struct {
+		args       amqp.Table
 		name       string
 		kind       string
 		durable    bool
 		autoDelete bool
 		internal   bool
-		args       amqp.Table
 	}{
 
-		//通知交换机
+		// 通知交换机
 		{
 			name:    "notification.topic",
 			kind:    "topic",
@@ -104,7 +101,7 @@ func declareExchanges(ch *amqp.Channel) error {
 		},
 	}
 
-	//开始注册
+	// 开始注册
 
 	for _, ex := range exchanges {
 		if err := ch.ExchangeDeclare(

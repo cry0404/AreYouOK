@@ -11,7 +11,6 @@ import (
 	"AreYouOK/internal/model/dto"
 	"AreYouOK/internal/service"
 	"AreYouOK/pkg/errors"
-
 	"AreYouOK/pkg/response"
 	"AreYouOK/utils"
 )
@@ -84,11 +83,9 @@ func CreateContact(ctx context.Context, c *app.RequestContext) {
 // DeleteContact 删除紧急联系人
 // DELETE /v1/contacts/:priority
 func DeleteContact(ctx context.Context, c *app.RequestContext) {
-
 	priorityStr := c.Param("priority")
 	priority, err := strconv.Atoi(priorityStr)
 	if err != nil {
-
 		response.Error(ctx, c, errors.Definition{
 			Code:    "INVALID_PRIORITY",
 			Message: "Invalid priority format",
@@ -108,6 +105,5 @@ func DeleteContact(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	
 	response.NoContent(ctx, c)
 }

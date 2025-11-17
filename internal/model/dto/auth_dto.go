@@ -30,9 +30,9 @@ type AuthUserSnapshot struct {
 	ID            string `json:"id"`
 	Nickname      string `json:"nickname"`
 	Status        string `json:"status"`
-	PhoneVerified bool   `json:"phone_verified"` //据此来判断 status
+	PhoneVerified bool   `json:"phone_verified"` // 据此来判断 status
 	IsNewUser     bool   `json:"is_new_user"`
-	//Waitlist      WaitlistInfo `json:"waitlist"` //不再需要，直接返回
+	// Waitlist      WaitlistInfo `json:"waitlist"` //不再需要，直接返回
 }
 
 // // WaitlistInfo 内测排队信息
@@ -45,7 +45,7 @@ type AuthUserSnapshot struct {
 // SendCaptchaRequest 发送验证码请求
 type SendCaptchaRequest struct {
 	Phone       string `json:"phone" binding:"required"`
-	Scene       string `json:"scene" binding:"required"` //场景，是基于登录还是注册时，可以切换不同的短信模板
+	Scene       string `json:"scene" binding:"required"` // 场景，是基于登录还是注册时，可以切换不同的短信模板
 	SliderToken string `json:"slider_token,omitempty"`
 }
 

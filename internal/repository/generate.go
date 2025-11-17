@@ -506,7 +506,7 @@ func Generate() error {
 
 	g := gen.NewGenerator(gen.Config{
 		OutPath:           "./internal/repository/query", // 生成代码的输出路径
-		ModelPkgPath:      "AreYouOK/internal/model",     
+		ModelPkgPath:      "AreYouOK/internal/model",
 		Mode:              gen.WithDefaultQuery | gen.WithQueryInterface | gen.WithoutContext,
 		FieldNullable:     true, // 字段可以为 null
 		FieldCoverable:    false,

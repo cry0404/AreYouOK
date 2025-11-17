@@ -1,13 +1,6 @@
 package service
 
 import (
-	"AreYouOK/internal/model"
-	"AreYouOK/internal/model/dto"
-	"AreYouOK/internal/repository/query"
-
-	pkgerrors "AreYouOK/pkg/errors"
-	"AreYouOK/pkg/logger"
-	"AreYouOK/utils"
 	"context"
 	"errors"
 	"fmt"
@@ -16,6 +9,13 @@ import (
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
+
+	"AreYouOK/internal/model"
+	"AreYouOK/internal/model/dto"
+	"AreYouOK/internal/repository/query"
+	pkgerrors "AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
+	"AreYouOK/utils"
 )
 
 // api 中设计的 user_ID 是 public_id
@@ -39,7 +39,6 @@ func (s *UserService) GetUserStatus(
 	ctx context.Context,
 	userID string,
 ) (*dto.UserStatusData, error) {
-
 	var userIDInt int64
 	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
 		return nil, pkgerrors.InvalidUserID
@@ -67,7 +66,6 @@ func (s *UserService) GetUserProfile(
 	ctx context.Context,
 	userID string,
 ) (*dto.UserProfileData, error) {
-
 	var userIDInt int64
 	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
 		return nil, pkgerrors.InvalidUserID
@@ -126,7 +124,6 @@ func (s *UserService) GetUserProfile(
 		phoneVerified = ok && phoneHash != nil && *phoneHash != ""
 	}
 
-	// 5. 解析额度信息
 	var smsBalance, voiceBalance int
 	if smsVal, ok := resultMap["sms_balance"]; ok && smsVal != nil {
 		switch v := smsVal.(type) {
@@ -180,7 +177,6 @@ func (s *UserService) UpdateUserSettings(
 	userID string,
 	req dto.UpdateUserSettingsRequest,
 ) error {
-
 	var userIDInt int64
 	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
 		return pkgerrors.InvalidUserID
@@ -233,7 +229,6 @@ func (s *UserService) GetUserQuotas(
 	ctx context.Context,
 	userID string,
 ) (*dto.QuotaBalance, error) {
-
 	var userIDInt int64
 	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
 		return nil, pkgerrors.InvalidUserID

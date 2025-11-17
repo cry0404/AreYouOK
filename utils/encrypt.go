@@ -12,7 +12,7 @@ import (
 )
 
 // 需要之后研究下 aes 加密是如何实现的
-//返回对应的 encryptPhone 值
+// 返回对应的 encryptPhone 值
 
 var errInvalidCipherText = errors.New("invalid ciphertext payload")
 

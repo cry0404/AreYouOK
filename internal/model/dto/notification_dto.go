@@ -8,12 +8,12 @@ import "time"
 type NotificationTaskItem struct {
 	ScheduledAt time.Time               `json:"scheduled_at"`
 	ProcessedAt *time.Time              `json:"processed_at,omitempty"`
-	Contact     NotificationContactInfo `json:"contact,omitempty"`
 	ID          string                  `json:"id"`
 	TaskCode    string                  `json:"task_code"`
 	Category    string                  `json:"category"`
 	Channel     string                  `json:"channel"`
 	Status      string                  `json:"status"`
+	Contact     NotificationContactInfo `json:"contact,omitempty"`
 	CostCents   int                     `json:"cost_cents"`
 	Deducted    bool                    `json:"deducted"`
 }

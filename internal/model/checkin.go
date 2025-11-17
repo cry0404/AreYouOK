@@ -13,13 +13,13 @@ const (
 
 // DailyCheckIn 平安打卡记录模型
 type DailyCheckIn struct {
-	CheckInDate      time.Time  `gorm:"type:date;not null;index:idx_daily_check_ins_user_date_status" json:"check_in_date"`
-	CheckInAt        *time.Time `gorm:"type:timestamptz" json:"check_in_at,omitempty"`
-	ReminderSentAt   *time.Time `gorm:"type:timestamptz" json:"reminder_sent_at,omitempty"`
-	AlertTriggeredAt *time.Time `gorm:"type:timestamptz;index:idx_daily_check_ins_alert" json:"alert_triggered_at,omitempty"`
+	CheckInDate      time.Time     `gorm:"type:date;not null;index:idx_daily_check_ins_user_date_status" json:"check_in_date"`
+	CheckInAt        *time.Time    `gorm:"type:timestamptz" json:"check_in_at,omitempty"`
+	ReminderSentAt   *time.Time    `gorm:"type:timestamptz" json:"reminder_sent_at,omitempty"`
+	AlertTriggeredAt *time.Time    `gorm:"type:timestamptz;index:idx_daily_check_ins_alert" json:"alert_triggered_at,omitempty"`
+	Status           CheckInStatus `gorm:"type:varchar(16);not null;default:'pending';index:idx_daily_check_ins_user_date_status" json:"status"`
 	BaseModel
-	Status CheckInStatus `gorm:"type:varchar(16);not null;default:'pending';index:idx_daily_check_ins_user_date_status" json:"status"`
-	UserID int64         `gorm:"not null;index:idx_daily_check_ins_user_date_status" json:"user_id"`
+	UserID int64 `gorm:"not null;index:idx_daily_check_ins_user_date_status" json:"user_id"`
 }
 
 // TableName 指定表名

@@ -1,21 +1,22 @@
 package mq
 
 import (
-	//"encoding/json"
+	// "encoding/json"
 	"fmt"
-	
-	//amqp "github.com/rabbitmq/amqp091-go"
+
+	// amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+
 	"AreYouOK/pkg/logger"
 )
 
 type MessageHandler func([]byte) error
 
 type ConsumeOptions struct {
+	Handler       MessageHandler
 	Queue         string
 	ConsumerTag   string
 	PrefetchCount int
-	Handler       MessageHandler
 }
 
 // 设计模式，策略型？
@@ -42,7 +43,7 @@ func Consume(opts ConsumeOptions) error {
 	msgs, err := ch.Consume(
 		opts.Queue,
 		opts.ConsumerTag,
-		false, //auto-ack = false
+		false, // auto-ack = false
 		false, // exclusive
 		false, // no-local
 		false, // no-wait
@@ -69,7 +70,6 @@ func Consume(opts ConsumeOptions) error {
 			msg.Nack(false, true) // requeue = true
 			continue
 		}
-		
 
 		msg.Ack(false)
 	}

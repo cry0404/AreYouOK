@@ -12,7 +12,7 @@ type UserStatus string
 const (
 	UserStatusWaitlisted UserStatus = "waitlisted" // 内测排队中
 	UserStatusOnboarding UserStatus = "onboarding" // 引导中，这里是登录验证部分
-	UserStatusContact    UserStatus = "contact"    //这里是填写紧急联系人部分
+	UserStatusContact    UserStatus = "contact"    // 这里是填写紧急联系人部分
 	UserStatusActive     UserStatus = "active"     // 正常使用
 )
 
@@ -28,7 +28,7 @@ type User struct {
 	DailyCheckInRemindAt   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
 	DailyCheckInGraceUntil string  `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
 	DailyCheckInDeadline   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
-	PhoneHash              *string `gorm:"type:char(64)" json:"-"` //暂时省略掉 uniqueIndex
+	PhoneHash              *string `gorm:"type:char(64)" json:"-"` // 暂时省略掉 uniqueIndex
 	BaseModel
 	Status              UserStatus        `gorm:"type:varchar(16);not null;default:'waitlisted';index:idx_users_status" json:"status"`
 	Timezone            string            `gorm:"type:varchar(64);not null;default:'Asia/Shanghai'" json:"timezone"`

@@ -8,7 +8,6 @@ import (
 	"AreYouOK/pkg/logger"
 )
 
-
 func Migrate() error {
 	db := DB()
 	if db == nil {

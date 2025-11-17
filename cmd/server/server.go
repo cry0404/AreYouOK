@@ -13,6 +13,7 @@ import (
 
 	"AreYouOK/config"
 	"AreYouOK/internal/middleware"
+	"AreYouOK/internal/queue"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/slider"
@@ -47,6 +48,9 @@ func main() {
 	}
 
 	defer storage.Close()
+
+	// 启动消费者部分
+	go queue.StartAllConsumers(ctx)
 
 	if err := snowflake.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize snowflake", zap.Error(err))

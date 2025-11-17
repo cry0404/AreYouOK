@@ -49,7 +49,6 @@ func GenerateTokenPair(userID string) (accessToken, refreshToken string, expires
 		return "", "", 0, errors.ErrTokenGeneratorNotInitialized
 	}
 
-
 	now := time.Now()
 	expiresAt := now.Add(time.Duration(config.Cfg.JWTExpireMinutes) * time.Minute)
 
@@ -104,12 +103,10 @@ func ValidateRefreshToken(tokenString string) (userID string, err error) {
 		return "", errors.ErrInvalidToken
 	}
 
-
 	claims, ok := token.Claims.(jwtv5.MapClaims)
 	if !ok {
 		return "", errors.ErrInvalidTokenClaims
 	}
-
 
 	tokenType, ok := claims["type"].(string)
 	if !ok || tokenType != "refresh" {
@@ -118,7 +115,6 @@ func ValidateRefreshToken(tokenString string) (userID string, err error) {
 
 	uid, ok := claims[IdentityKey].(string)
 	if !ok {
-
 		if uidFloat, ok := claims[IdentityKey].(float64); ok {
 			uid = fmt.Sprintf("%.0f", uidFloat)
 		} else {

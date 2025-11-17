@@ -1,6 +1,11 @@
 package service
 
-import "sync"
+import (
+	"context"
+	"sync"
+
+	"AreYouOK/pkg/logger"
+)
 
 type CheckInService struct{}
 
@@ -10,15 +15,27 @@ var (
 )
 
 func CheckIn() *CheckInService {
-	checkInOnce.Do(func(){
+	checkInOnce.Do(func() {
 		checkInService = &CheckInService{}
 	})
 
 	return checkInService
 }
 
-// GetTodayCheckIn 查询当天打卡状态
+// ProcessReminderBatch 批量发送打卡提醒消息（需要根据额度，或者免费？）
+func (s *CheckInService) ProcessReminderBatch(
+	ctx context.Context,
+	userIDs []int64,
+	checkInDate string,
+) error {
+	if len(userIDs) == 0 {
+		logger.Logger.Warn("ProcessReminderBatch: empty userIDs list")
+		return nil
+	}
+	return nil
+}
 
-func (s *CheckInService) GetTodayCheckIn(){
+// GetTodayCheckIn 查询当天打卡状态
+func (s *CheckInService) GetTodayCheckIn() {
 
 }

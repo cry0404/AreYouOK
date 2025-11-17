@@ -1,24 +1,23 @@
 package service
 
 import (
+	"context"
+	"encoding/base64"
+	"errors"
+	"fmt"
+	"sort"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/model/dto"
 	"AreYouOK/internal/repository/query"
 	pkgerrors "AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/utils"
-	"encoding/base64"
-	"errors"
-	"sort"
-	"time"
-
-	"go.uber.org/zap"
-
-	"context"
-	"fmt"
-	"sync"
-
-	"gorm.io/gorm"
 )
 
 // api 中设计的 user_ID 是 public_id
@@ -45,7 +44,7 @@ func (s *ContactService) CreateContact(
 	userID string,
 	req dto.CreateContactRequest,
 ) (*dto.CreateContactResponse, error) {
-	//验证现在的优先级
+	// 验证现在的优先级
 
 	if req.Priority < 1 || req.Priority > 3 {
 		return nil, pkgerrors.ContactPriorityConflict
@@ -71,7 +70,7 @@ func (s *ContactService) CreateContact(
 
 	contacts := user.EmergencyContacts
 
-	//三个就达到了上限
+	// 三个就达到了上限
 	if len(contacts) >= 3 {
 		return nil, pkgerrors.ContactLimitReached
 	} // 如果是 0 的话需要更新 user 的 status
@@ -205,7 +204,6 @@ func (s *ContactService) DeleteContact(
 	userID string,
 	priority int,
 ) error {
-
 	if priority < 1 || priority > 3 {
 		return pkgerrors.ContactPriorityConflict
 	}

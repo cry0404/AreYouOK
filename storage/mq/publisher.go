@@ -1,7 +1,6 @@
 package mq
 
 import (
-	"AreYouOK/pkg/logger"
 	"encoding/json"
 	"fmt"
 	"sync"
@@ -9,21 +8,22 @@ import (
 
 	amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+
+	"AreYouOK/pkg/logger"
 )
 
-//底层的实现，将对应包装的部分推送即可
+// 底层的实现，将对应包装的部分推送即可
 
 // 单例 + 锁，思考实现需求，为什么这样实现
 
 var (
-	
 	publisherCh *amqp.Channel
-	pubMutex	sync.RWMutex //读写锁，读多写少
+	pubMutex    sync.RWMutex // 读写锁，读多写少
 )
 
 // PublishDelayedMessage 发送延迟消息
 func getPublisherChannel() (*amqp.Channel, error) {
-	//先读锁检查
+	// 先读锁检查
 	pubMutex.RLock()
 	if publisherCh != nil && publisherCh.IsClosed() {
 		ch := publisherCh
@@ -59,9 +59,9 @@ func getPublisherChannel() (*amqp.Channel, error) {
 		publisherCh = nil
 		pubMutex.Unlock()
 
-		logger.Logger.Warn("Publisher channerl closed, will recreate on next publish", 
-		zap.String("component", "rabbitmq"),
-	)
+		logger.Logger.Warn("Publisher channerl closed, will recreate on next publish",
+			zap.String("component", "rabbitmq"),
+		)
 	}()
 
 	logger.Logger.Info("Publisher channel created",
@@ -76,14 +76,13 @@ func PublishDelayedMessage(exchange, routingKey string,
 	delay time.Duration,
 	body interface{},
 ) error {
-
 	ch, err := getPublisherChannel()
 	if err != nil {
 		return err
 	}
 
 	bodyBytes, err := json.Marshal(body)
-	
+
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
@@ -95,12 +94,12 @@ func PublishDelayedMessage(exchange, routingKey string,
 		false,
 		amqp.Publishing{
 			ContentType: "application/json",
-			Body:		 bodyBytes,
+			Body:        bodyBytes,
 			Headers: amqp.Table{
 				"x-delay": delay.Microseconds(),
 			},
 			DeliveryMode: amqp.Persistent,
-			Timestamp: time.Now(),
+			Timestamp:    time.Now(),
 		},
 	)
 
@@ -116,12 +115,12 @@ func PublishMessage(exchange, routingKey string, body interface{}) error {
 	if err != nil {
 		return err
 	}
-	
+
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
-	
+
 	err = ch.Publish(
 		exchange,
 		routingKey,
@@ -131,9 +130,9 @@ func PublishMessage(exchange, routingKey string, body interface{}) error {
 			ContentType:  "application/json",
 			Body:         bodyBytes,
 			DeliveryMode: amqp.Persistent,
-			Timestamp:   time.Now(),
+			Timestamp:    time.Now(),
 		},
 	)
-	
+
 	return err
 }

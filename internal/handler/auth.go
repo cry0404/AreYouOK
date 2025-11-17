@@ -15,7 +15,7 @@ import (
 
 // ExchangeAlipayAuth 支付宝授权换取
 // POST /v1/auth/miniapp/alipay/exchange
-// uid 是 user_id
+// uid 是 是 public_id, 也就是生成的雪花 id
 func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	var req dto.AuthExchangeRequest
 
