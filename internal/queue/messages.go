@@ -5,7 +5,7 @@ type CheckInReminderMessage struct {
 	BatchID      string  `json:"batch_id"`
 	CheckInDate  string  `json:"check_in_date"`
 	ScheduledAt  string  `json:"scheduled_at"`
-	UserIDs      []int64 `json:"user_ids"`
+	UserIDs      []int64 `json:"user_ids"` // 原定于
 	DelaySeconds int     `json:"delay_seconds"`
 }
 

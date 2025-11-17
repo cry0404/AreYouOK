@@ -62,6 +62,134 @@ services:
     networks:
       - areyouok-network
 
+  api:
+    build:
+      context: ..
+      dockerfile: docker/api/Dockerfile
+    container_name: areyouok-api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      # 服务配置
+      SERVICE_NAME: areyouok-api
+      ENVIRONMENT: development
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      
+      # 数据库配置
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: postgres
+      POSTGRESQL_PASSWORD: postgres
+      POSTGRESQL_DATABASE: areyouok
+      POSTGRESQL_SCHEMA: public
+      POSTGRESQL_SSLMODE: disable
+      
+      # Redis 配置
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      REDIS_PREFIX: ayok
+      
+      # RabbitMQ 配置
+      RABBITMQ_ADDR: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      RABBITMQ_VHOST: /
+      
+      # Snowflake 配置
+      SNOWFLAKE_DATACENTER_ID: 1
+      SNOWFLAKE_MACHINE_ID: 1
+      
+      # JWT 配置（需要设置）
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      
+      # 加密密钥（需要设置）
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-01234567890123456789012345678901}
+      
+      # 日志配置
+      LOGGER_FORMAT: json
+      LOGGER_LEVEL: INFO
+      LOGGER_OUTPUT_PATH: stdout
+    ports:
+      - "8080:8080"
+    networks:
+      - areyouok-network
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/worker/Dockerfile
+    container_name: areyouok-worker
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      # 服务配置
+      SERVICE_NAME: areyouok-worker
+      ENVIRONMENT: development
+      
+      # 数据库配置
+      POSTGRESQL_HOST: postgres
+      POSTGRESQL_PORT: 5432
+      POSTGRESQL_USER: postgres
+      POSTGRESQL_PASSWORD: postgres
+      POSTGRESQL_DATABASE: areyouok
+      POSTGRESQL_SCHEMA: public
+      POSTGRESQL_SSLMODE: disable
+      
+      # Redis 配置
+      REDIS_ADDR: redis:6379
+      REDIS_PASSWORD: ""
+      REDIS_DB: 0
+      REDIS_PREFIX: ayok
+      
+      # RabbitMQ 配置
+      RABBITMQ_ADDR: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: guest
+      RABBITMQ_PASSWORD: guest
+      RABBITMQ_VHOST: /
+      
+      # Snowflake 配置
+      SNOWFLAKE_DATACENTER_ID: 1
+      SNOWFLAKE_MACHINE_ID: 2
+      
+      # JWT 配置（Worker 不需要，但保持一致性）
+      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
+      
+      # 加密密钥（需要设置）
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-01234567890123456789012345678901}
+      
+      # 日志配置
+      LOGGER_FORMAT: json
+      LOGGER_LEVEL: INFO
+      LOGGER_OUTPUT_PATH: stdout
+      
+      # SMS 配置（Worker 需要发送短信）
+      SMS_PROVIDER: ${SMS_PROVIDER:-aliyun}
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${ALIBABA_CLOUD_ACCESS_KEY_ID:-}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}
+      SMS_SIGN_NAME: ${SMS_SIGN_NAME:-}
+      SMS_TEMPLATE_CODE: ${SMS_TEMPLATE_CODE:-}
+    networks:
+      - areyouok-network
+    # Worker 服务可以启动多个实例
+    deploy:
+      replicas: 1
+
 volumes:
   postgres_data:
     driver: local
