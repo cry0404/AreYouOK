@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"strconv"
 	"sync"
-
+	"time"
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/model/dto"
 	"AreYouOK/internal/repository/query"
@@ -171,7 +172,7 @@ func (s *UserService) GetUserProfile(
 	return result, nil
 }
 
-// UpdateUserSettings 更新用户设置
+// UpdateUserSettings 更新用户设置， 需要更新 redis 中对应的缓存， 来帮助消息队列确认发送的消息是符合当前用户的预期的
 func (s *UserService) UpdateUserSettings(
 	ctx context.Context,
 	userID string,
@@ -220,6 +221,18 @@ func (s *UserService) UpdateUserSettings(
 		zap.String("user_id", userID),
 		zap.Any("updates", updates),
 	)
+
+
+	// 更新今日的用户缓存，如果 redis 中没有缓存的话，消息队列就可以直接发送，减少数据库回查, 更新而非失效
+	user, _ := query.User.GetByPublicID(userIDInt)
+	cache.SetUserSettings(ctx, userIDInt, &cache.UserSettingsCache{
+		DailyCheckInEnabled:    user.DailyCheckInEnabled,
+		DailyCheckInRemindAt:   user.DailyCheckInRemindAt,
+		DailyCheckInDeadline:   user.DailyCheckInDeadline,
+		DailyCheckInGraceUntil: user.DailyCheckInGraceUntil,
+		//Status:                 string(user.Status),
+		UpdatedAt:              time.Now().Unix(),
+	})
 
 	return nil
 }

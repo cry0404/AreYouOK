@@ -1,19 +1,21 @@
 package service
 
 import (
-	"context"
-	"fmt"
-	"sync"
-	"time"
-	"errors"
-
+	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/model/dto"
+	"AreYouOK/internal/queue"
 	"AreYouOK/internal/repository/query"
-	"AreYouOK/pkg/logger"
-	"AreYouOK/utils"
-	"AreYouOK/storage/database"
 	pkgerrors "AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
+	"AreYouOK/storage/database"
+	"AreYouOK/utils"
+	"context"
+	"errors"
+	"fmt"
+	"strconv"
+	"sync"
+	"time"
 
 	"go.uber.org/zap"
 	"gorm.io/gorm"
@@ -61,11 +63,8 @@ func (s *CheckInService) ProcessReminderBatch(
 
 		// for _, userID := range userIDs {}
 
-		
-
-
 		return nil
-	}) 
+	})
 
 }
 
@@ -109,9 +108,8 @@ func (s *CheckInService) processSingleUserReminder(
 			zap.Int64("user_id", userID),
 			zap.Error(err),
 		)
-	}else{
+	} else {
 		var smsBalance float64
-
 
 		if smsBalance <= 0 {
 			logger.Logger.Warn("User has insufficient SMS balance, skipping reminder",
@@ -150,7 +148,7 @@ func (s *CheckInService) GetTodayCheckIn(
 	}
 
 	checkIn, err := query.DailyCheckIn.GetTodayCheckInByPublicID(userIDInt)
-	
+
 	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, fmt.Errorf("failed to query check-in: %w", err)
 	}
@@ -162,7 +160,7 @@ func (s *CheckInService) GetTodayCheckIn(
 	if err != nil {
 		return nil, fmt.Errorf("invalid deadline format: %w", err)
 	}
-	
+
 	graceUntil, err := utils.ParseTime(user.DailyCheckInGraceUntil, today)
 	if err != nil {
 		return nil, fmt.Errorf("invalid grace_until format: %w", err)
@@ -189,3 +187,72 @@ func (s *CheckInService) GetTodayCheckIn(
 	}, nil
 }
 
+// consumer 中调用对应的用户，然后返回有效的用户 ID，快速过滤今天没有更新的用户，可以优先发送
+
+type ValidateReminderBatchResult struct {
+	ProcessNow []int64 // 可以直接处理的用户
+	Republish  []int64 // 需要重新投递的用户（设置改变了）
+	Skipped    []int64 // 需要跳过的用户（关闭了打卡功能或不在时间段内）
+}
+
+// StartCheckInReminderConsumer(ctx) 对应调用的函数，来验证用户设置，然后来处理提醒，最后重新投递
+func (s *CheckInService) ValidateReminderBatch(
+	ctx context.Context,
+	userSettingsSnapshots map[string]queue.UserSettingSnapshot,
+	checkInDate string,
+) (*ValidateReminderBatchResult, error) {
+	result := &ValidateReminderBatchResult{
+		ProcessNow: make([]int64, 0),
+		Republish:  make([]int64, 0),
+		Skipped:    make([]int64, 0),
+	}
+
+	if len(userSettingsSnapshots) == 0 {
+		return result, nil
+	}
+
+	userIDs := make([]int64, len(userSettingsSnapshots))
+	for userIDStr := range userSettingsSnapshots {
+		userID, err := strconv.ParseInt(userIDStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse user ID: %w", err)
+		}
+		userIDs = append(userIDs, userID)
+	}
+
+	cachedSettings, err := cache.BatchGetUserSettings(ctx, userIDs)
+	if err != nil {
+		logger.Logger.Error("failed to batch get user settings", zap.Error(err))
+	}
+
+	for _, userID := range userIDs {
+		settings, ok := cachedSettings[userID]
+		if !ok {
+			// 缓存未命中，说明用户设置没有改变，可以直接发送
+			result.ProcessNow = append(result.ProcessNow, userID)
+			continue
+		}
+
+		// 接下来说明缓存命中，说明改变了设置
+		userStrID := strconv.FormatInt(userID, 10)
+
+		// 时间变化了
+		if !settings.DailyCheckInEnabled  { //改成没有开启了，那就直接丢弃
+			result.Skipped = append(result.Skipped, userID)
+			continue
+		}
+
+		if settings.DailyCheckInDeadline != userSettingsSnapshots[string(userStrID)].Deadline {
+			result.Republish = append(result.Republish, userID)
+			continue
+		}
+
+		 if settings.DailyCheckInRemindAt != userSettingsSnapshots[string(userStrID)].RemindAt {
+            result.Republish = append(result.Republish, userID)
+            continue
+        }
+	}
+
+	return result, nil
+	// 然后获取他们对应的设置来重新投递
+}

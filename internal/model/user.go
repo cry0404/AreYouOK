@@ -23,6 +23,8 @@ var StatusToStringMap = map[UserStatus]string{
 	UserStatusActive:     "active",
 }
 
+
+
 // User 用户模型
 type User struct {
 	DailyCheckInRemindAt   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
@@ -39,6 +41,8 @@ type User struct {
 	PublicID            int64             `gorm:"uniqueIndex;not null" json:"public_id"`
 	DailyCheckInEnabled bool              `gorm:"not null;default:false" json:"daily_check_in_enabled"`
 	JourneyAutoNotify   bool              `gorm:"not null;default:true" json:"journey_auto_notify"`
+
+	//DailyCheckInTimeRange JSONB `gorm:"type:jsonb;default:'null'"` // {"start": "08:00:00", "end": "20:00:00"}
 }
 
 func (User) TableName() string {

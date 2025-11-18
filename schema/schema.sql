@@ -126,14 +126,14 @@ CREATE INDEX idx_contact_attempts_contact ON contact_attempts(contact_phone_hash
 -- 通知任务：统一调度短信与外呼。
 CREATE TABLE notification_tasks (
   id BIGSERIAL PRIMARY KEY,
-  task_code BIGINT NOT NULL,
+  task_code BIGINT NOT NULL, -- 也就是 task_id 
   user_id BIGINT NOT NULL REFERENCES users(id),
   contact_priority SMALLINT, -- 紧急联系人优先级（1-3），对应 users.emergency_contacts 数组中的 priority
   contact_phone_hash CHAR(64), -- 紧急联系人手机号哈希（用于快速查找）
   category VARCHAR(32) NOT NULL, -- 通知类别：check_in_reminder, journey_reminder ，打卡与行程报备
   channel VARCHAR(16) NOT NULL, -- 通知渠道：sms, voice
   payload JSONB NOT NULL, -- 模板变量和通知内容
-  status VARCHAR(16) NOT NULL DEFAULT 'pending',
+  status VARCHAR(16) NOT NULL DEFAULT 'pending', -- processing，failed
   retry_count SMALLINT NOT NULL DEFAULT 0,
   scheduled_at TIMESTAMPTZ NOT NULL,
   processed_at TIMESTAMPTZ,

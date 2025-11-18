@@ -1,12 +1,30 @@
 package queue
 
-// CheckInReminderMessage 打卡提醒消息
+
+type TimeRange struct {
+	Start string `json:"start"`
+	End   string `json:"end"`
+}
+
+// CheckInReminderMessage 打卡提醒消息， 同一批用户的提醒时间，考虑按照时间段来分组
 type CheckInReminderMessage struct {
 	BatchID      string  `json:"batch_id"`
 	CheckInDate  string  `json:"check_in_date"`
 	ScheduledAt  string  `json:"scheduled_at"`
 	UserIDs      []int64 `json:"user_ids"` // 原定于
+
+	// 用户设置快照（扫描时的设置）
+    // Key: userID (string), Value: 用户设置快照
+	UserSettings map[string]UserSettingSnapshot `json:"user_settings"`
 	DelaySeconds int     `json:"delay_seconds"`
+}
+
+type UserSettingSnapshot struct {
+    RemindAt      string     `json:"remind_at"`      // 原始提醒时间 "20:00:00"
+    Deadline      string     `json:"deadline"`       // 原始截止时间 "20:00:00"
+    GraceUntil    string     `json:"grace_until"`    // 原始宽限期 "21:00:00"
+    //TimeRange     *TimeRange `json:"time_range,omitempty"` // 原始时间段 {"start": "08:00:00", "end": "20:00:00"}
+    Timezone      string     `json:"timezone"`       // 用户时区
 }
 
 // CheckInTimeoutMessage 打卡超时消息, 这个地方还需要防止打卡超时过多发送

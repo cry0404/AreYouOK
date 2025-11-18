@@ -36,7 +36,7 @@ func Auth() *AuthService {
 
 type AuthService struct{}
 
-// 给予授权信息但还未登录注册
+// 给予授权信息但还未登录注册， 现在是可以直接获取手机号了
 // ExchangeAlipayAuthCode 支付宝授权换取（通过加密手机号）
 func (s *AuthService) ExchangeAlipayAuthCode(
 	ctx context.Context,

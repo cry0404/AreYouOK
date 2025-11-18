@@ -75,15 +75,16 @@ func declareExchanges(ch *amqp.Channel) error {
 		autoDelete bool
 		internal   bool
 	}{
-
-		// 通知交换机
+		// 这个是对应触发的部分
+		// 通知交换机，用于发送 sms，voice， 根据 category 递送到不同的队列
+		// 对应的两个消费者函数 `StartSMSNotificationConsumer`、StartVoiceNotificationConsumer ，考虑是否可以根据 category 直接投递
 		{
 			name:    "notification.topic",
 			kind:    "topic",
 			durable: true,
 		},
 
-		// 延迟消息交换机
+		// 用于打卡提醒，延迟到提醒时间，定时任务的延迟投递， schedule 是否也需要死信队列呢
 		{
 			name:    "scheduler.delayed",
 			kind:    "x-delayed-message",
@@ -93,16 +94,21 @@ func declareExchanges(ch *amqp.Channel) error {
 			},
 		},
 
-		// 事件交换机
+		// 事件交换机，主要放重试等事件，打卡超时，充值扣费等额度
 		{
 			name:    "events.topic",
 			kind:    "topic",
 			durable: true,
 		},
+
+		{
+			name:    "notification.dlx", //考虑什么时候丢弃对应的通知
+			kind:    "direct",
+			durable: true,
+		},
 	}
 
-	// 开始注册
-
+	// 开始注册对应的交换机
 	for _, ex := range exchanges {
 		if err := ch.ExchangeDeclare(
 			ex.name,
@@ -119,7 +125,7 @@ func declareExchanges(ch *amqp.Channel) error {
 	return nil
 }
 
-// 声明每个 exchange 下要注册的队列
+// 声明每个 exchange 下对应的队列
 
 func declareQueues(ch *amqp.Channel) error {
 	queues := []struct {
@@ -130,8 +136,31 @@ func declareQueues(ch *amqp.Channel) error {
 		args       amqp.Table
 	}{
 		// 通知队列
-		{"notification.sms", true, false, false, nil},
-		{"notification.voice", true, false, false, nil},
+		{
+			name:       "notification.sms",
+			durable:    true,
+			exclusive:  false,
+			autoDelete: false,
+			args: amqp.Table{
+				"x-dead-letter-exchange":    "notification.dlx",
+				"x-dead-letter-routing-key": "notification.sms.dlq",
+				"x-message-ttl":             3600000,
+			},
+		},
+
+		{
+			name:       "notification.voice",
+			durable:    true,
+			exclusive:  false, //排他队列，只允许当前链接使用，理论上应该是
+			autoDelete: false,
+			args: amqp.Table{
+				"x-dead-letter-exchange":    "notification.dlx",
+				"x-dead-letter-routing-key": "notification.voice.dlq",
+				"x-message-ttl":             3600000,
+			},
+		},
+
+		//死信队列, 定时任务队列可能也需要配置个死信队列
 		{"notification.sms.dlq", true, false, false, nil},
 		{"notification.voice.dlq", true, false, false, nil},
 
@@ -174,6 +203,10 @@ func bindQueues(ch *amqp.Channel) error {
 		{"notification.sms", "notification.sms.*", "notification.topic"},
 		{"notification.voice", "notification.voice.*", "notification.topic"},
 
+		// 死信队列
+		{"notification.sms.dlq", "notification.sms.dlq", "notification.dlx"},
+		{"notification.voice.dlq", "notification.voice.dlq", "notification.dlx"},
+
 		// 定时任务队列绑定（延迟消息）
 		{"scheduler.check_in.reminder", "scheduler.check_in.reminder", "scheduler.delayed"},
 		{"scheduler.check_in.timeout", "scheduler.check_in.timeout", "scheduler.delayed"},
@@ -184,7 +217,7 @@ func bindQueues(ch *amqp.Channel) error {
 		{"events.journey.timeout", "journey.timeout", "events.topic"},
 		{"events.quota.depleted", "quota.depleted", "events.topic"},
 	}
-
+	// 根据路由键绑定到对应的队列
 	for _, b := range bindings {
 		if err := ch.QueueBind(
 			b.queue,
@@ -200,12 +233,10 @@ func bindQueues(ch *amqp.Channel) error {
 	return nil
 }
 
-// Connection 返回 RabbitMQ 连接
 func Connection() *amqp.Connection {
 	return conn
 }
 
-// Close 关闭 RabbitMQ 连接
 func Close(ctx context.Context) error {
 	if conn == nil {
 		return nil

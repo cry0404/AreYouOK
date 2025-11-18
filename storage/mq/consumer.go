@@ -5,19 +5,26 @@ import (
 	"fmt"
 
 	// amqp "github.com/rabbitmq/amqp091-go"
-	"go.uber.org/zap"
 	"AreYouOK/pkg/errors"
+
+	"go.uber.org/zap"
 
 	"AreYouOK/pkg/logger"
 )
 
 type MessageHandler func([]byte) error
 
+
+const (
+	MaxRetryCount = 3 
+)
+
 type ConsumeOptions struct {
 	Handler       MessageHandler
 	Queue         string
 	ConsumerTag   string
 	PrefetchCount int
+	MaxRetrise    int
 }
 
 // 设计模式，策略型？
@@ -62,28 +69,28 @@ func Consume(opts ConsumeOptions) error {
 
 	for msg := range msgs {
 		err := opts.Handler(msg.Body)
-	
-	if err != nil {
 
-		if errors.IsSkipMessageError(err) {
-			// 当前消息被取消了，可能是已经消费，也可能是更改了对应的状态
-			logger.Logger.Info("Skipping message",
+		if err != nil {
+
+			if errors.IsSkipMessageError(err) {
+				// 当前消息被取消了，可能是已经消费，也可能是更改了对应的状态
+				logger.Logger.Info("Skipping message",
+					zap.String("queue", opts.Queue),
+					zap.String("reason", err.Error()),
+				)
+				msg.Ack(false)
+				continue
+			}
+
+			// 真正的处理失败，Nack 并 requeue
+			logger.Logger.Error("Failed to process message",
 				zap.String("queue", opts.Queue),
-				zap.String("reason", err.Error()),
+				zap.String("consumer_tag", opts.ConsumerTag),
+				zap.Error(err),
 			)
-			msg.Ack(false)
+			msg.Nack(false, true) // requeue = true
 			continue
 		}
-		
-		// 真正的处理失败，Nack 并 requeue
-		logger.Logger.Error("Failed to process message",
-			zap.String("queue", opts.Queue),
-			zap.String("consumer_tag", opts.ConsumerTag),
-			zap.Error(err),
-		)
-		msg.Nack(false, true) // requeue = true
-		continue
-	}
 
 		msg.Ack(false)
 	}
