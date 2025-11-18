@@ -28,6 +28,7 @@ var (
 	VerificationSliderFailed   = Definition{Code: "VERIFICATION_SLIDER_FAILED", Message: "Slider verification failed"}
 	Unauthorized               = Definition{Code: "UNAUTHORIZED", Message: "Unauthorized"}
 	InvalidUserID              = Definition{Code: "INVALID_USER_ID", Message: "Invalid user ID format"}
+	InvalidPhone               = Definition{Code: "INVALID_PHONE", Message: "Invalid phone number format"}
 )
 
 // 打卡相关错误
@@ -127,6 +128,7 @@ var Lookup = map[string]Definition{
 	ErrUserIDNotFound.Code:               ErrUserIDNotFound,
 	ErrUnexpectedSigningMethod.Code:      ErrUnexpectedSigningMethod,
 	ErrUserNotFound.Code:                 ErrUserNotFound,
+	InvalidPhone.Code:                    InvalidPhone,
 	ErrDatabaseConnectionNil.Code:        ErrDatabaseConnectionNil,
 	ErrFailedToUnmarshalJSONB.Code:       ErrFailedToUnmarshalJSONB,
 	ErrCaptchaTokenRequired.Code:         ErrCaptchaTokenRequired,
@@ -148,4 +150,18 @@ func Get(code string) Definition {
 		return def
 	}
 	return Definition{Code: code, Message: "Unexpected error"}
+}
+
+// SkipMessageError 表示消息应该被跳过（ACK 但不处理）
+type SkipMessageError struct {
+	Reason string
+}
+
+func (e *SkipMessageError) Error() string {
+	return fmt.Sprintf("skip message: %s", e.Reason)
+}
+
+func IsSkipMessageError(err error) bool {
+	_, ok := err.(*SkipMessageError)
+	return ok
 }

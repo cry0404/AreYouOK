@@ -6,8 +6,9 @@ import "time"
 // 授权时确定是否为新（isNewUser） -> 然后授权认证
 // AuthExchangeRequest 支付宝授权换取请求
 type AuthExchangeRequest struct {
-	AuthCode string     `json:"auth_code" binding:"required"`
-	Device   DeviceInfo `json:"device"`
+	EncryptedData string     `json:"encrypted_data" binding:"required"`
+	IV            string     `json:"iv" binding:"required"` // 初始化向量
+	Device        DeviceInfo `json:"device"`
 }
 
 // DeviceInfo 设备信息

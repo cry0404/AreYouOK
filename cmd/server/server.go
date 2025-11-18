@@ -55,13 +55,13 @@ func main() {
 		logger.Logger.Fatal("Failed to initialize snowflake", zap.Error(err))
 	}
 
-	// 初始化 SMS 服务
+
 	if err := sms.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize SMS service", zap.Error(err))
 		logger.Logger.Info("SMS service will be disabled, SMS features may not work")
 	}
 
-	// 初始化滑块验证服务
+
 	if err := slider.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize slider service", zap.Error(err))
 		logger.Logger.Info("Slider service will be disabled, slider verification may not work")
@@ -71,7 +71,7 @@ func main() {
 		logger.Logger.Fatal("Failed to initialize token package", zap.Error(err))
 	} // token 在中间件前初始化，middleware 依赖 token
 
-	// 初始化中间件
+
 	if err := middleware.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize middlewares", zap.Error(err))
 	}
@@ -87,7 +87,7 @@ func main() {
 
 	router.Register(h)
 
-	// 优雅关闭：在单独的 goroutine 中监听关闭信号并调用 Shutdown
+
 	go func() {
 		<-ctx.Done()
 		logger.Logger.Info("Initiating graceful shutdown...")

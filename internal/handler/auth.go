@@ -25,7 +25,7 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	}
 
 	authService := service.Auth()
-	result, err := authService.ExchangeAlipayAuthCode(ctx, req.AuthCode, req.Device)
+	result, err := authService.ExchangeAlipayAuthCode(ctx, req.EncryptedData, req.IV, req.Device)
 
 	if err != nil {
 		response.Error(ctx, c, err)

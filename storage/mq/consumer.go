@@ -6,6 +6,7 @@ import (
 
 	// amqp "github.com/rabbitmq/amqp091-go"
 	"go.uber.org/zap"
+	"AreYouOK/pkg/errors"
 
 	"AreYouOK/pkg/logger"
 )
@@ -60,16 +61,29 @@ func Consume(opts ConsumeOptions) error {
 	)
 
 	for msg := range msgs {
-		if err := opts.Handler(msg.Body); err != nil {
-			logger.Logger.Error("Failed to process message",
-				zap.String("queue", opts.Queue),
-				zap.String("consumer_tag", opts.ConsumerTag),
-				zap.Error(err),
-			)
+		err := opts.Handler(msg.Body)
+	
+	if err != nil {
 
-			msg.Nack(false, true) // requeue = true
+		if errors.IsSkipMessageError(err) {
+			// 当前消息被取消了，可能是已经消费，也可能是更改了对应的状态
+			logger.Logger.Info("Skipping message",
+				zap.String("queue", opts.Queue),
+				zap.String("reason", err.Error()),
+			)
+			msg.Ack(false)
 			continue
 		}
+		
+		// 真正的处理失败，Nack 并 requeue
+		logger.Logger.Error("Failed to process message",
+			zap.String("queue", opts.Queue),
+			zap.String("consumer_tag", opts.ConsumerTag),
+			zap.Error(err),
+		)
+		msg.Nack(false, true) // requeue = true
+		continue
+	}
 
 		msg.Ack(false)
 	}

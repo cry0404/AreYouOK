@@ -37,22 +37,33 @@ func Auth() *AuthService {
 type AuthService struct{}
 
 // 给予授权信息但还未登录注册
-// ExchangeAlipayAuthCode 支付宝授权换取
+// ExchangeAlipayAuthCode 支付宝授权换取（通过加密手机号）
 func (s *AuthService) ExchangeAlipayAuthCode(
 	ctx context.Context,
-	authCode string,
+	encryptedData string,
+	iv string,
 	device dto.DeviceInfo,
 ) (*dto.AuthExchangeResponse, error) {
-	// TODO: 用 authCode 调用支付宝的 api 来获取用户信息
-	alipayUserID := "mock_alipay_userID" + authCode
-	nickname := "cry"
-	// 先 mock 等待贝妮那边处理好
-	// 查询用户是否存在
-	user, err := query.User.Where(query.User.AlipayOpenID.Eq(alipayUserID)).First()
+
+	phone, err := utils.DecryptAlipayPhone(encryptedData, iv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decrypt alipay phone: %w", err)
+	}
+
+	if !utils.ValidatePhone(phone) {
+		return nil, pkgerrors.InvalidPhone
+	}
+
+
+	phoneHash := utils.HashPhone(phone)
+
+
+	user, err := query.User.GetByPhoneHash(phoneHash)
 	isNewUser := false
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+
 			userCount, countErr := query.User.Count()
 			if countErr != nil {
 				return nil, fmt.Errorf("failed to count users: %w", countErr)
@@ -62,49 +73,63 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				return nil, pkgerrors.WaitlistFull
 			}
 
-			// 生成 public_id
+
 			publicID, err := snowflake.NextID()
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate user ID: %w", err)
 			}
 
-			// 创建新用户，内测名额未满时，状态为 onboarding（可以开始注册流程）
-			// 如果内测名额已满，会在上面返回 WaitlistFull 错误
+
+			phoneCipherBase64, err := utils.EncryptPhone(phone)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+			}
+
+			phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
+			}
+
+			// 创建新用户，绑定手机号后状态为 contact（可以开始填写紧急联系人）
+			// 使用 phone_hash 作为 alipay_open_id，因为数据库要求该字段非空且唯一
+			alipayOpenID := "phone_" + phoneHash
 			user = &model.User{
 				PublicID:     publicID,
-				AlipayOpenID: alipayUserID,
-				Nickname:     nickname,
-				Status:       model.UserStatusOnboarding, // 内测名额未满，可以开始注册流程
+				AlipayOpenID: alipayOpenID,
+				Nickname:     "",                      // 默认空昵称
+				Status:       model.UserStatusContact, // 已绑定手机号，进入填写紧急联系人阶段
 				Timezone:     "Asia/Shanghai",
+				PhoneHash:    &phoneHash,
 			}
+
+			// 设置加密手机号
+			user.PhoneCipher = phoneCipherBytes
 
 			if err := query.User.Create(user); err != nil {
 				return nil, fmt.Errorf("failed to create user: %w", err)
 			}
 
 			isNewUser = true
-			logger.Logger.Info("New user created",
+			logger.Logger.Info("New user created via alipay phone",
 				zap.Int64("public_id", publicID),
-				zap.String("alipay_user_id", alipayUserID),
+				zap.String("phone_hash", phoneHash),
 			)
 		} else {
 			return nil, fmt.Errorf("failed to query user: %w", err)
 		}
 	} else {
-		// 用户已存在，检查是否需要激活（waitlisted → onboarding）
-		// 如果用户状态是 waitlisted，且当前内测名额未满，则激活用户
+		// 用户已存在，检查是否需要激活（waitlisted → contact）
 		if user.Status == model.UserStatusWaitlisted {
 			userCount, countErr := query.User.Count()
 			if countErr == nil && userCount < int64(config.Cfg.WaitlistMaxUsers) {
-				// 内测名额未满，激活用户
 				updates := map[string]interface{}{
-					"status": string(model.UserStatusOnboarding),
+					"status": string(model.UserStatusContact),
 				}
 				if _, updateErr := query.User.Where(query.User.PublicID.Eq(user.PublicID)).Updates(updates); updateErr == nil {
-					user.Status = model.UserStatusOnboarding
+					user.Status = model.UserStatusContact
 					logger.Logger.Info("User activated from waitlist",
 						zap.Int64("public_id", user.PublicID),
-						zap.String("alipay_user_id", alipayUserID),
+						zap.String("phone_hash", phoneHash),
 					)
 				}
 			}
@@ -117,7 +142,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 		return nil, fmt.Errorf("failed to generate token: %w", err)
 	}
 
-	// 存储 refresh token 到 Redis，保持缓存即可
+	// 存储 refresh token 到 Redis
 	if err := cache.SetRefreshToken(ctx, userIDStr, refreshToken); err != nil {
 		logger.Logger.Warn("Failed to store refresh token in Redis",
 			zap.String("user_id", userIDStr),
@@ -126,8 +151,8 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 		// 不返回错误，因为 token 已经生成成功
 	}
 
-	// 检查手机号是否已验证
-	phoneVerified := user.PhoneHash != nil && *user.PhoneHash != ""
+	// 手机号已验证（因为是从支付宝获取的）
+	phoneVerified := true
 
 	return &dto.AuthExchangeResponse{
 		AccessToken:  accessToken,
@@ -138,7 +163,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			Nickname:      user.Nickname,
 			Status:        model.StatusToStringMap[user.Status],
 			PhoneVerified: phoneVerified,
-			IsNewUser:     isNewUser, // 默认为 false
+			IsNewUser:     isNewUser,
 		},
 	}, nil
 }
@@ -191,7 +216,6 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 		return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
 	}
 
-	// 更新用户手机号和状态
 	updates := map[string]interface{}{
 		"phone_cipher": phoneCipherBytes,
 		"phone_hash":   phoneHash,
@@ -200,7 +224,6 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 	// 状态流转：绑定手机号后的状态转换
 	// waitlisted → contact：绑定手机号后，直接进入填写紧急联系人阶段
 	// onboarding → contact：如果用户之前已经是 onboarding 状态（已授权但未绑定手机号），绑定后进入填写紧急联系人阶段
-	// 注意：绑定手机号后，用户应该进入 contact 状态，因为下一步就是填写紧急联系人
 	if user.Status == model.UserStatusWaitlisted || user.Status == model.UserStatusOnboarding {
 		updates["status"] = string(model.UserStatusContact)
 	}
