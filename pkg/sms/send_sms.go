@@ -11,12 +11,11 @@ import (
 // SendCaptchaSMS 发送验证码短信
 // phone: 手机号
 // code: 验证码
-// scene: 场景（register/login），用于选择不同的模板
-func SendCaptchaSMS(ctx context.Context, phone, code, scene string) error {
+
+func SendCaptchaSMS(ctx context.Context, phone, code string) error {
 	cfg := config.Cfg
 
-	// 根据 scene 选择模板代码和签名
-	// 具体届时配置 login 和 register 的模板即可
+	//不再区分对应模板了，统一发送验证码
 	signName := cfg.SMSSignName
 	templateCode := cfg.SMSTemplateCode // 暂时先默认使用配置的模板
 

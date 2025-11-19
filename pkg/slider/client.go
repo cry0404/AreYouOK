@@ -16,9 +16,9 @@ import (
 type Client interface {
 	// Verify 验证滑块 token
 	// captchaVerifyToken: 前端滑块组件返回的验证 token
-	// remoteIp: 用户 IP 地址
-	// scene: 验证场景（如 "register", "login"）
-	Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error)
+
+	// sceneid: 对应的业务场景
+	Verify(ctx context.Context, captchaVerifyParam,  sceneid string) (bool, error)
 }
 
 var (
@@ -62,6 +62,6 @@ func GetClient() Client {
 	return sliderClient
 }
 
-func Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
-	return GetClient().Verify(ctx, captchaVerifyToken, remoteIp, scene)
+func Verify(ctx context.Context, captchaVerifyParam, sceneid string) (bool, error) {
+	return GetClient().Verify(ctx, captchaVerifyParam,  sceneid)
 }

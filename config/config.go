@@ -11,6 +11,7 @@ var Cfg Config
 
 type Config struct {
 	AlipayAppSecret         string `env:"ALIPAY_APP_SECRET"`
+	CaptchaSceneId			string `env:"CAPTCHA_SCENE_ID"`
 	PostgreSQLPassword      string `env:"POSTGRESQL_PASSWORD" envDefault:"postgres"`
 	Environment             string `env:"ENVIRONMENT" envDefault:"development"`
 	ServiceName             string `env:"SERVICE_NAME" envDefault:"areyouok"`

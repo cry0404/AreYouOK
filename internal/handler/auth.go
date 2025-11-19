@@ -13,7 +13,7 @@ import (
 	"AreYouOK/utils"
 )
 
-// ExchangeAlipayAuth 支付宝授权换取
+// ExchangeAlipayAuth 支付宝授权换取， 这里可以直接绑定
 // POST /v1/auth/miniapp/alipay/exchange
 // uid 是 是 public_id, 也就是生成的雪花 id
 func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
@@ -35,6 +35,7 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	response.Success(ctx, c, result)
 } // 先去完善存储层
 
+
 // SendCaptcha 发送验证码
 // POST /v1/auth/phone/send-captcha
 func SendCaptcha(ctx context.Context, c *app.RequestContext) {
@@ -54,7 +55,7 @@ func SendCaptcha(ctx context.Context, c *app.RequestContext) {
 	}
 
 	verifiService := service.Verification()
-	if err := verifiService.SendCaptcha(ctx, req.Phone, req.Scene, req.SliderToken); err != nil {
+	if err := verifiService.SendCaptcha(ctx, req.Phone, req.SceneId, req.CaptchaVerifyParam); err != nil {
 		response.Error(ctx, c, err)
 		return
 	}
@@ -66,6 +67,8 @@ func SendCaptcha(ctx context.Context, c *app.RequestContext) {
 
 // VerifySlider 滑块验证， 滑块验证不需要区分对应的场景
 // POST /v1/auth/phone/verify-slider
+
+// encrypted_data 在这个部分验证
 func VerifySlider(ctx context.Context, c *app.RequestContext) {
 	var req dto.VerifySliderRequest
 
@@ -82,14 +85,8 @@ func VerifySlider(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	// 获取客户端 IP
-	remoteIp := c.ClientIP()
-	if remoteIp == "" {
-		remoteIp = c.RemoteAddr().String()
-	}
-
 	verifiService := service.Verification()
-	token, expiresAt, err := verifiService.VerifySlider(ctx, req.Phone, req.SliderToken, remoteIp)
+	token, expiresAt, err := verifiService.VerifySlider(ctx, req.Phone, req.SceneId, req.CaptchaVerifyParam)
 	if err != nil {
 		response.Error(ctx, c, err)
 		return
@@ -101,7 +98,7 @@ func VerifySlider(ctx context.Context, c *app.RequestContext) {
 	})
 } // slider 后还是需要继续验证码验证的
 
-// VerifyCaptcha 验证码验证
+// VerifyCaptcha 验证码验证， 这里也是一个可以直接实现的部分，不需要验证码
 // POST /v1/auth/phone/verify
 func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 	var req dto.VerifyCaptchaRequest
@@ -137,7 +134,7 @@ func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 	// }
 
 	authService := service.Auth()
-	result, err := authService.VerifyPhoneCaptchaAndBind(ctx, userID, req.Phone, req.VerifyCode, req.Scene)
+	result, err := authService.VerifyPhoneCaptchaAndBind(ctx, userID, req.Phone, req.VerifyCode, req.SceneId)
 
 	if err != nil {
 		response.Error(ctx, c, err)

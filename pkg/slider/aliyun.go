@@ -45,23 +45,22 @@ func NewAliyunClient() (*AliyunClient, error) {
 // captchaVerifyToken: 前端滑块组件返回的验证 token（CaptchaVerifyParam）
 // remoteIp: 用户 IP 地址（当前版本 API 不需要此参数）， 暂时只是用于日志记录
 // scene: 验证场景（SceneId）
-func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
-	if captchaVerifyToken == "" {
+func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyParam,  sceneid string) (bool, error) {
+	if captchaVerifyParam == "" {
 		return false, errors.ErrCaptchaTokenRequired
 	}
 
 	// 直接使用前端返回的 token 作为 CaptchaVerifyParam
 	// 前端滑块组件返回的 token 已经包含了所有必要的验证信息（包括 appkey、verifyToken 等）
 	request := &captcha.VerifyIntelligentCaptchaRequest{
-		CaptchaVerifyParam: tea.String(captchaVerifyToken),
-		SceneId:            tea.String(scene),
+		CaptchaVerifyParam: tea.String(captchaVerifyParam),
+		SceneId:            tea.String(sceneid),
 	}
 
 	response, err := c.client.VerifyIntelligentCaptcha(request)
 	if err != nil {
 		logger.Logger.Error("Failed to verify captcha",
-			zap.String("scene", scene),
-			zap.String("remoteIp", remoteIp),
+			zap.String("sceneid", sceneid),
 			zap.Error(err),
 		)
 		return false, fmt.Errorf("failed to verify captcha: %w", err)
@@ -74,10 +73,7 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp,
 	body := response.Body
 
 	if body.Result != nil && body.Result.VerifyResult != nil && *body.Result.VerifyResult {
-		logger.Logger.Info("Captcha verification successful",
-			zap.String("scene", scene),
-			zap.String("remoteIp", remoteIp),
-		)
+		
 		return true, nil
 	}
 
@@ -89,13 +85,13 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp,
 		logger.Logger.Warn("Captcha verification failed",
 			zap.String("code", *body.Code),
 			zap.String("message", message),
-			zap.String("scene", scene),
+			zap.String("sceneid", sceneid),
 		)
 		return false, fmt.Errorf("%w: %s - %s", errors.ErrCaptchaVerificationFailed, *body.Code, message)
 	}
 
 	logger.Logger.Warn("Captcha verification failed: verify result is false",
-		zap.String("scene", scene),
+		zap.String("sceneid", sceneid),
 	)
 	return false, errors.ErrCaptchaVerificationFailed
 }

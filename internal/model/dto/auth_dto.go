@@ -46,14 +46,15 @@ type AuthUserSnapshot struct {
 // SendCaptchaRequest 发送验证码请求
 type SendCaptchaRequest struct {
 	Phone       string `json:"phone" binding:"required"`
-	Scene       string `json:"scene" binding:"required"` // 场景，是基于登录还是注册时，可以切换不同的短信模板
-	SliderToken string `json:"slider_token,omitempty"`
+	SceneId       string `json:"scene_id" binding:"required"` // 场景，是基于登录还是注册时，可以切换不同的短信模板
+	CaptchaVerifyParam string `json:"captcha_verify_param,omitempty"`
 }
 
 // VerifySliderRequest 滑块验证请求
 type VerifySliderRequest struct {
-	Phone       string `json:"phone" binding:"required"`
-	SliderToken string `json:"slider_token" binding:"required"`
+	Phone              string `json:"phone" binding:"required"`
+	CaptchaVerifyParam string `json:"captcha_verify_param" binding:"required"`
+	SceneId            string `json:"scene_id" binding:"required"`
 }
 
 // VerifySliderResponse 滑块验证响应
@@ -66,8 +67,8 @@ type VerifySliderResponse struct {
 type VerifyCaptchaRequest struct {
 	Phone       string `json:"phone" binding:"required"`
 	VerifyCode  string `json:"verify_code" binding:"required"`
-	Scene       string `json:"scene" binding:"required"`
-	SliderToken string `json:"slider_token,omitempty"`
+	SceneId     string `json:"scene_id" binding:"required"`
+	CaptchaVerifyParam string `json:"captcha_verify_param,omitempty"` // 根据是否到达上线
 }
 
 // VerifyCaptchaResponse 验证码验证响应

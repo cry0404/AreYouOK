@@ -11,7 +11,7 @@ import (
 type MockClient struct{}
 
 // Verify Mock 验证方法
-func (m *MockClient) Verify(ctx context.Context, captchaVerifyToken, remoteIp, scene string) (bool, error) {
+func (m *MockClient) Verify(ctx context.Context, captchaVerifyToken, scene string) (bool, error) {
 	if captchaVerifyToken == "" {
 		return false, errors.ErrCaptchaTokenRequired
 	}

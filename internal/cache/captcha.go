@@ -46,21 +46,21 @@ const (
 // SetCaptcha 存储验证码
 // Key: ayok:captcha:{phoneHash}
 // TTL: 120秒
-// scene: 代表具体的场景，注册还是登录，对应不同的短信模板
-func SetCaptcha(ctx context.Context, phoneHash, scene, code string) error {
-	key := redis.Key(cap, phoneHash, scene)
+// 不再跟 scene 相关
+func SetCaptcha(ctx context.Context, phoneHash, code string) error {
+	key := redis.Key(cap, phoneHash)
 	ttl := time.Duration(config.Cfg.CaptchaExpireSeconds) * time.Second
 
 	return redis.Client().Set(ctx, key, code, ttl).Err()
 }
 
-func GetCaptcha(ctx context.Context, phoneHash, scene string) (string, error) {
-	key := redis.Key(cap, phoneHash, scene)
+func GetCaptcha(ctx context.Context, phoneHash string) (string, error) {
+	key := redis.Key(cap, phoneHash)
 	return redis.Client().Get(ctx, key).Result()
 }
 
-func DeleteCaptcha(ctx context.Context, phoneHash, scene string) error {
-	key := redis.Key(cap, phoneHash, scene)
+func DeleteCaptcha(ctx context.Context, phoneHash string) error {
+	key := redis.Key(cap, phoneHash)
 	return redis.Client().Del(ctx, key).Err()
 }
 

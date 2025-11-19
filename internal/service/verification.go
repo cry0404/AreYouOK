@@ -53,8 +53,8 @@ func generateCaptchaCode() string {
 func (s *VerificationService) SendCaptcha(
 	ctx context.Context,
 	phone string,
-	scene string,
-	sliderToken string,
+	sceneid string,
+	captchaVerifyParam string,
 ) error {
 	phoneHash := utils.HashPhone(phone)
 
@@ -70,29 +70,28 @@ func (s *VerificationService) SendCaptcha(
 	needSlider := count > config.Cfg.CaptchaSliderThreshold
 
 	if needSlider {
-		if sliderToken == "" {
+		if captchaVerifyParam == "" {
 			return pkgerrors.VerificationSliderRequired
 		} // 这个地方还需要考虑前端那边需不需要重复统计，不然默认超过两次后还是会请求这个节点一次, 可以考虑返回后再是否加载
 
-		if !cache.ValidateSliderVerificationToken(ctx, phoneHash, sliderToken) {
+		if !cache.ValidateSliderVerificationToken(ctx, phoneHash, captchaVerifyParam) {
 			return pkgerrors.VerificationSliderFailed
 		}
 	}
 
 	code := generateCaptchaCode()
 
-	if err := cache.SetCaptcha(ctx, phoneHash, scene, code); err != nil {
+	if err := cache.SetCaptcha(ctx, phoneHash, code); err != nil {
 		return fmt.Errorf("failed to store captcha: %w", err)
 	}
 
 	// 发送短信验证码
 	// 短信发送失败，验证码也已经存储，用户仍可以通过其他方式获取, 考虑提供一个服务层的服务发送失败时删除验证码，然后返回给前端错误
 
-	if err := sms.SendCaptchaSMS(ctx, phone, code, scene); err != nil {
-		cache.DeleteCaptcha(ctx, phoneHash, scene)
+	if err := sms.SendCaptchaSMS(ctx, phone, code); err != nil {
+		cache.DeleteCaptcha(ctx, phoneHash)
 		logger.Logger.Error("Failed to send captcha SMS",
 			zap.String("phone", phone),
-			zap.String("scene", scene),
 			zap.Error(err),
 		)
 
@@ -107,15 +106,19 @@ func (s *VerificationService) SendCaptcha(
 func (s *VerificationService) VerifySlider(
 	ctx context.Context,
 	phone string,
-	sliderToken string,
-	remoteIp string,
+	sceneid string,
+	captchaVerifyParam string,
+
 ) (string, time.Time, error) {
 	phoneHash := utils.HashPhone(phone)
 
 	// 使用阿里云验证码 SDK 验证滑块 token
 	// sliderToken 是前端滑块组件返回的 captchaVerifyToken
-	scene := "default" // 可以根据业务场景调整
-	valid, err := slider.Verify(ctx, sliderToken, remoteIp, scene)
+	if sceneid != config.Cfg.CaptchaSceneId {
+		return "场景 id 篡改", time.Time{}, pkgerrors.VerificationSliderFailed
+	}
+
+	valid, err := slider.Verify(ctx, captchaVerifyParam, sceneid)
 	if err != nil {
 		logger.Logger.Error("Failed to verify slider token",
 			zap.String("phone", phone),
@@ -157,7 +160,7 @@ func (s *VerificationService) VerifyCaptcha(
 ) error {
 	phoneHash := utils.HashPhone(phone)
 
-	storedCode, err := cache.GetCaptcha(ctx, phoneHash, scene)
+	storedCode, err := cache.GetCaptcha(ctx, phoneHash)
 
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
@@ -170,7 +173,7 @@ func (s *VerificationService) VerifyCaptcha(
 		return pkgerrors.VerificationCodeInvalid
 	}
 
-	cache.DeleteCaptcha(ctx, phoneHash, scene)
+	cache.DeleteCaptcha(ctx, phoneHash)
 	// 验证成功后删除
 	return nil
 }
