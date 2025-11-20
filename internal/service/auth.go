@@ -54,9 +54,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 		return nil, pkgerrors.InvalidPhone
 	}
 
-
 	phoneHash := utils.HashPhone(phone)
-
 
 	user, err := query.User.GetByPhoneHash(phoneHash)
 	isNewUser := false
@@ -73,12 +71,10 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				return nil, pkgerrors.WaitlistFull
 			}
 
-
 			publicID, err := snowflake.NextID()
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate user ID: %w", err)
 			}
-
 
 			phoneCipherBase64, err := utils.EncryptPhone(phone)
 			if err != nil {
@@ -168,17 +164,15 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 	}, nil
 }
 
-// 登录时的内容
-// VerifyPhoneCaptchaAndBind 验证验证码并绑定手机号
+// VerifyPhoneCaptchaAndBind 验证验证码并绑定手机号（已登录用户）
 func (s *AuthService) VerifyPhoneCaptchaAndBind(
 	ctx context.Context,
 	userID string, // 从 JWT token 中获取的 public_id
 	phone string,
 	code string,
-	scene string,
 ) (*dto.VerifyCaptchaResponse, error) {
 	verifiService := Verification()
-	if err := verifiService.VerifyCaptcha(ctx, phone, scene, code); err != nil {
+	if err := verifiService.VerifyCaptcha(ctx, phone, code); err != nil {
 		return nil, err
 	}
 
@@ -260,6 +254,108 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 			Status:        model.StatusToStringMap[user.Status], // 根据 status 后续跳转
 			PhoneVerified: true,
 			IsNewUser:     false,
+		},
+	}, nil
+}
+
+// VerifyPhoneCaptchaAndLogin 验证验证码并注册/登录（无需已登录）
+func (s *AuthService) VerifyPhoneCaptchaAndLogin(
+	ctx context.Context,
+	phone string,
+	code string,
+) (*dto.VerifyCaptchaResponse, error) {
+	// 验证验证码
+	verifiService := Verification()
+	if err := verifiService.VerifyCaptcha(ctx, phone, code); err != nil {
+		return nil, err
+	}
+
+	phoneHash := utils.HashPhone(phone)
+
+	// 查询用户是否存在
+	user, err := query.User.GetByPhoneHash(phoneHash)
+	isNewUser := false
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 新用户注册
+			userCount, countErr := query.User.Count()
+			if countErr != nil {
+				return nil, fmt.Errorf("failed to count users: %w", countErr)
+			}
+
+			if userCount >= int64(config.Cfg.WaitlistMaxUsers) {
+				return nil, pkgerrors.WaitlistFull
+			}
+
+			// 生成用户 ID
+			publicID, err := snowflake.NextID()
+			if err != nil {
+				return nil, fmt.Errorf("failed to generate user ID: %w", err)
+			}
+
+			// 加密手机号
+			phoneCipherBase64, err := utils.EncryptPhone(phone)
+			if err != nil {
+				return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+			}
+
+			phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
+			if err != nil {
+				return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
+			}
+
+			// 创建新用户，状态为 contact（已验证手机号，需要填写紧急联系人）
+			alipayOpenID := "phone_" + phoneHash
+			user = &model.User{
+				PublicID:     publicID,
+				AlipayOpenID: alipayOpenID,
+				Nickname:     "",
+				Status:       model.UserStatusContact,
+				Timezone:     "Asia/Shanghai",
+				PhoneHash:    &phoneHash,
+				PhoneCipher:  phoneCipherBytes,
+			}
+
+			if err := query.User.Create(user); err != nil {
+				return nil, fmt.Errorf("failed to create user: %w", err)
+			}
+
+			isNewUser = true
+			logger.Logger.Info("New user registered via phone verification",
+				zap.Int64("public_id", publicID),
+				zap.String("phone_hash", phoneHash),
+			)
+		} else {
+			return nil, fmt.Errorf("failed to query user: %w", err)
+		}
+	}
+
+	// 生成 token
+	userIDStr := fmt.Sprintf("%d", user.PublicID)
+	accessToken, refreshToken, expiresIn, err := token.GenerateTokenPair(userIDStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate token: %w", err)
+	}
+
+	// 存储 refresh token 到 Redis
+	if err := cache.SetRefreshToken(ctx, userIDStr, refreshToken); err != nil {
+		logger.Logger.Warn("Failed to store refresh token in Redis",
+			zap.String("user_id", userIDStr),
+			zap.Error(err),
+		)
+	}
+
+	return &dto.VerifyCaptchaResponse{
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    expiresIn,
+		User: dto.AuthUserSnapshot{
+			ID:            userIDStr,
+			Nickname:      user.Nickname,
+			Status:        model.StatusToStringMap[user.Status],
+			PhoneVerified: true,
+			IsNewUser:     isNewUser,
 		},
 	}, nil
 }

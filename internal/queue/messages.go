@@ -53,6 +53,7 @@ type NotificationMessage struct {
 	TaskID          int64                  `json:"task_id"`
 	UserID          int64                  `json:"user_id"`
 	ContactPriority int                    `json:"contact_priority"`
+	CheckInDate     string                 `json:"check_in_date,omitempty"` // 打卡日期（仅用于 check_in_reminder 类别）
 }
 
 // EventMessage 事件消息（用于事件总线）

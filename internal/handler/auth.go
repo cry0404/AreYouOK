@@ -13,6 +13,8 @@ import (
 	"AreYouOK/utils"
 )
 
+// TODO：可能还需要一个 get 当前 status 的部分，来给前端告诉内测名额还剩余多少
+
 // ExchangeAlipayAuth 支付宝授权换取， 这里可以直接绑定
 // POST /v1/auth/miniapp/alipay/exchange
 // uid 是 是 public_id, 也就是生成的雪花 id
@@ -35,7 +37,6 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	response.Success(ctx, c, result)
 } // 先去完善存储层
 
-
 // SendCaptcha 发送验证码
 // POST /v1/auth/phone/send-captcha
 func SendCaptcha(ctx context.Context, c *app.RequestContext) {
@@ -55,7 +56,7 @@ func SendCaptcha(ctx context.Context, c *app.RequestContext) {
 	}
 
 	verifiService := service.Verification()
-	if err := verifiService.SendCaptcha(ctx, req.Phone, req.SceneId, req.CaptchaVerifyParam); err != nil {
+	if err := verifiService.SendCaptcha(ctx, req.Phone, req.SceneId, req.VerifyToken); err != nil {
 		response.Error(ctx, c, err)
 		return
 	}
@@ -98,7 +99,9 @@ func VerifySlider(ctx context.Context, c *app.RequestContext) {
 	})
 } // slider 后还是需要继续验证码验证的
 
-// VerifyCaptcha 验证码验证， 这里也是一个可以直接实现的部分，不需要验证码
+// VerifyCaptcha 验证码验证，支持两种场景：
+// 1. 无需登录：手机号+验证码直接注册/登录
+// 2. 已登录：绑定/更换手机号
 // POST /v1/auth/phone/verify
 func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 	var req dto.VerifyCaptchaRequest
@@ -116,25 +119,21 @@ func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 		return
 	}
 
-	userID, ok := middleware.GetUserID(ctx, c)
-	if !ok {
-		c.JSON(500, response.ErrorResponse{
-			Error: response.ErrorDetail{
-				Code:    "INTERANL_ERROR",
-				Message: "Server can not find userID in context",
-			}})
-
-		return
-	}
-	// 并入到了 auth 当中去了
-	// verifiService := service.Verification()
-	// if err := verifiService.VerifyCaptcha(ctx, req.Phone, req.Scene, req.VerifyCode); err != nil {
-	// 	response.Error(ctx, c, err)
-	// 	return
-	// }
-
 	authService := service.Auth()
-	result, err := authService.VerifyPhoneCaptchaAndBind(ctx, userID, req.Phone, req.VerifyCode, req.SceneId)
+
+	// 尝试从 context 获取 userID（如果已登录）
+	userID, hasUserID := middleware.GetUserID(ctx, c)
+
+	var result *dto.VerifyCaptchaResponse
+	var err error
+
+	if hasUserID {
+		// 场景1：已登录用户绑定/更换手机号
+		result, err = authService.VerifyPhoneCaptchaAndBind(ctx, userID, req.Phone, req.VerifyCode)
+	} else {
+		// 场景2：新用户注册或老用户登录
+		result, err = authService.VerifyPhoneCaptchaAndLogin(ctx, req.Phone, req.VerifyCode)
+	}
 
 	if err != nil {
 		response.Error(ctx, c, err)
@@ -168,6 +167,13 @@ func RefreshToken(ctx context.Context, c *app.RequestContext) {
 // 不再需要
 // // GetWaitlistStatus 查询内测排队状态
 // // GET /v1/auth/waitlist/status
-// func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
-// 	// TODO: 实现查询排队状态逻辑
-// }
+func GetWaitlistStatus(ctx context.Context, c *app.RequestContext) {
+	userService := service.User()
+	result, err := userService.GetWaitlistStatus(ctx)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.Success(ctx, c, result)
+}

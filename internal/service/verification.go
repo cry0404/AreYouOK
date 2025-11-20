@@ -54,7 +54,7 @@ func (s *VerificationService) SendCaptcha(
 	ctx context.Context,
 	phone string,
 	sceneid string,
-	captchaVerifyParam string,
+	verifyToken string,
 ) error {
 	phoneHash := utils.HashPhone(phone)
 
@@ -70,11 +70,16 @@ func (s *VerificationService) SendCaptcha(
 	needSlider := count > config.Cfg.CaptchaSliderThreshold
 
 	if needSlider {
-		if captchaVerifyParam == "" {
+		// 说明被篡改也需要返回
+		if sceneid != config.Cfg.CaptchaSceneId {
+			return pkgerrors.VerificationSliderFailed
+		}
+
+		if verifyToken == "" {
 			return pkgerrors.VerificationSliderRequired
 		} // 这个地方还需要考虑前端那边需不需要重复统计，不然默认超过两次后还是会请求这个节点一次, 可以考虑返回后再是否加载
 
-		if !cache.ValidateSliderVerificationToken(ctx, phoneHash, captchaVerifyParam) {
+		if !cache.ValidateSliderVerificationToken(ctx, phoneHash, verifyToken) {
 			return pkgerrors.VerificationSliderFailed
 		}
 	}
@@ -155,7 +160,6 @@ func (s *VerificationService) VerifySlider(
 func (s *VerificationService) VerifyCaptcha(
 	ctx context.Context,
 	phone string,
-	scene string,
 	code string,
 ) error {
 	phoneHash := utils.HashPhone(phone)

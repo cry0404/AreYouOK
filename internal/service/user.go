@@ -173,7 +173,8 @@ func (s *UserService) GetUserProfile(
 }
 
 // UpdateUserSettings 更新用户设置， 需要更新 redis 中对应的缓存， 来帮助消息队列确认发送的消息是符合当前用户的预期的
-// 以及考虑更新后是否重新发送对应的消息，在这里处理对应的消息投递，改晚了还是改早了
+// 以及考虑更新后是否重新发送对应的消息，在这里处理对应的消息投递，改晚了还是改早了，通过更新的部分以及检查今日是否已经投递了来
+// 考虑是否重新投递消息
 // 通过幂等性来过滤
 func (s *UserService) UpdateUserSettings(
 	ctx context.Context,
@@ -286,6 +287,20 @@ func (s *UserService) GetUserQuotas(
 		VoiceBalance:   voiceBalance,
 		SMSUnitPrice:   0.05,
 		VoiceUnitPrice: 0.1,
+	}
+
+	return result, nil
+}
+
+// GetWaitlistStatus 获取内测排队状态
+func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatusData, error) {
+	userCount, err := query.User.CountByStatus()
+	if err != nil {
+		return nil, fmt.Errorf("failed to count users: %w", err)
+	}
+
+	result := &dto.WaitlistStatusData{
+		UserCount: len(userCount),
 	}
 
 	return result, nil

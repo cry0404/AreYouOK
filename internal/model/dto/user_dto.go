@@ -54,3 +54,7 @@ type QuotaBalance struct {
 	SMSUnitPrice   float32 `json:"sms_unit_price,omitempty"`
 	VoiceUnitPrice float32 `json:"voice_unit_price,omitempty"`
 }
+
+type WaitlistStatusData struct {
+	UserCount int `json:"user_count"`
+}

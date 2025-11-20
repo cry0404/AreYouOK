@@ -6,7 +6,7 @@ import (
 )
 
 
-
+// 基于 task_id 来实现幂等性
 type NotificationService struct{}
 
 var (

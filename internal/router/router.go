@@ -16,7 +16,7 @@ func Register(h *server.Hertz) {
 		auth.POST("/miniapp/alipay/exchange", handler.ExchangeAlipayAuth)
 		auth.POST("/phone/send-captcha", handler.SendCaptcha)
 		auth.POST("/phone/verify-slider", handler.VerifySlider)
-		auth.POST("/phone/verify", middleware.AuthMiddleware(), handler.VerifyCaptcha)
+		auth.POST("/phone/verify",  handler.VerifyCaptcha)
 		auth.POST("/token/refresh", handler.RefreshToken)
 		// auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	}
@@ -47,7 +47,7 @@ func Register(h *server.Hertz) {
 		checkIns.GET("/today", handler.GetTodayCheckIn)
 		checkIns.POST("/today/complete", handler.CompleteTodayCheckIn)
 		checkIns.GET("/history", handler.GetCheckInHistory)
-		checkIns.POST("/ack-reminder", handler.AckCheckInReminder)
+		//checkIns.POST("/ack-reminder", handler.AckCheckInReminder)
 	}
 
 	// 行程报备路由

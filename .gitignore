@@ -8,3 +8,6 @@ config/.env
 .env
 .vscode/
 *.http
+idea.md
+
+liucheng.md

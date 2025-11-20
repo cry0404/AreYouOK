@@ -1,0 +1,25 @@
+groups:
+  - name: message_queue
+    rules:
+      # 死信队列消息堆积告警
+      - alert: DLQMessageAccumulation
+        expr: mq_dlq_message_count > 10
+        for: 5m
+        annotations:
+          summary: "死信队列消息堆积"
+          description: "队列 {{ $labels.queue }} 死信消息数量: {{ $value }}"
+      
+      # 本地消息表待补偿消息堆积
+      - alert: OutboxPendingAccumulation
+        expr: outbox_pending_messages_count > 100
+        for: 10m
+        annotations:
+          summary: "待补偿消息堆积"
+          description: "待补偿消息数量: {{ $value }}"
+      
+      # 消息发送失败率过高
+      - alert: MessagePublishFailureRate
+        expr: rate(mq_message_publish_failures_total[5m]) > 0.1
+        for: 5m
+        annotations:
+          summary: "消息发送失败率过高"
