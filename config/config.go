@@ -10,8 +10,9 @@ import (
 var Cfg Config
 
 type Config struct {
+	AliPayAESKey            string `env:"ALIPAY_AES_KEY"`
 	AlipayAppSecret         string `env:"ALIPAY_APP_SECRET"`
-	CaptchaSceneId			string `env:"CAPTCHA_SCENE_ID"`
+	CaptchaSceneId          string `env:"CAPTCHA_SCENE_ID"`
 	PostgreSQLPassword      string `env:"POSTGRESQL_PASSWORD" envDefault:"postgres"`
 	Environment             string `env:"ENVIRONMENT" envDefault:"development"`
 	ServiceName             string `env:"SERVICE_NAME" envDefault:"areyouok"`
@@ -41,7 +42,6 @@ type Config struct {
 	PhoneHashSalt           string `env:"PHONEHASH_SALT"`
 	ServerPort              string `env:"SERVER_PORT" envDefault:"8888"`
 	AlipayGateway           string `env:"ALIPAY_GATEWAY" envDefault:"https://openapi.alipay.com/gateway.do"`
-	AlipayAESKey            string `env:"ALIPAY_AES_KEY"` // 支付宝 AES 密钥，用于解密手机号
 	AliCloudAccessKeyID     string `env:"ALIBABA_CLOUD_ACCESS_KEY_ID"`
 	AliCloudAccessKeySecret string `env:"ALIBABA_CLOUD_ACCESS_KEY_SECRET"`
 	SMSProvider             string `env:"SMS_PROVIDER" envDefault:"aliyun"`

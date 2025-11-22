@@ -13,6 +13,8 @@ import (
 	"AreYouOK/storage/mq"
 )
 
+// sms 和 voice 都属于消息，由两个部分来投递，task 作为消费
+
 // StartCheckInReminderConsumer 启动打卡提醒消费者
 func StartCheckInReminderConsumer(ctx context.Context) error {
 	handler := func(body []byte) error {
@@ -113,6 +115,13 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 		Handler:       handler,
 	})
 }
+
+
+
+
+//==================== 分界线 ====================
+
+
 
 // StartSMSNotificationConsumer 启动短信通知消费者
 func StartSMSNotificationConsumer(ctx context.Context) error {

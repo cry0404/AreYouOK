@@ -2,6 +2,8 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -23,11 +25,47 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 
 	if err := c.BindAndValidate(&req); err != nil {
 		response.BindError(ctx, c, err)
-		return // 判断 binding “required” 是否填写
+		return // 判断 binding "required" 是否填写
+	}
+
+	encryptedData := req.EncryptedData
+	if req.Response != "" {
+		alipayResp := map[string]string{
+			"response": req.Response,
+		}
+		if req.Sign != "" {
+			alipayResp["sign"] = req.Sign
+		}
+		if req.SignType != "" {
+			alipayResp["sign_type"] = req.SignType
+		} else {
+			alipayResp["sign_type"] = "RSA2" // 默认值
+		}
+		if req.EncryptType != "" {
+			alipayResp["encrypt_type"] = req.EncryptType
+		} else {
+			alipayResp["encrypt_type"] = "AES" // 默认值
+		}
+		if req.Charset != "" {
+			alipayResp["charset"] = req.Charset
+		} else {
+			alipayResp["charset"] = "UTF-8" // 默认值
+		}
+
+
+		jsonBytes, err := json.Marshal(alipayResp)
+		if err != nil {
+			response.Error(ctx, c, errors.Definition{
+				Code:    "INVALID_REQUEST",
+				Message: fmt.Sprintf("Failed to marshal alipay response: %v", err),
+			})
+			return
+		}
+		encryptedData = string(jsonBytes)
 	}
 
 	authService := service.Auth()
-	result, err := authService.ExchangeAlipayAuthCode(ctx, req.EncryptedData, req.IV, req.Device)
+	result, err := authService.ExchangeAlipayAuthCode(ctx, encryptedData, req.Device)
 
 	if err != nil {
 		response.Error(ctx, c, err)

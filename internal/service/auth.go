@@ -41,11 +41,10 @@ type AuthService struct{}
 func (s *AuthService) ExchangeAlipayAuthCode(
 	ctx context.Context,
 	encryptedData string,
-	iv string,
 	device dto.DeviceInfo,
 ) (*dto.AuthExchangeResponse, error) {
 
-	phone, err := utils.DecryptAlipayPhone(encryptedData, iv)
+	phone, err := utils.DecryptAlipayPhone(encryptedData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt alipay phone: %w", err)
 	}
@@ -288,13 +287,13 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				return nil, pkgerrors.WaitlistFull
 			}
 
-			// 生成用户 ID
+
 			publicID, err := snowflake.NextID()
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate user ID: %w", err)
 			}
 
-			// 加密手机号
+
 			phoneCipherBase64, err := utils.EncryptPhone(phone)
 			if err != nil {
 				return nil, fmt.Errorf("failed to encrypt phone: %w", err)
@@ -306,7 +305,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 			}
 
 			// 创建新用户，状态为 contact（已验证手机号，需要填写紧急联系人）
-			alipayOpenID := "phone_" + phoneHash
+			alipayOpenID := "phone_" + fmt.Sprintf("%d", publicID)
 			user = &model.User{
 				PublicID:     publicID,
 				AlipayOpenID: alipayOpenID,

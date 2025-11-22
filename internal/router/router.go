@@ -8,6 +8,9 @@ import (
 )
 
 func Register(h *server.Hertz) {
+
+	h.Use(middleware.CORSMiddleware())
+
 	v1 := h.Group("/v1")
 
 	// 认证相关路由
@@ -16,7 +19,7 @@ func Register(h *server.Hertz) {
 		auth.POST("/miniapp/alipay/exchange", handler.ExchangeAlipayAuth)
 		auth.POST("/phone/send-captcha", handler.SendCaptcha)
 		auth.POST("/phone/verify-slider", handler.VerifySlider)
-		auth.POST("/phone/verify",  handler.VerifyCaptcha)
+		auth.POST("/phone/verify", handler.VerifyCaptcha)
 		auth.POST("/token/refresh", handler.RefreshToken)
 		// auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	}

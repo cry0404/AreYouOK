@@ -12,12 +12,8 @@ import (
 	"AreYouOK/storage/redis"
 )
 
-// Close 优雅关闭所有存储连接
-// 关闭顺序：MQ -> Redis -> Database
-// 1. 先停止接收新消息（MQ）
-// 2. 然后关闭缓存连接（Redis）
-// 3. 最后关闭数据库连接（Database），确保数据持久化完成
 func Close() {
+	// 按顺序关闭，避免消息投递错误
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 

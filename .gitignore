@@ -11,3 +11,7 @@ config/.env
 idea.md
 
 liucheng.md
+
+prometheus
+src/
+frontendTest/
