@@ -80,35 +80,234 @@ func ListJourneys(ctx context.Context, c *app.RequestContext) {
 // CreateJourney 创建行程报备
 // POST /v1/journeys
 func CreateJourney(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现创建行程逻辑
+	var req dto.CreateJourneyRequest
+	if err := c.BindAndValidate(&req); err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code: "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+	}
+
+	journeyService := service.Journey()
+
+	result, err := journeyService.CreateJourney(ctx, userID, req)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	c.JSON(201, response.SuccessResponse{
+		Data: result,
+	})
 }
 
 // GetJourneyDetail 查看行程详情
 // GET /v1/journeys/:journey_id
 func GetJourneyDetail(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现获取行程详情逻辑
+	journeyIDStr := c.Param("journey_id")
+	journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code: "INVALID_JOURNEY_ID",
+			Message: "Invalid journey ID format",
+		})
+		return
+	}
+
+	
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+		return
+	}
+
+	journeyService := service.Journey()
+	result, err := journeyService.GetJourneyDetail(ctx, userID, journeyID)
+
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.Success(ctx, c, result)
 }
 
 // UpdateJourney 更新行程
 // PATCH /v1/journeys/:journey_id
 func UpdateJourney(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现更新行程逻辑
+	journeyIDStr := c.Param("journey_id")
+
+	journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_JOURNEY_ID",
+			Message: "Invalid journey ID format",
+		})
+		return
+	}
+
+	var req dto.UpdateJourneyRequest
+	if err := c.BindAndValidate(&req); err != nil {
+		response.BindError(ctx, c, err)
+		return
+	}
+
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+		return
+	}
+
+	journeyService := service.Journey()
+	result, err := journeyService.UpdateJourney(ctx, userID, journeyID, req)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.Success(ctx, c, result)
 }
 
-// CompleteJourney 归来打卡，标记行程结束
+// CompleteJourney 归来打卡，标记行程结束, 点击结束的形式，还可以考虑提供一个手动调用的函数来完成行程
 // POST /v1/journeys/:journey_id/complete
 func CompleteJourney(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现完成行程逻辑
+	journeyIDStr := c.Param("journey_id")
+	journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:  "INVALID_JOURNEY_ID",
+			Message: "Invalid journey ID format",
+		})
+		return
+	}
+
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+		return
+	}
+
+	journeyService := service.Journey()
+	result, err := journeyService.CompleteJourney(ctx, userID, journeyID)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.Success(ctx, c, result)
 }
 
 // AckJourneyAlert 确认已知晓行程超时提醒
 // POST /v1/journeys/:journey_id/ack-alert
 func AckJourneyAlert(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现确认提醒逻辑
+		journeyIDStr := c.Param("journey_id")
+		journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+		if err != nil {
+			response.Error(ctx, c, errors.Definition{
+				Code: "INVALID_JOURNEY_ID",
+				Message: "Invalid journey ID format",
+			})
+			return
+		}
+
+		userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+		return
+	}
+
+	journeyService := service.Journey()
+	if err := journeyService.AckJourneyAlert(ctx, userID, journeyID); err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.NoContent(ctx, c)
 }
 
 // GetJourneyAlerts 查询行程提醒执行状态
 // GET /v1/journeys/:journey_id/alerts
 func GetJourneyAlerts(ctx context.Context, c *app.RequestContext) {
-	// TODO: 实现获取提醒状态逻辑
+	journeyIDStr := c.Param("journey_id")
+	journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_JOURNEY_ID",
+			Message: "Invalid journey ID format",
+		})
+		return
+	}
+
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+		return
+	}
+
+	journeyService := service.Journey()
+	result, err := journeyService.GetJourneyAlerts(ctx, userID, journeyID)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.Success(ctx, c, result)
 }

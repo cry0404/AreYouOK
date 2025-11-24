@@ -32,17 +32,30 @@ func Journey() *JourneyService {
 	return journeyService
 }
 
-func (s *JourneyService) CreateJourney(ctx context.Context, userID int64, journeyID int64) error {
-	
-	return nil
+func (s *JourneyService) CreateJourney(
+	ctx context.Context, 
+	userID int64, 
+	req dto.CreateJourneyRequest,
+	) (*dto.CreateJourneyRequest, error) {
+
+	return nil, nil
 }
 
-func (s *JourneyService) UpdateJourney(ctx context.Context, userID int64, journeyID int64) error {
-	return nil
+func (s *JourneyService) UpdateJourney(
+	ctx context.Context, 
+	userID int64, 
+	journeyID int64,
+	req dto.UpdateJourneyRequest,
+	) (*dto.JourneyItem, error) {
+	return nil, nil
 }
 
-func (s *JourneyService) GetJourney(ctx context.Context, userID int64, journeyID int64) error {
-	return nil
+func (s *JourneyService) GetJourney(
+	ctx context.Context, 
+	userID int64, 
+	journeyID int64) (*dto.JourneyDetail, error){
+
+	return nil, nil
 }
 
 func (s *JourneyService) ListJourneys(ctx context.Context,
@@ -110,4 +123,88 @@ func (s *JourneyService) ListJourneys(ctx context.Context,
 
 
 	return result, nextCursor, nil
+}
+
+func (s *JourneyService) GetJourneyDetail(
+	ctx context.Context,
+	publicUserID int64,
+	journeyID int64,
+) (*dto.JourneyDetail, error) {
+
+	return nil, nil
+}
+
+
+// CompleteJourney 归来打卡，标记行程结束
+func (s *JourneyService) CompleteJourney(
+	ctx context.Context,
+	publicUserID int64,
+	journeyID int64,
+) (*dto.JourneyItem, error) {
+
+
+	return nil, nil
+}
+
+
+// AckJourneyAlert 确认已知晓行程超时提醒
+func (s *JourneyService) AckJourneyAlert(
+	ctx context.Context,
+	publicUserID int64,
+	journeyID int64,
+) error {
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	// 查询行程（使用 public_id 和 journey_id）
+	_, err := q.Journey.GetByPublicIDAndJourneyID(publicUserID, journeyID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkgerrors.Definition{
+				Code:    "JOURNEY_NOT_FOUND",
+				Message: "Journey not found",
+			}
+		}
+		return fmt.Errorf("failed to query journey: %w", err)
+	}
+
+	// TODO: 终止后续通知流程
+	// 1. 更新 journey.alert_status 为已确认（可能需要新增状态）
+	// 2. 取消或标记相关的 notification_tasks 为已取消
+
+	logger.Logger.Info("Journey alert acknowledged",
+		zap.Int64("journey_id", journeyID),
+		zap.Int64("user_id", publicUserID),
+	)
+
+	return nil
+}
+
+
+// GetJourneyAlerts 查询行程提醒执行状态
+func (s *JourneyService) GetJourneyAlerts(
+	ctx context.Context,
+	publicUserID int64,
+	journeyID int64,
+) (*dto.JourneyAlertData, error) {
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	// 查询行程（使用 public_id 和 journey_id）
+	journey, err := q.Journey.GetByPublicIDAndJourneyID(publicUserID, journeyID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, pkgerrors.Definition{
+				Code:    "JOURNEY_NOT_FOUND",
+				Message: "Journey not found",
+			}
+		}
+		return nil, fmt.Errorf("failed to query journey: %w", err)
+	}
+
+	return &dto.JourneyAlertData{
+		AlertStatus:        string(journey.AlertStatus),
+		AlertAttempts:      journey.AlertAttempts,
+		AlertLastAttemptAt: journey.AlertLastAttemptAt,
+	}, nil
 }

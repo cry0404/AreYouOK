@@ -8,7 +8,7 @@ import (
 	"github.com/bwmarrin/snowflake"
 )
 
-// GeneratorType ID 生成器类型
+
 type GeneratorType string
 
 const (
@@ -17,7 +17,7 @@ const (
 	GeneratorTypeTask    GeneratorType = "task"    // 通知任务 ID
 	GeneratorTypeMessage GeneratorType = "message" // 消息队列 ID
 	GeneratorTypeCheckIn GeneratorType = "checkin" // 打卡记录 ID
-	GeneratorTypeContact GeneratorType = "contact" // 联系人 ID（如果需要）
+	GeneratorTypeContact GeneratorType = "contact" // 联系人 ID
 )
 
 var (

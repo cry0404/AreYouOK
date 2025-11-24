@@ -79,7 +79,11 @@ func initAuthMiddleware() error {
 func AuthMiddleware() app.HandlerFunc {
 	if authMiddleware == nil {
 		panic("AuthMiddleware not initialized, call Init() first")
-	}
+	}	
+
+	//c.Set("JWT_PAYLOAD", claims), MiddlewareFunc() 中解析得到的，其实可以直接获取 userID
+	//identity := mw.IdentityHandler(ctx, c)
+	
 	return authMiddleware.MiddlewareFunc()
 }
 
