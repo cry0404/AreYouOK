@@ -1,16 +1,16 @@
 package service
 
 import (
-	"AreYouOK/config"
+//	"AreYouOK/config"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/repository/query"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
-	"AreYouOK/pkg/sms"
+//	"AreYouOK/pkg/sms"
 	"AreYouOK/storage/database"
 	"AreYouOK/utils"
 	"context"
-	"encoding/json"
+
 	"fmt"
 	"sync"
 	"time"
@@ -19,7 +19,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// 基于 task_id 来实现幂等性
+// 基于 task_id 来实现幂等性， message_id 来实现幂等性？或者统一为 message_id
 type NotificationService struct{}
 
 var (
@@ -34,6 +34,9 @@ func Notification() *NotificationService {
 	return notificationService
 }
 
+
+// taskCode 是一整个事务的任务，这个 notification 的 task， 而 MessageID 只针对这条消息的是否成功
+// payload 基于 sms_Message 
 func (s *NotificationService) SendSMS(
 	ctx context.Context,
 	taskCode int64, // taskid 的生成
@@ -83,8 +86,8 @@ func (s *NotificationService) SendSMS(
 		}
 		return fmt.Errorf("failed to query user: %w", err)
 	}
-
-	phone, err := utils.DecryptPhone(user.PhoneCipher)
+	// 之后再来实现 phone
+	_, err = utils.DecryptPhone(user.PhoneCipher)
 	if err != nil {
 		logger.Logger.Error("Failed to decrypt phone",
 			zap.Int64("user_id", userID),

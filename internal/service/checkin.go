@@ -49,7 +49,7 @@ type ValidateReminderBatchResult struct {
 // StartCheckInReminderConsumer(ctx) 对应调用的函数，来验证用户设置，然后来处理提醒，最后重新投递
 func (s *CheckInService) ValidateReminderBatch(
 	ctx context.Context,
-	userSettingsSnapshots map[string]queue.UserSettingSnapshot,
+	userSettingsSnapshots map[string]model.UserSettingSnapshot,
 	checkInDate string,
 	scheduledAt string,
 ) (*ValidateReminderBatchResult, error) {
@@ -162,7 +162,7 @@ func (s *CheckInService) ValidateReminderBatch(
 	// 然后获取他们对应的设置来重新投递
 }
 
-// ProcessReminderBatch 批量发送打卡提醒消息（需要根据额度，或者免费？）
+// ProcessReminderBatch 批量发送打卡提醒消息（需要根据额度，或者免费？）， 这里的 Send 也需要重新修改
 // userIDs: 用户 public_id 列表
 func (s *CheckInService) ProcessReminderBatch(
 	ctx context.Context,
@@ -249,7 +249,7 @@ func (s *CheckInService) ProcessReminderBatch(
 					return
 				}
 
-				// 生成任务 ID 和 TaskCode（都使用 Snowflake）
+
 				taskID, err := snowflake.NextID()
 				if err != nil {
 					logger.Logger.Error("Failed to generate task ID",
@@ -262,6 +262,16 @@ func (s *CheckInService) ProcessReminderBatch(
 				taskCode, err := snowflake.NextID()
 				if err != nil {
 					logger.Logger.Error("Failed to generate task code",
+						zap.Int64("user_id", publicID),
+						zap.Error(err),
+					)
+					return
+				}
+
+				// 生成 MessageID（用于消息队列幂等性）
+				messageID, err := snowflake.NextID()
+				if err != nil {
+					logger.Logger.Error("Failed to generate message ID",
 						zap.Int64("user_id", publicID),
 						zap.Error(err),
 					)
@@ -310,7 +320,8 @@ func (s *CheckInService) ProcessReminderBatch(
 
 				// 发送消息到队列（不扣款，只是投递消息）， 扣款需要在消费者处进行事务处理
 				// reminder_sent_at 会在消费者成功发送短信后更新
-				notificationMsg := queue.NotificationMessage{
+				notificationMsg := model.NotificationMessage{
+					MessageID:       fmt.Sprintf("notification_sms_%d", messageID), // 新增：用于幂等性检查
 					TaskCode:        taskCode,
 					TaskID:          taskID,
 					UserID:          publicID, // 消息中使用 public_id

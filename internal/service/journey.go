@@ -5,7 +5,7 @@ import (
 	"sync"
 	"context"
 )
-// journey 创建后需要推送 notification 队列，更新语音打卡等设置
+// journey 创建后需要推送 notification 队列，更新时也需要参考对应的用户设置修改的部分，从而重新推送
 
 type JourneyService struct{}
 

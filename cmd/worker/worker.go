@@ -10,6 +10,7 @@ import (
 
 	"AreYouOK/config"
 	"AreYouOK/internal/queue"
+	"AreYouOK/internal/service"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/pkg/snowflake"
@@ -24,7 +25,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -35,7 +35,6 @@ func main() {
 		)
 		cancel()
 	}()
-
 
 	if err := storage.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize storage", zap.Error(err))
@@ -48,7 +47,6 @@ func main() {
 		logger.Logger.Fatal("Failed to initialize snowflake", zap.Error(err))
 	}
 
-	
 	if err := sms.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize SMS service", zap.Error(err))
 		logger.Logger.Info("SMS service will be disabled, SMS features may not work")
@@ -56,15 +54,16 @@ func main() {
 
 	//if err := voice.Init()
 
+	// 设置通知服务, 因为所有消费者都需要这一环节
+	queue.SetNotificationService(service.Notification())
+
 	logger.Logger.Info("Worker service starting",
 		zap.String("service", "areyouok-worker"),
 		zap.String("environment", config.Cfg.Environment),
 	)
 
- 	
 	//启动所有的消费者部分
 	queue.StartAllConsumers(ctx)
-	
 
 	logger.Logger.Info("Worker service shutting down gracefully")
 }
