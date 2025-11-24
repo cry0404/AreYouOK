@@ -50,14 +50,11 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyParam, sceneid s
 		return false, errors.ErrCaptchaTokenRequired
 	}
 
-
 	logger.Logger.Info("Verifying captcha",
 		zap.String("sceneid", sceneid),
 		zap.Int("captcha_param_length", len(captchaVerifyParam)),
 		zap.String("captcha_param_preview", getParamPreview(captchaVerifyParam)),
 	)
-
-
 
 	request := &captcha.VerifyIntelligentCaptchaRequest{
 		CaptchaVerifyParam: tea.String(captchaVerifyParam),
@@ -161,7 +158,6 @@ func (c *AliyunClient) Verify(ctx context.Context, captchaVerifyParam, sceneid s
 			return false, errors.ErrCaptchaVerificationFailed
 		}
 	}
-
 
 	logger.Logger.Warn("Captcha verification failed: no result field",
 		zap.String("sceneid", sceneid),

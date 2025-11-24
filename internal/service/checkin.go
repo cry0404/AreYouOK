@@ -249,8 +249,7 @@ func (s *CheckInService) ProcessReminderBatch(
 					return
 				}
 
-
-				taskID, err := snowflake.NextID()
+				taskID, err := snowflake.NextID(snowflake.GeneratorTypeTask)
 				if err != nil {
 					logger.Logger.Error("Failed to generate task ID",
 						zap.Int64("user_id", publicID),
@@ -259,7 +258,7 @@ func (s *CheckInService) ProcessReminderBatch(
 					return
 				}
 
-				taskCode, err := snowflake.NextID()
+				taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
 				if err != nil {
 					logger.Logger.Error("Failed to generate task code",
 						zap.Int64("user_id", publicID),
@@ -269,7 +268,7 @@ func (s *CheckInService) ProcessReminderBatch(
 				}
 
 				// 生成 MessageID（用于消息队列幂等性）
-				messageID, err := snowflake.NextID()
+				messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 				if err != nil {
 					logger.Logger.Error("Failed to generate message ID",
 						zap.Int64("user_id", publicID),
@@ -283,11 +282,11 @@ func (s *CheckInService) ProcessReminderBatch(
 				if deadline == "" {
 					deadline = "21:00:00" // 默认截止时间
 				}
-				// 这里的 message 内容需要在阿里云处更新
-				message := fmt.Sprintf("安否温馨提示您，您开启了平安打卡功能，请于 %s 前进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。", deadline)
 
+				// 构建符合 SMSMessage 接口的 payload
 				payload := model.JSONB{
-					"message": message,
+					"type":     "checkin_reminder",
+					"deadline": deadline,
 				}
 
 				phoneHash := ""
@@ -321,14 +320,17 @@ func (s *CheckInService) ProcessReminderBatch(
 				// 发送消息到队列（不扣款，只是投递消息）， 扣款需要在消费者处进行事务处理
 				// reminder_sent_at 会在消费者成功发送短信后更新
 				notificationMsg := model.NotificationMessage{
-					MessageID:       fmt.Sprintf("notification_sms_%d", messageID), // 新增：用于幂等性检查
-					TaskCode:        taskCode,
-					TaskID:          taskID,
-					UserID:          publicID, // 消息中使用 public_id
-					Category:        "check_in_reminder",
-					Channel:         "sms",
-					PhoneHash:       phoneHash,
-					Payload:         map[string]interface{}{"message": message},
+					MessageID: fmt.Sprintf("notification_sms_%d", messageID), // 新增：用于幂等性检查
+					TaskCode:  taskCode,
+					TaskID:    taskID,
+					UserID:    publicID, // 消息中使用 public_id
+					Category:  "check_in_reminder",
+					Channel:   "sms",
+					PhoneHash: phoneHash,
+					Payload: map[string]interface{}{
+						"type":     "checkin_reminder",
+						"deadline": deadline,
+					},
 					ContactPriority: 0,
 					CheckInDate:     checkInDate, // 添加打卡日期，用于后续更新 reminder_sent_at
 				}

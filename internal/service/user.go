@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -173,7 +174,8 @@ func (s *UserService) GetUserProfile(
 }
 
 // UpdateUserSettings 更新用户设置， 需要更新 redis 中对应的缓存， 来帮助消息队列确认发送的消息是符合当前用户的预期的
-// 以及考虑更新后是否重新发送对应的消息，在这里处理对应的消息投递，改晚了还是改早了，通过更新的部分以及检查今日是否已经投递了来
+// 以及考虑更新后是否重新发送对应的消息，在这里处理对应的消息投递，改晚了还是改早了，通过更新的部分来检查是否需要重新投递
+// 这里最好还得做一个限流的部分
 // 考虑是否重新投递消息
 // 通过幂等性来过滤
 func (s *UserService) UpdateUserSettings(
@@ -225,7 +227,6 @@ func (s *UserService) UpdateUserSettings(
 		zap.Any("updates", updates),
 	)
 
-
 	// 更新今日的用户缓存，如果 redis 中没有缓存的话，消息队列就可以直接发送，减少数据库回查, 更新而非失效
 	user, _ := query.User.GetByPublicID(userIDInt)
 	cache.SetUserSettings(ctx, userIDInt, &cache.UserSettingsCache{
@@ -234,7 +235,7 @@ func (s *UserService) UpdateUserSettings(
 		DailyCheckInDeadline:   user.DailyCheckInDeadline,
 		DailyCheckInGraceUntil: user.DailyCheckInGraceUntil,
 		//Status:                 string(user.Status),
-		UpdatedAt:              time.Now().Unix(),
+		UpdatedAt: time.Now().Unix(),
 	})
 
 	return nil
@@ -250,36 +251,39 @@ func (s *UserService) GetUserQuotas(
 		return nil, pkgerrors.InvalidUserID
 	}
 
-	balances, err := query.QuotaTransaction.GetBalanceByPublicID(userIDInt)
+	user, err := query.User.GetByPublicID(userIDInt)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query quotas: %w", err)
+		return nil, fmt.Errorf("failed to query user: %w", err)
+	}
+
+	// 查询 SMS 渠道最新余额
+	smsTransactions, err := query.QuotaTransaction.
+		Where(query.QuotaTransaction.UserID.Eq(user.ID)).
+		Where(query.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
+		Order(query.QuotaTransaction.CreatedAt.Desc()).
+		Limit(1).
+		Find()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query SMS quota: %w", err)
+	}
+
+	// 查询 Voice 渠道最新余额
+	voiceTransactions, err := query.QuotaTransaction.
+		Where(query.QuotaTransaction.UserID.Eq(user.ID)).
+		Where(query.QuotaTransaction.Channel.Eq(string(model.QuotaChannelVoice))).
+		Order(query.QuotaTransaction.CreatedAt.Desc()).
+		Limit(1).
+		Find()
+	if err != nil {
+		return nil, fmt.Errorf("failed to query voice quota: %w", err)
 	}
 
 	var smsBalance, voiceBalance int
-	for _, balance := range balances {
-		channel, ok := balance["channel"].(string)
-		if !ok {
-			continue
-		}
-
-		var balanceVal int
-		switch v := balance["balance"].(type) {
-		case int:
-			balanceVal = v
-		case int64:
-			balanceVal = int(v)
-		case float64:
-			balanceVal = int(v)
-		default:
-			continue
-		}
-
-		switch channel {
-		case string(model.QuotaChannelSMS):
-			smsBalance = balanceVal
-		case string(model.QuotaChannelVoice):
-			voiceBalance = balanceVal
-		}
+	if len(smsTransactions) > 0 {
+		smsBalance = smsTransactions[0].BalanceAfter
+	}
+	if len(voiceTransactions) > 0 {
+		voiceBalance = voiceTransactions[0].BalanceAfter
 	}
 
 	result := &dto.QuotaBalance{

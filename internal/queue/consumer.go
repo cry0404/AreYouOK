@@ -8,11 +8,15 @@ import (
 	"time"
 
 	"go.uber.org/zap"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
+	"AreYouOK/internal/repository/query"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/storage/database"
 	"AreYouOK/storage/mq"
 )
 
@@ -36,7 +40,6 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 		if err := json.Unmarshal(body, &msg); err != nil {
 			return fmt.Errorf("failed to unmarshal check-in reminder message: %w", err)
 		}
-
 
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
@@ -237,7 +240,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 				zap.Int64("task_code", msg.TaskCode),
 				zap.Error(err),
 			)
-			// 如果检查失败，继续处理（不阻塞业务），但可能重复处理
+
 		} else if !processed {
 			logger.Logger.Info("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
@@ -278,16 +281,22 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			msg.Payload,
 		)
 
+		//这里的逻辑存在问题，应该允许充值，不应该直接上锁从而不再处理
 		if err != nil {
-			// 处理失败，取消标记，允许重试
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-
-			// 如果是 SkipMessageError，会被 consumer 框架自动 ACK 并跳过
+			// 如果是 SkipMessageError，标记为已处理并跳过（不重试）
 			if errors.IsSkipMessageError(err) {
+				// 标记为已处理，避免重复处理
+				if markErr := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); markErr != nil {
+					logger.Logger.Warn("Failed to mark skipped message as processed",
+						zap.String("message_id", msg.MessageID),
+						zap.Error(markErr),
+					)
+				}
 				return err
 			}
 
-			// 其他错误会被 Nack 并 requeue
+			// 其他错误：取消标记，允许重试
+			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 			return fmt.Errorf("failed to send SMS: %w", err)
 		}
 
@@ -300,6 +309,19 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			// 不影响主流程，因为已经处理成功了
 		}
 
+		// 如果是打卡提醒消息，更新 reminder_sent_at 字段
+		if msg.Category == "check_in_reminder" && msg.CheckInDate != "" {
+			if err := updateReminderSentAt(ctx, msg.UserID, msg.CheckInDate); err != nil {
+				// 记录错误但不影响主流程（短信已发送成功）
+				logger.Logger.Warn("Failed to update reminder_sent_at",
+					zap.String("message_id", msg.MessageID),
+					zap.Int64("user_id", msg.UserID),
+					zap.String("check_in_date", msg.CheckInDate),
+					zap.Error(err),
+				)
+			}
+		}
+
 		return nil
 	}
 
@@ -310,6 +332,57 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 		Handler:       handler,
 	})
 }
+
+// updateReminderSentAt 更新打卡记录的 reminder_sent_at 字段
+func updateReminderSentAt(ctx context.Context, publicUserID int64, checkInDateStr string) error {
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	// 查询用户（使用 public_id）
+	user, err := q.User.GetByPublicID(publicUserID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return fmt.Errorf("user not found: public_id=%d", publicUserID)
+		}
+		return fmt.Errorf("failed to query user: %w", err)
+	}
+
+	// 解析打卡日期
+	checkInDate, err := time.Parse("2006-01-02", checkInDateStr)
+	if err != nil {
+		return fmt.Errorf("failed to parse check_in_date: %w", err)
+	}
+
+	// 使用 Upsert 更新 reminder_sent_at 字段（如果记录不存在则创建）
+	now := time.Now()
+	checkIn := &model.DailyCheckIn{
+		UserID:         user.ID,
+		CheckInDate:    checkInDate,
+		ReminderSentAt: &now,
+		Status:         model.CheckInStatusPending, // 默认状态为 pending
+	}
+
+	// 使用 GORM 的 Clauses 实现 Upsert
+	err = db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "user_id"}, {Name: "check_in_date"}},
+		DoUpdates: clause.AssignmentColumns([]string{"reminder_sent_at", "updated_at"}),
+	}).Create(checkIn).Error
+
+	if err != nil {
+		return fmt.Errorf("failed to update reminder_sent_at: %w", err)
+	}
+
+	logger.Logger.Info("Updated reminder_sent_at",
+		zap.Int64("user_id", user.ID),
+		zap.String("check_in_date", checkInDateStr),
+		zap.Time("reminder_sent_at", now),
+	)
+
+	return nil
+}
+
+
+
 
 // StartVoiceNotificationConsumer 启动语音通知消费者
 func StartVoiceNotificationConsumer(ctx context.Context) error {

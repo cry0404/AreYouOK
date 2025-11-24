@@ -27,11 +27,11 @@ type UserSettingsCache struct {
 	DailyCheckInRemindAt   string `json:"daily_check_in_remind_at"`
 	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
-	
+
 	// Status                 string `json:"status"`   用户状态用户无法改变
-	DailyCheckInTimeRange  *TimeRange `json:"daily_check_in_time_range,omitempty"` // {"start": "08:00:00", "end": "20:00:00"}
-    
-    UpdatedAt              int64  `json:"updated_at"`    //这里本身就是一个版本号
+	DailyCheckInTimeRange *TimeRange `json:"daily_check_in_time_range,omitempty"` // {"start": "08:00:00", "end": "20:00:00"}
+
+	UpdatedAt int64 `json:"updated_at"` //这里本身就是一个版本号
 }
 
 //如果更新了，在缓存中就能获取，如果没更新，直接就可以发送，所以发送前只需要检查缓存

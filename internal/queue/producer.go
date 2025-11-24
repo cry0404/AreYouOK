@@ -16,7 +16,7 @@ import (
 func PublishCheckInReminder(msg model.CheckInReminderMessage) error {
 	// 生成 MessageID 如果为空
 	if msg.MessageID == "" {
-		id, err := snowflake.NextID()
+		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 		if err != nil {
 			logger.Logger.Error("Failed to generate message ID",
 				zap.String("batch_id", msg.BatchID),
@@ -59,7 +59,7 @@ func PublishCheckInReminder(msg model.CheckInReminderMessage) error {
 func PublishCheckInTimeout(msg model.CheckInTimeoutMessage) error {
 	// 生成 MessageID 如果为空
 	if msg.MessageID == "" {
-		id, err := snowflake.NextID()
+		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 		if err != nil {
 			logger.Logger.Error("Failed to generate message ID",
 				zap.String("batch_id", msg.BatchID),
@@ -99,10 +99,11 @@ func PublishCheckInTimeout(msg model.CheckInTimeoutMessage) error {
 }
 
 // PublishJourneyTimeout 发布行程超时消息（延迟消息）
+// 注意：如果 delay > 24小时，此函数会返回错误，调用者应该使用定时任务扫描
 func PublishJourneyTimeout(msg model.JourneyTimeoutMessage) error {
 	// 生成 MessageID 如果为空
 	if msg.MessageID == "" {
-		id, err := snowflake.NextID()
+		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 		if err != nil {
 			logger.Logger.Error("Failed to generate message ID",
 				zap.Int64("journey_id", msg.JourneyID),
@@ -114,6 +115,11 @@ func PublishJourneyTimeout(msg model.JourneyTimeoutMessage) error {
 	}
 
 	delay := time.Duration(msg.DelaySeconds) * time.Second
+
+	// 检查延迟时间是否超过 24 小时（RabbitMQ 延迟消息的限制）
+	if delay > 24*time.Hour {
+		return fmt.Errorf("delay %v exceeds 24 hours limit, use scheduled task instead", delay)
+	}
 
 	err := mq.PublishDelayedMessage(
 		"scheduler.delayed",
@@ -141,6 +147,53 @@ func PublishJourneyTimeout(msg model.JourneyTimeoutMessage) error {
 	return nil
 }
 
+// ScheduleJourneyTimeoutIfNeeded 根据预计返回时间决定是否发送延迟消息
+// 如果延迟时间 <= 1天，发送延迟消息
+// 如果延迟时间 > 1天，不发送消息，等待定时任务扫描
+// 返回是否已发送延迟消息
+func ScheduleJourneyTimeoutIfNeeded(journeyID, userID int64, expectedReturnTime time.Time) (bool, error) {
+	now := time.Now()
+	delay := expectedReturnTime.Add(10 * time.Minute).Sub(now) // 预计返回时间 + 10分钟
+
+	// 如果已经超时，立即发送（延迟0秒）
+	if delay <= 0 {
+		delay = 0
+	}
+
+	// 如果延迟时间 > 1天，不发送延迟消息，等待定时任务扫描
+	if delay > 24*time.Hour {
+		logger.Logger.Info("Journey delay exceeds 24 hours, will be handled by scheduled task",
+			zap.Int64("journey_id", journeyID),
+			zap.Int64("user_id", userID),
+			zap.Duration("delay", delay),
+			zap.Time("expected_return_time", expectedReturnTime),
+		)
+		return false, nil
+	}
+
+	// 生成 MessageID
+	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+	if err != nil {
+		return false, fmt.Errorf("failed to generate message ID: %w", err)
+	}
+
+	// 构建超时消息
+	timeoutMsg := model.JourneyTimeoutMessage{
+		MessageID:    fmt.Sprintf("journey_timeout_%d", messageID),
+		ScheduledAt:  now.Format(time.RFC3339),
+		JourneyID:    journeyID,
+		UserID:       userID,
+		DelaySeconds: int(delay.Seconds()),
+	}
+
+	// 发布延迟消息
+	if err := PublishJourneyTimeout(timeoutMsg); err != nil {
+		return false, fmt.Errorf("failed to publish journey timeout message: %w", err)
+	}
+
+	return true, nil
+}
+
 // PublishSMSNotification 发布短信通知任务
 func PublishSMSNotification(msg model.NotificationMessage) error {
 	// 生成 MessageID 如果为空（使用 Snowflake 确保唯一性）
@@ -151,7 +204,7 @@ func PublishSMSNotification(msg model.NotificationMessage) error {
 			zap.Int64("task_code", msg.TaskCode),
 			zap.Int64("user_id", msg.UserID),
 		)
-		id, err := snowflake.NextID()
+		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 		if err != nil {
 			logger.Logger.Error("Failed to generate message ID",
 				zap.Int64("task_code", msg.TaskCode),
@@ -201,7 +254,7 @@ func PublishVoiceNotification(msg model.NotificationMessage) error {
 			zap.Int64("task_code", msg.TaskCode),
 			zap.Int64("user_id", msg.UserID),
 		)
-		id, err := snowflake.NextID()
+		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 		if err != nil {
 			logger.Logger.Error("Failed to generate message ID",
 				zap.Int64("task_code", msg.TaskCode),

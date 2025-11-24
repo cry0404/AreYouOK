@@ -70,7 +70,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				return nil, pkgerrors.WaitlistFull
 			}
 
-			publicID, err := snowflake.NextID()
+			publicID, err := snowflake.NextID(snowflake.GeneratorTypeUser)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate user ID: %w", err)
 			}
@@ -287,12 +287,10 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				return nil, pkgerrors.WaitlistFull
 			}
 
-
-			publicID, err := snowflake.NextID()
+			publicID, err := snowflake.NextID(snowflake.GeneratorTypeUser)
 			if err != nil {
 				return nil, fmt.Errorf("failed to generate user ID: %w", err)
 			}
-
 
 			phoneCipherBase64, err := utils.EncryptPhone(phone)
 			if err != nil {

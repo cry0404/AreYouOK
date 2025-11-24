@@ -6,7 +6,6 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 )
 
-
 func CORSMiddleware() app.HandlerFunc {
 	return func(ctx context.Context, c *app.RequestContext) {
 		origin := string(c.Request.Header.Get("Origin"))
@@ -22,7 +21,6 @@ func CORSMiddleware() app.HandlerFunc {
 		c.Header("Access-Control-Allow-Credentials", "true")
 		c.Header("Access-Control-Max-Age", "86400")
 
-		// 处理 OPTIONS 预检请求
 		if string(c.Method()) == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return

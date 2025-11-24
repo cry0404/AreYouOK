@@ -8,11 +8,11 @@ package model
 
 // CheckInReminderMessage 打卡提醒消息，同一批用户的提醒时间，考虑按照时间段来分组
 type CheckInReminderMessage struct {
-	MessageID    string                         `json:"message_id"`    // 消息唯一ID，用于幂等性检查
-	BatchID      string                         `json:"batch_id"`
-	CheckInDate  string                         `json:"check_in_date"`
-	ScheduledAt  string                         `json:"scheduled_at"`
-	UserIDs      []int64                        `json:"user_ids"` // 原定于
+	MessageID   string  `json:"message_id"` // 消息唯一ID，用于幂等性检查
+	BatchID     string  `json:"batch_id"`
+	CheckInDate string  `json:"check_in_date"`
+	ScheduledAt string  `json:"scheduled_at"`
+	UserIDs     []int64 `json:"user_ids"` // 原定于
 
 	// 用户设置快照（扫描时的设置）
 	// Key: userID (string), Value: 用户设置快照
@@ -49,7 +49,7 @@ type JourneyTimeoutMessage struct {
 
 // NotificationMessage 通知任务消息
 type NotificationMessage struct {
-	MessageID       string                 `json:"message_id"`              // 消息唯一ID，用于幂等性检查
+	MessageID       string                 `json:"message_id"` // 消息唯一ID，用于幂等性检查
 	Payload         map[string]interface{} `json:"payload"`
 	Category        string                 `json:"category"`
 	Channel         string                 `json:"channel"`
@@ -68,5 +68,6 @@ type EventMessage struct {
 	EventType  string                 `json:"event_type"`
 	OccurredAt string                 `json:"occurred_at"`
 }
+
 
 

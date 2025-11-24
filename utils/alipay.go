@@ -34,7 +34,7 @@ type AlipayEncryptedResponse struct {
 	Sign        string `json:"sign"`         // RSA2 签名（base64 编码）
 	SignType    string `json:"sign_type"`    // 签名算法，通常为 "RSA2"
 	EncryptType string `json:"encrypt_type"` // 加密算法，通常为 "AES"
-	Charset     string `json:"charset"`      
+	Charset     string `json:"charset"`
 }
 
 // AlipayResponse 兼容旧版本的 response 结构
@@ -139,7 +139,6 @@ func loadAlipayPublicKey() (*rsa.PublicKey, error) {
 			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPublicKey)
 			if err != nil {
 
-
 				keyBytes = []byte(config.Cfg.AlipayPublicKey)
 			} else {
 				logger.Logger.Debug("Public key decoded from base64")
@@ -148,7 +147,6 @@ func loadAlipayPublicKey() (*rsa.PublicKey, error) {
 
 		logger.Logger.Debug("Loading public key",
 			zap.Int("key_bytes_length", len(keyBytes)),
-
 		)
 
 		var publicKey interface{}
@@ -370,10 +368,8 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 			return "", fmt.Errorf("failed to decrypt with AES: %w", err)
 		}
 
-		
 	} else {
 
-		
 		privateKey, err := loadAlipayPrivateKey()
 		if err != nil {
 			return "", fmt.Errorf("failed to load private key: %w", err)
@@ -416,7 +412,6 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 		}
 	}
 
-
 	var phoneData AlipayPhoneData
 	if err := json.Unmarshal(plaintext, &phoneData); err != nil {
 		mobileStr := string(plaintext)
@@ -444,6 +439,3 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 
 	return phoneData.Mobile, nil
 }
-
-
-

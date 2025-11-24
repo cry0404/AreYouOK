@@ -49,18 +49,14 @@ func main() {
 
 	defer storage.Close()
 
-	
-
 	if err := snowflake.Init(config.Cfg.SnowflakeMachineID, config.Cfg.SnowflakeDataCenter); err != nil {
 		logger.Logger.Fatal("Failed to initialize snowflake", zap.Error(err))
 	}
-
 
 	if err := sms.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize SMS service", zap.Error(err))
 		logger.Logger.Info("SMS service will be disabled, SMS features may not work")
 	}
-
 
 	if err := slider.Init(); err != nil {
 		logger.Logger.Warn("Failed to initialize slider service", zap.Error(err))
@@ -70,7 +66,6 @@ func main() {
 	if err := token.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize token package", zap.Error(err))
 	} // token 在中间件前初始化，middleware 依赖 token
-
 
 	if err := middleware.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize middlewares", zap.Error(err))
@@ -86,7 +81,6 @@ func main() {
 	h := server.Default(server.WithHostPorts(addr))
 
 	router.Register(h)
-
 
 	go func() {
 		<-ctx.Done()

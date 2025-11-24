@@ -1,6 +1,5 @@
 package metrics
 
-
 // var (
 //     // 消息发送失败次数
 //     MessagePublishFailures = prometheus.NewCounterVec(
@@ -10,7 +9,7 @@ package metrics
 //         },
 //         []string{"exchange", "routing_key"},
 //     )
-    
+
 //     // 消息消费失败次数
 //     MessageConsumeFailures = prometheus.NewCounterVec(
 //         prometheus.CounterOpts{
@@ -19,7 +18,7 @@ package metrics
 //         },
 //         []string{"queue", "retry_count"},
 //     )
-    
+
 //     // 死信队列消息数量
 //     DLQMessageCount = prometheus.NewGaugeVec(
 //         prometheus.GaugeOpts{
@@ -28,7 +27,7 @@ package metrics
 //         },
 //         []string{"queue"},
 //     )
-    
+
 //     // 待补偿消息数量
 //     OutboxPendingCount = prometheus.NewGauge(
 //         prometheus.GaugeOpts{

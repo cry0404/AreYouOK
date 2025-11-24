@@ -1,40 +1,208 @@
 package model
 
-import "time"
+import (
+	"encoding/json"
+	"fmt"
+	"time"
+)
 
-// 不同场景下需要定义的消息，模板 id， 签名 id，需要配置的参数，根据阿里云上的配置决定
+// 以接口方式来实现
+// SMSMessage 短信消息接口
+// 所有短信消息类型都需要实现此接口
+type SMSMessage interface {
+	// GetPhone 获取手机号
+	GetPhone() string
+	// SetPhone 设置手机号
+	SetPhone(phone string)
+	// GetSignName 获取签名名称
+	GetSignName() string
+	// SetSignName 设置签名名称
+	SetSignName(signName string)
+	// GetTemplateCode 获取模板代码
+	GetTemplateCode() string
+	// SetTemplateCode 设置模板代码
+	SetTemplateCode(templateCode string)
+	// GetTemplateParams 获取模板参数（JSON 字符串）
+	GetTemplateParams() (string, error)
+	// GetMessageType 获取消息类型，用于序列化/反序列化
+	GetMessageType() string
+}
 
+// smsMessage 基础消息结构
 type smsMessage struct {
-	Phone        string
-	SignName     string
-	TemplateCode string
+	Phone        string `json:"phone"`
+	SignName     string `json:"sign_name"`
+	TemplateCode string `json:"template_code"`
 }
 
-// 模板内容
-// 您的联系人${name}，今日的平安打卡任务还未完成，请及时联系 ta 确认情况。
-type CheckInReminderContactMessage struct { // 打卡通知紧急联系人
+func (m *smsMessage) GetPhone() string {
+	return m.Phone
+}
+
+func (m *smsMessage) SetPhone(phone string) {
+	m.Phone = phone
+}
+
+func (m *smsMessage) GetSignName() string {
+	return m.SignName
+}
+
+func (m *smsMessage) SetSignName(signName string) {
+	m.SignName = signName
+}
+
+func (m *smsMessage) GetTemplateCode() string {
+	return m.TemplateCode
+}
+
+func (m *smsMessage) SetTemplateCode(templateCode string) {
+	m.TemplateCode = templateCode
+}
+
+// CheckInReminderContactMessage 打卡通知紧急联系人
+// 模板内容：您的联系人${name}，今日的平安打卡任务还未完成，请及时联系 ta 确认情况。
+type CheckInReminderContactMessage struct {
 	smsMessage
-	Name string
+	Name string `json:"name"`
 }
 
-// 您的联系人${name}没有进行归来打卡，请联系 ta 确认情况。行程信息：${trip}，预计归来时间：${time}。备注: ${note}。
-type JourneyReminderContactMessage struct { //旅行联系紧急联系人
+func (m *CheckInReminderContactMessage) GetTemplateParams() (string, error) {
+	params := map[string]string{
+		"name": m.Name,
+	}
+	data, err := json.Marshal(params)
+	return string(data), err
+}
+
+func (m *CheckInReminderContactMessage) GetMessageType() string {
+	return "checkin_reminder_contact"
+}
+
+// JourneyReminderContactMessage 旅行联系紧急联系人
+// 模板内容：您的联系人${name}没有进行归来打卡，请联系 ta 确认情况。行程信息：${trip}，预计归来时间：${time}。备注: ${note}。
+type JourneyReminderContactMessage struct {
 	smsMessage
-
-	Name     string
-	Trip     string
-	Deadline time.Time
-	Note     string
+	Name     string    `json:"name"`
+	Trip     string    `json:"trip"`
+	Deadline time.Time `json:"deadline"`
+	Note     string    `json:"note"`
 }
 
-// 安否温馨提示您，您进行了行程报备功能，请于 10 分钟内进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。
+func (m *JourneyReminderContactMessage) GetTemplateParams() (string, error) {
+	params := map[string]string{
+		"name": m.Name,
+		"trip": m.Trip,
+		"time": m.Deadline.Format("2006-01-02 15:04:05"),
+		"note": m.Note,
+	}
+	data, err := json.Marshal(params)
+	return string(data), err
+}
+
+func (m *JourneyReminderContactMessage) GetMessageType() string {
+	return "journey_reminder_contact"
+}
+
+// CheckInReminder 打卡提醒（发送给用户本人）
+// 模板内容：安否温馨提示您，您开启了平安打卡功能，请于 ${deadline} 前进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。
+type CheckInReminder struct {
+	smsMessage
+	Deadline string `json:"deadline"` // 打卡截止时间，格式：HH:mm:ss
+}
+
+func (m *CheckInReminder) GetTemplateParams() (string, error) {
+	params := map[string]string{
+		"deadline": m.Deadline,
+	}
+	data, err := json.Marshal(params)
+	return string(data), err
+}
+
+func (m *CheckInReminder) GetMessageType() string {
+	return "checkin_reminder"
+}
+
+// JourneyTimeOut 行程超时提醒
+// 模板内容：安否温馨提示您，您进行了行程报备功能，请于 10 分钟内进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。
 type JourneyTimeOut struct {
 	smsMessage
 }
 
+func (m *JourneyTimeOut) GetTemplateParams() (string, error) {
+	// 无参数模板
+	return "{}", nil
+}
+
+func (m *JourneyTimeOut) GetMessageType() string {
+	return "journey_timeout"
+}
+
+// CheckInTimeOut 打卡超时提醒
 type CheckInTimeOut struct {
 	smsMessage
+	Name     string    `json:"name"`
+	Deadline time.Time `json:"deadline"`
+}
 
-	Name     string
-	Deadline time.Time
+func (m *CheckInTimeOut) GetTemplateParams() (string, error) {
+	params := map[string]string{
+		"name":     m.Name,
+		"deadline": m.Deadline.Format("2006-01-02 15:04:05"),
+	}
+	data, err := json.Marshal(params)
+	return string(data), err
+}
+
+func (m *CheckInTimeOut) GetMessageType() string {
+	return "checkin_timeout"
+}
+
+// ParseSMSMessage 从 map[string]interface{} 解析为具体的 SMSMessage
+// payload 必须包含 "type" 字段来标识消息类型
+func ParseSMSMessage(payload map[string]interface{}) (SMSMessage, error) {
+	messageType, ok := payload["type"].(string)
+	if !ok {
+		return nil, fmt.Errorf("missing or invalid message type in payload")
+	}
+
+	// 将 map 序列化为 JSON，再反序列化为具体类型
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal payload: %w", err)
+	}
+
+	switch messageType {
+	case "checkin_reminder":
+		var msg CheckInReminder
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, fmt.Errorf("failed to parse CheckInReminder: %w", err)
+		}
+		return &msg, nil
+	case "checkin_reminder_contact":
+		var msg CheckInReminderContactMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, fmt.Errorf("failed to parse CheckInReminderContactMessage: %w", err)
+		}
+		return &msg, nil
+	case "journey_reminder_contact":
+		var msg JourneyReminderContactMessage
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, fmt.Errorf("failed to parse JourneyReminderContactMessage: %w", err)
+		}
+		return &msg, nil
+	case "journey_timeout":
+		var msg JourneyTimeOut
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, fmt.Errorf("failed to parse JourneyTimeOut: %w", err)
+		}
+		return &msg, nil
+	case "checkin_timeout":
+		var msg CheckInTimeOut
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, fmt.Errorf("failed to parse CheckInTimeOut: %w", err)
+		}
+		return &msg, nil
+	default:
+		return nil, fmt.Errorf("unknown message type: %s", messageType)
+	}
 }

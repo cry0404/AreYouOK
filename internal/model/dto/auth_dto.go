@@ -4,17 +4,13 @@ import "time"
 
 // ========== Auth 相关 DTO ==========
 type AuthExchangeRequest struct {
-
 	EncryptedData string `json:"encrypted_data" binding:"required"`
-
-
 
 	Response    string `json:"response,omitempty"`     // AES 加密的数据（base64 编码）
 	Sign        string `json:"sign,omitempty"`         // RSA2 签名（base64 编码）
 	SignType    string `json:"sign_type,omitempty"`    // 签名算法，通常为 "RSA2"
 	EncryptType string `json:"encrypt_type,omitempty"` // 加密算法，通常为 "AES"
 	Charset     string `json:"charset,omitempty"`      // 字符集，通常为 "UTF-8"
-
 
 	IV     string     `json:"iv,omitempty"`
 	Device DeviceInfo `json:"device"`

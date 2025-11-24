@@ -52,7 +52,6 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 			alipayResp["charset"] = "UTF-8" // 默认值
 		}
 
-
 		jsonBytes, err := json.Marshal(alipayResp)
 		if err != nil {
 			response.Error(ctx, c, errors.Definition{

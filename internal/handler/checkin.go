@@ -37,7 +37,6 @@ func CompleteTodayCheckIn(ctx context.Context, c *app.RequestContext) {
 		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
 		return
 	}
-	
 
 	checkInService := service.CheckIn()
 	result, err := checkInService.CompleteCheckIn(ctx, userID)

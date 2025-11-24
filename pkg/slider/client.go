@@ -18,7 +18,7 @@ type Client interface {
 	// captchaVerifyToken: 前端滑块组件返回的验证 token
 
 	// sceneid: 对应的业务场景
-	Verify(ctx context.Context, captchaVerifyParam,  sceneid string) (bool, error)
+	Verify(ctx context.Context, captchaVerifyParam, sceneid string) (bool, error)
 }
 
 var (
@@ -63,5 +63,5 @@ func GetClient() Client {
 }
 
 func Verify(ctx context.Context, captchaVerifyParam, sceneid string) (bool, error) {
-	return GetClient().Verify(ctx, captchaVerifyParam,  sceneid)
+	return GetClient().Verify(ctx, captchaVerifyParam, sceneid)
 }

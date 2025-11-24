@@ -14,9 +14,8 @@ import (
 
 type MessageHandler func([]byte) error
 
-
 const (
-	MaxRetryCount = 3 
+	MaxRetryCount = 3
 )
 
 type ConsumeOptions struct {

@@ -24,11 +24,11 @@ var (
 )
 
 type CheckInScheduler struct {
-	logger                   *zap.Logger
-	reminderJobRunning       bool
-	reminderJobMu            sync.Mutex
-	lastReminderJobTime      time.Time
-	lastTimeoutCheckJobTime  time.Time
+	logger                  *zap.Logger
+	reminderJobRunning      bool
+	reminderJobMu           sync.Mutex
+	lastReminderJobTime     time.Time
+	lastTimeoutCheckJobTime time.Time
 }
 
 func GetScheduler() *CheckInScheduler {
@@ -66,7 +66,7 @@ func (s *CheckInScheduler) ScheduleDailyCheckIns(ctx context.Context) error {
 
 	// 获取今天的日期
 	today := startTime.Format("2006-01-02")
-	batchID, err := snowflake.NextID()
+	batchID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
 		s.logger.Error("Failed to generate batch ID", zap.Error(err))
 		return fmt.Errorf("failed to generate batch ID: %w", err)
@@ -215,7 +215,7 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 	reminderDelay := time.Until(todayRemindTime)
 
 	// 生成 MessageID
-	messageID, err := snowflake.NextID()
+	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
 		s.logger.Error("Failed to generate message ID", zap.Error(err))
 		return err
@@ -269,7 +269,7 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 	timeoutDelay := time.Until(timeoutTime)
 
 	// 生成 MessageID for timeout
-	timeoutMessageID, err := snowflake.NextID()
+	timeoutMessageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
 		s.logger.Error("Failed to generate timeout message ID", zap.Error(err))
 		return err

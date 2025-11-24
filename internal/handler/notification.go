@@ -5,6 +5,8 @@ import (
 
 	"github.com/cloudwego/hertz/pkg/app"
 )
+// 可以考虑最后实现，notificationTask 更多是用来做一个日志统计的作用
+
 
 // ListNotificationTasks 查询通知任务列表
 // GET /v1/notifications/tasks

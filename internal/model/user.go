@@ -23,8 +23,6 @@ var StatusToStringMap = map[UserStatus]string{
 	UserStatusActive:     "active",
 }
 
-
-
 // User 用户模型
 type User struct {
 	DailyCheckInRemindAt   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`

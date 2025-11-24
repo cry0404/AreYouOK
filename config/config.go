@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/caarlos0/env/v6"
@@ -45,28 +46,44 @@ type Config struct {
 	AliCloudAccessKeyID     string `env:"ALIBABA_CLOUD_ACCESS_KEY_ID"`
 	AliCloudAccessKeySecret string `env:"ALIBABA_CLOUD_ACCESS_KEY_SECRET"`
 	SMSProvider             string `env:"SMS_PROVIDER" envDefault:"aliyun"`
-	SMSSignName             string `env:"SMS_SIGN_NAME"`
-	SMSTemplateCode         string `env:"SMS_TEMPLATE_CODE"`
-	VoiceProvider           string `env:"VOICE_PROVIDER" envDefault:"aliyun"`
-	VoiceAccessKey          string `env:"VOICE_ACCESS_KEY"`
-	VoiceSecretKey          string `env:"VOICE_SECRET_KEY"`
-	VoiceAppID              string `env:"VOICE_APP_ID"`
-	EncryptionKey           string `env:"ENCRYPTION_KEY"`
-	CaptchaExpireSeconds    int    `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
-	CaptchaSliderThreshold  int    `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
-	SnowflakeDataCenter     int64  `env:"SNOWFLAKE_DATACENTER_ID" envDefault:"1"`
-	JWTRefreshDays          int    `env:"JWT_REFRESH_DAYS" envDefault:"7"`
-	JWTExpireMinutes        int    `env:"JWT_EXPIRE_MINUTES" envDefault:"30"`
-	WaitlistMaxUsers        int    `env:"WAITLIST_MAX_USERS" envDefault:"1000"`
-	SnowflakeMachineID      int64  `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
-	PostgreSQLMaxOpen       int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
-	RedisDB                 int    `env:"REDIS_DB" envDefault:"0"`
-	CaptchaMaxDaily         int    `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
-	RateLimitRPS            int    `env:"RATE_LIMIT_RPS" envDefault:"100"`
-	PostgreSQLMaxIdle       int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
-	DefaultSMSQuota         int    `env:"DEFAULT_SMS_QUOTA" envDefault:"100"`
-	DefaultVoiceQuota       int    `env:"DEFAULT_VOICE_QUOTA" envDefault:"50"`
-	RateLimitEnabled        bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
+	SMSSignName             string `env:"SMS_SIGN_NAME"`     // 默认签名（向后兼容）
+	SMSTemplateCode         string `env:"SMS_TEMPLATE_CODE"` // 默认模板代码（向后兼容）
+	// 打卡提醒配置（发送给用户本人）
+	SMSCheckInReminderSignName string `env:"SMS_CHECKIN_REMINDER_SIGN_NAME"`
+	SMSCheckInReminderTemplate string `env:"SMS_CHECKIN_REMINDER_TEMPLATE"`
+	// 打卡通知紧急联系人配置
+	SMSCheckInReminderContactSignName string `env:"SMS_CHECKIN_REMINDER_CONTACT_SIGN_NAME"`
+	SMSCheckInReminderContactTemplate string `env:"SMS_CHECKIN_REMINDER_CONTACT_TEMPLATE"`
+	// 旅行联系紧急联系人配置
+	SMSJourneyReminderContactSignName string `env:"SMS_JOURNEY_REMINDER_CONTACT_SIGN_NAME"`
+	SMSJourneyReminderContactTemplate string `env:"SMS_JOURNEY_REMINDER_CONTACT_TEMPLATE"`
+	// 行程超时提醒配置
+	SMSJourneyTimeoutSignName string `env:"SMS_JOURNEY_TIMEOUT_SIGN_NAME"`
+	SMSJourneyTimeoutTemplate string `env:"SMS_JOURNEY_TIMEOUT_TEMPLATE"`
+	// 打卡超时提醒配置
+	SMSCheckInTimeoutSignName string `env:"SMS_CHECKIN_TIMEOUT_SIGN_NAME"`
+	SMSCheckInTimeoutTemplate string `env:"SMS_CHECKIN_TIMEOUT_TEMPLATE"`
+	
+	VoiceProvider             string `env:"VOICE_PROVIDER" envDefault:"aliyun"`
+	VoiceAccessKey            string `env:"VOICE_ACCESS_KEY"`
+	VoiceSecretKey            string `env:"VOICE_SECRET_KEY"`
+	VoiceAppID                string `env:"VOICE_APP_ID"`
+	EncryptionKey             string `env:"ENCRYPTION_KEY"`
+	CaptchaExpireSeconds      int    `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
+	CaptchaSliderThreshold    int    `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
+	SnowflakeDataCenter       int64  `env:"SNOWFLAKE_DATACENTER_ID" envDefault:"1"`
+	JWTRefreshDays            int    `env:"JWT_REFRESH_DAYS" envDefault:"7"`
+	JWTExpireMinutes          int    `env:"JWT_EXPIRE_MINUTES" envDefault:"30"`
+	WaitlistMaxUsers          int    `env:"WAITLIST_MAX_USERS" envDefault:"1000"`
+	SnowflakeMachineID        int64  `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
+	PostgreSQLMaxOpen         int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
+	RedisDB                   int    `env:"REDIS_DB" envDefault:"0"`
+	CaptchaMaxDaily           int    `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
+	RateLimitRPS              int    `env:"RATE_LIMIT_RPS" envDefault:"100"`
+	PostgreSQLMaxIdle         int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
+	DefaultSMSQuota           int    `env:"DEFAULT_SMS_QUOTA" envDefault:"100"`
+	DefaultVoiceQuota         int    `env:"DEFAULT_VOICE_QUOTA" envDefault:"50"`
+	RateLimitEnabled          bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
 }
 
 func init() {
@@ -131,4 +148,71 @@ func (c *Config) IsProduction() bool {
 
 func (c *Config) IsDevelopment() bool {
 	return c.Environment == "development"
+}
+
+// GetSMSTemplateConfig 根据消息类型获取对应的签名和模板代码
+// messageType: 消息类型，如 "checkin_reminder_contact", "journey_reminder_contact" 等
+// 返回: (signName, templateCode, error)
+func (c *Config) GetSMSTemplateConfig(messageType string) (signName, templateCode string, err error) {
+	switch messageType {
+	case "checkin_reminder":
+		signName = c.SMSCheckInReminderSignName
+		templateCode = c.SMSCheckInReminderTemplate
+		if signName == "" {
+			signName = c.SMSSignName // 回退到默认签名
+		}
+		if templateCode == "" {
+			templateCode = c.SMSTemplateCode // 回退到默认模板
+		}
+	case "checkin_reminder_contact":
+		signName = c.SMSCheckInReminderContactSignName
+		templateCode = c.SMSCheckInReminderContactTemplate
+		if signName == "" {
+			signName = c.SMSSignName // 回退到默认签名
+		}
+		if templateCode == "" {
+			templateCode = c.SMSTemplateCode // 回退到默认模板
+		}
+	case "journey_reminder_contact":
+		signName = c.SMSJourneyReminderContactSignName
+		templateCode = c.SMSJourneyReminderContactTemplate
+		if signName == "" {
+			signName = c.SMSSignName
+		}
+		if templateCode == "" {
+			templateCode = c.SMSTemplateCode
+		}
+	case "journey_timeout":
+		signName = c.SMSJourneyTimeoutSignName
+		templateCode = c.SMSJourneyTimeoutTemplate
+		if signName == "" {
+			signName = c.SMSSignName
+		}
+		if templateCode == "" {
+			templateCode = c.SMSTemplateCode
+		}
+	case "checkin_timeout":
+		signName = c.SMSCheckInTimeoutSignName
+		templateCode = c.SMSCheckInTimeoutTemplate
+		if signName == "" {
+			signName = c.SMSSignName
+		}
+		if templateCode == "" {
+			templateCode = c.SMSTemplateCode
+		}
+	default:
+		// 未知类型，使用默认配置
+		signName = c.SMSSignName
+		templateCode = c.SMSTemplateCode
+	}
+
+	// 验证配置是否完整
+	if signName == "" {
+		return "", "", fmt.Errorf("SMS sign name not configured for message type: %s", messageType)
+	}
+	if templateCode == "" {
+		return "", "", fmt.Errorf("SMS template code not configured for message type: %s", messageType)
+	}
+
+	return signName, templateCode, nil
 }

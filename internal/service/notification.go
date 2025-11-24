@@ -1,12 +1,12 @@
 package service
 
 import (
-//	"AreYouOK/config"
+	"AreYouOK/config"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/repository/query"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
-//	"AreYouOK/pkg/sms"
+	"AreYouOK/pkg/sms"
 	"AreYouOK/storage/database"
 	"AreYouOK/utils"
 	"context"
@@ -34,9 +34,9 @@ func Notification() *NotificationService {
 	return notificationService
 }
 
-
 // taskCode 是一整个事务的任务，这个 notification 的 task， 而 MessageID 只针对这条消息的是否成功
-// payload 基于 sms_Message 
+// payload 基于 sms_Message
+// 完整流程 -> 定时扫描，发送打卡信息，新注册默认进入消息队列
 func (s *NotificationService) SendSMS(
 	ctx context.Context,
 	taskCode int64, // taskid 的生成
@@ -86,8 +86,9 @@ func (s *NotificationService) SendSMS(
 		}
 		return fmt.Errorf("failed to query user: %w", err)
 	}
-	// 之后再来实现 phone
-	_, err = utils.DecryptPhone(user.PhoneCipher)
+
+	// 解密手机号
+	phone, err := utils.DecryptPhone(user.PhoneCipher)
 	if err != nil {
 		logger.Logger.Error("Failed to decrypt phone",
 			zap.Int64("user_id", userID),
@@ -96,9 +97,16 @@ func (s *NotificationService) SendSMS(
 		return fmt.Errorf("failed to decrypt phone: %w", err)
 	}
 
-	balances, err := q.QuotaTransaction.GetBalanceByUserID(user.ID)
+	// 使用 balance_after 字段获取最新余额（更高效，不需要聚合所有历史记录）
+	// 查询 SMS 渠道最新的交易记录，获取 balance_after
+	smsTransactions, err := q.QuotaTransaction.
+		Where(q.QuotaTransaction.UserID.Eq(user.ID)).
+		Where(q.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
+		Order(q.QuotaTransaction.CreatedAt.Desc()).
+		Limit(1).
+		Find()
 	if err != nil {
-		logger.Logger.Error("Failed to query quota balance",
+		logger.Logger.Error("Failed to query SMS quota balance",
 			zap.Int64("user_id", user.ID),
 			zap.Error(err),
 		)
@@ -106,38 +114,26 @@ func (s *NotificationService) SendSMS(
 	}
 
 	var smsBalance int
-	for _, balance := range balances {
-		channel, ok := balance["channel"].(string)
-		if !ok {
-			continue
-		}
-		if channel == string(model.QuotaChannelSMS) {
-			switch v := balance["balance"].(type) {
-			case int:
-				smsBalance = v
-			case int64:
-				smsBalance = int(v)
-			case float64:
-				smsBalance = int(v)
-			}
-			break
-		}
+	if len(smsTransactions) > 0 {
+		smsBalance = smsTransactions[0].BalanceAfter
+	} else {
+		// 如果没有交易记录，余额为 0
+		smsBalance = 0
 	}
 
-
-	const smsUnitPriceCents = 5
+	smsUnitPriceCents := 5
 	if smsBalance < smsUnitPriceCents {
 		logger.Logger.Warn("Insufficient SMS quota",
 			zap.Int64("user_id", userID),
 			zap.Int("balance", smsBalance),
 			zap.Int("required", smsUnitPriceCents),
 		)
-		// 额度不足，更新任务状态为失败，但不重试, 这里需要考虑发送一条提示信息告知额度不足吗？
+		// 额度不足，更新任务状态为失败，但不重试（返回 SkipMessageError 避免无限重试）
 		now := time.Now()
 		_, err = q.NotificationTask.WithContext(ctx).
 			Where(q.NotificationTask.ID.Eq(task.ID)).
 			Updates(map[string]interface{}{
-				"status":      model.NotificationTaskStatusFailed,
+				"status":       model.NotificationTaskStatusFailed,
 				"processed_at": now,
 			})
 		if err != nil {
@@ -146,26 +142,206 @@ func (s *NotificationService) SendSMS(
 				zap.Error(err),
 			)
 		}
-		return errors.QuotaInsufficient
+		// 返回 SkipMessageError，避免无限重试（额度不足是业务状态问题，重试不会改变结果）
+		return &errors.SkipMessageError{Reason: fmt.Sprintf("quota insufficient: balance=%d, required=%d", smsBalance, smsUnitPriceCents)}
 	}
-	// 接下来根据 Message 构造场景模板，需要有不同的场景
-	// 对你的称呼输入中文或者英文，不可以超过 20 个字符
-	// 1、提醒超时，也就是打卡提醒
-	// 2、联系紧急联系人，需要姓名
-	// 3、journey 部分，超时逻辑，
-	// 对应的紧急联系人逻辑
-	/*
-	- 如果用户没有在行程结束前打卡，则会在行程结束时向用户发送短信：
-  - 用户短信：安否温馨提示您，您进行了行程报备功能，请于 10 分钟内进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。
-- 如果行程结束后 10 分钟内用户没有打卡，则会向用户本人发送短信，并按规则尝试通知用户的紧急联系人：
-  - 用户短信：安否温馨提示您，您进行了行程报备，因为您没有按时打卡，我们按约定开始联系您的紧急联系人，紧急联系次数会进行相应扣除。
-  - 紧急联系人联系逻辑1：按照顺位，从第一位紧急联系人开始呼叫，每次呼叫扣除一次紧急联系次数。如果紧急联系人接听，信息播报完成，则视为成功不再执行后续步骤。
-    - 电话内容：安否温馨提示，您的联系人【紧急联系人对你的称呼】没有进行行程报备归来打卡，请联系 ta 确认情况。行程信息：【行程名称】/【预计归来时间】/【其他备注】。
-  - 紧急联系人联系逻辑2: 如果第一位紧急联系人的呼叫未接听或者信息播报未完成，则向其发送短信，短信内容如下：
-    - 短信内容：安否温馨提示，您的联系人【紧急联系人对你的称呼】没有进行行程报备归来打卡，请联系 ta 确认情况。行程信息：【行程名称】/【预计归来时间】/【其他备注】。
-  - 紧急联系人联系逻辑3: 如果第一位紧急联系人的呼叫未接听或者信息播报未完成，则向下一位紧急联系人执行「紧急联系人联系逻辑1～2」，直到一位紧急联系人接听、紧急联系人列表穷尽或者用户的紧急联系次数耗尽
-  */
 
+	// 解析 payload 为具体的 SMSMessage
+	smsMsg, err := model.ParseSMSMessage(payload)
+	if err != nil {
+		logger.Logger.Error("Failed to parse SMS message",
+			zap.Int64("task_code", taskCode),
+			zap.Error(err),
+		)
+		// 解析失败，更新任务状态为失败
+		now := time.Now()
+		_, updateErr := q.NotificationTask.WithContext(ctx).
+			Where(q.NotificationTask.ID.Eq(task.ID)).
+			Updates(map[string]interface{}{
+				"status":       model.NotificationTaskStatusFailed,
+				"processed_at": now,
+			})
+		if updateErr != nil {
+			logger.Logger.Error("Failed to update task status",
+				zap.Int64("task_id", task.ID),
+				zap.Error(updateErr),
+			)
+		}
+		return fmt.Errorf("failed to parse SMS message: %w", err)
+	}
+
+	if smsMsg.GetPhone() == "" {
+		smsMsg.SetPhone(phone)
+	}
+
+	// 根据消息类型从配置中获取签名和模板代码（如果 payload 中没有）
+	cfg := config.Cfg
+	if smsMsg.GetSignName() == "" || smsMsg.GetTemplateCode() == "" {
+		signName, templateCode, err := cfg.GetSMSTemplateConfig(smsMsg.GetMessageType())
+		if err != nil {
+			logger.Logger.Error("Failed to get SMS template config",
+				zap.Int64("task_code", taskCode),
+				zap.String("message_type", smsMsg.GetMessageType()),
+				zap.Error(err),
+			)
+			now := time.Now()
+			_, updateErr := q.NotificationTask.WithContext(ctx).
+				Where(q.NotificationTask.ID.Eq(task.ID)).
+				Updates(map[string]interface{}{
+					"status":       model.NotificationTaskStatusFailed,
+					"processed_at": now,
+				})
+			if updateErr != nil {
+				logger.Logger.Error("Failed to update task status",
+					zap.Int64("task_id", task.ID),
+					zap.Error(updateErr),
+				)
+			}
+			return fmt.Errorf("failed to get SMS template config: %w", err)
+		}
+		if smsMsg.GetSignName() == "" {
+			smsMsg.SetSignName(signName)
+		}
+		if smsMsg.GetTemplateCode() == "" {
+			smsMsg.SetTemplateCode(templateCode)
+		}
+	}
+
+	// 获取模板参数
+	templateParams, err := smsMsg.GetTemplateParams()
+	if err != nil {
+		logger.Logger.Error("Failed to get template params",
+			zap.Int64("task_code", taskCode),
+			zap.String("message_type", smsMsg.GetMessageType()),
+			zap.Error(err),
+		)
+		now := time.Now()
+		_, updateErr := q.NotificationTask.WithContext(ctx).
+			Where(q.NotificationTask.ID.Eq(task.ID)).
+			Updates(map[string]interface{}{
+				"status":       model.NotificationTaskStatusFailed,
+				"processed_at": now,
+			})
+		if updateErr != nil {
+			logger.Logger.Error("Failed to update task status",
+				zap.Int64("task_id", task.ID),
+				zap.Error(updateErr),
+			)
+		}
+		return fmt.Errorf("failed to get template params: %w", err)
+	}
+
+	err = sms.SendSingle(
+		ctx,
+		smsMsg.GetPhone(),
+		smsMsg.GetSignName(),
+		smsMsg.GetTemplateCode(),
+		templateParams,
+	)
+
+	if err != nil {
+		logger.Logger.Error("Failed to send SMS",
+			zap.Int64("task_code", taskCode),
+			zap.String("message_type", smsMsg.GetMessageType()),
+			zap.String("phone", smsMsg.GetPhone()),
+			zap.Error(err),
+		)
+
+		now := time.Now()
+		_, updateErr := q.NotificationTask.WithContext(ctx).
+			Where(q.NotificationTask.ID.Eq(task.ID)).
+			Updates(map[string]interface{}{
+				"status":       model.NotificationTaskStatusFailed,
+				"processed_at": now,
+			})
+		if updateErr != nil {
+			logger.Logger.Error("Failed to update task status",
+				zap.Int64("task_id", task.ID),
+				zap.Error(updateErr),
+			)
+		}
+		return fmt.Errorf("failed to send SMS: %w", err)
+	}
+
+	// 发送成功，使用事务处理额度扣除和任务状态更新
+	err = db.Transaction(func(tx *gorm.DB) error {
+		txQ := query.Use(tx)
+
+		// 在事务中重新查询最新的余额（使用 balance_after 字段）
+		txSMSTransactions, err := txQ.QuotaTransaction.
+			Where(txQ.QuotaTransaction.UserID.Eq(user.ID)).
+			Where(txQ.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
+			Order(txQ.QuotaTransaction.CreatedAt.Desc()).
+			Limit(1).
+			Find()
+		if err != nil {
+			return fmt.Errorf("failed to query quota balance in transaction: %w", err)
+		}
+
+		var currentBalance int
+		if len(txSMSTransactions) > 0 {
+			currentBalance = txSMSTransactions[0].BalanceAfter
+		} else {
+			currentBalance = 0
+		}
+
+		// 再次检查余额（防止并发扣除导致余额不足）
+		if currentBalance < smsUnitPriceCents {
+			return fmt.Errorf("insufficient SMS quota: balance=%d, required=%d", currentBalance, smsUnitPriceCents)
+		}
+
+		// 计算扣除后的余额
+		newBalance := currentBalance - smsUnitPriceCents
+
+		// 创建额度扣除记录
+		quotaTransaction := &model.QuotaTransaction{
+			UserID:          user.ID,
+			Channel:         model.QuotaChannelSMS,
+			TransactionType: model.TransactionTypeDeduct,
+			Reason:          "sms_notification", // 扣减原因：短信通知
+			Amount:          smsUnitPriceCents,
+			BalanceAfter:    newBalance,
+		}
+
+		if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+			return fmt.Errorf("failed to create quota transaction: %w", err)
+		}
+
+		// 更新任务状态为成功
+		now := time.Now()
+		_, err = txQ.NotificationTask.
+			Where(txQ.NotificationTask.ID.Eq(task.ID)).
+			Updates(map[string]interface{}{
+				"status":       model.NotificationTaskStatusSuccess,
+				"processed_at": now,
+			})
+		if err != nil {
+			return fmt.Errorf("failed to update task status: %w", err)
+		}
+
+		logger.Logger.Info("SMS sent and quota deducted successfully",
+			zap.Int64("task_code", taskCode),
+			zap.String("message_type", smsMsg.GetMessageType()),
+			zap.String("phone", smsMsg.GetPhone()),
+			zap.Int("amount_deducted", smsUnitPriceCents),
+			zap.Int("balance_before", currentBalance),
+			zap.Int("balance_after", newBalance),
+		)
+
+		return nil
+	})
+
+	// 这里还需要获取发送短信返回的状态码，根据状态码来尝试逻辑
+	if err != nil {
+		logger.Logger.Error("Failed to process quota deduction and task update",
+			zap.Int64("task_code", taskCode),
+			zap.Error(err),
+		)
+		// 短信已发送成功，但额度扣除或状态更新失败
+		// 这种情况下需要人工介入处理，因为短信已发送但未扣费
+		// 可以考虑记录到告警系统或重试队列
+		return fmt.Errorf("SMS sent but failed to deduct quota or update task: %w", err)
+	}
 
 	return nil
 }
