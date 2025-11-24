@@ -33,13 +33,13 @@ func newNotificationTask(db *gorm.DB, opts ...gen.DOOption) notificationTask {
 	_notificationTask.ContactPriority = field.NewInt(tableName, "contact_priority")
 	_notificationTask.ContactPhoneHash = field.NewString(tableName, "contact_phone_hash")
 	_notificationTask.Payload = field.NewField(tableName, "payload")
+	_notificationTask.Channel = field.NewString(tableName, "channel")
+	_notificationTask.Category = field.NewString(tableName, "category")
+	_notificationTask.Status = field.NewString(tableName, "status")
 	_notificationTask.CreatedAt = field.NewTime(tableName, "created_at")
 	_notificationTask.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_notificationTask.DeletedAt = field.NewField(tableName, "deleted_at")
 	_notificationTask.ID = field.NewInt64(tableName, "id")
-	_notificationTask.Channel = field.NewString(tableName, "channel")
-	_notificationTask.Category = field.NewString(tableName, "category")
-	_notificationTask.Status = field.NewString(tableName, "status")
 	_notificationTask.RetryCount = field.NewInt(tableName, "retry_count")
 	_notificationTask.UserID = field.NewInt64(tableName, "user_id")
 	_notificationTask.TaskCode = field.NewInt64(tableName, "task_code")
@@ -60,13 +60,13 @@ type notificationTask struct {
 	ContactPriority  field.Int
 	ContactPhoneHash field.String
 	Payload          field.Field
+	Channel          field.String
+	Category         field.String
+	Status           field.String
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
 	DeletedAt        field.Field
 	ID               field.Int64
-	Channel          field.String
-	Category         field.String
-	Status           field.String
 	RetryCount       field.Int
 	UserID           field.Int64
 	TaskCode         field.Int64
@@ -93,13 +93,13 @@ func (n *notificationTask) updateTableName(table string) *notificationTask {
 	n.ContactPriority = field.NewInt(table, "contact_priority")
 	n.ContactPhoneHash = field.NewString(table, "contact_phone_hash")
 	n.Payload = field.NewField(table, "payload")
+	n.Channel = field.NewString(table, "channel")
+	n.Category = field.NewString(table, "category")
+	n.Status = field.NewString(table, "status")
 	n.CreatedAt = field.NewTime(table, "created_at")
 	n.UpdatedAt = field.NewTime(table, "updated_at")
 	n.DeletedAt = field.NewField(table, "deleted_at")
 	n.ID = field.NewInt64(table, "id")
-	n.Channel = field.NewString(table, "channel")
-	n.Category = field.NewString(table, "category")
-	n.Status = field.NewString(table, "status")
 	n.RetryCount = field.NewInt(table, "retry_count")
 	n.UserID = field.NewInt64(table, "user_id")
 	n.TaskCode = field.NewInt64(table, "task_code")
@@ -127,13 +127,13 @@ func (n *notificationTask) fillFieldMap() {
 	n.fieldMap["contact_priority"] = n.ContactPriority
 	n.fieldMap["contact_phone_hash"] = n.ContactPhoneHash
 	n.fieldMap["payload"] = n.Payload
+	n.fieldMap["channel"] = n.Channel
+	n.fieldMap["category"] = n.Category
+	n.fieldMap["status"] = n.Status
 	n.fieldMap["created_at"] = n.CreatedAt
 	n.fieldMap["updated_at"] = n.UpdatedAt
 	n.fieldMap["deleted_at"] = n.DeletedAt
 	n.fieldMap["id"] = n.ID
-	n.fieldMap["channel"] = n.Channel
-	n.fieldMap["category"] = n.Category
-	n.fieldMap["status"] = n.Status
 	n.fieldMap["retry_count"] = n.RetryCount
 	n.fieldMap["user_id"] = n.UserID
 	n.fieldMap["task_code"] = n.TaskCode

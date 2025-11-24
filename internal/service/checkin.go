@@ -311,6 +311,7 @@ func (s *CheckInService) ProcessReminderBatch(
 				// 发送消息到队列（不扣款，只是投递消息）， 扣款需要在消费者处进行事务处理
 				// reminder_sent_at 会在消费者成功发送短信后更新
 				notificationMsg := queue.NotificationMessage{
+					TaskCode:        taskCode,
 					TaskID:          taskID,
 					UserID:          publicID, // 消息中使用 public_id
 					Category:        "check_in_reminder",

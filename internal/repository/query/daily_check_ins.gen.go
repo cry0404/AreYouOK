@@ -32,11 +32,11 @@ func newDailyCheckIn(db *gorm.DB, opts ...gen.DOOption) dailyCheckIn {
 	_dailyCheckIn.CheckInAt = field.NewTime(tableName, "check_in_at")
 	_dailyCheckIn.ReminderSentAt = field.NewTime(tableName, "reminder_sent_at")
 	_dailyCheckIn.AlertTriggeredAt = field.NewTime(tableName, "alert_triggered_at")
+	_dailyCheckIn.Status = field.NewString(tableName, "status")
 	_dailyCheckIn.CreatedAt = field.NewTime(tableName, "created_at")
 	_dailyCheckIn.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_dailyCheckIn.DeletedAt = field.NewField(tableName, "deleted_at")
 	_dailyCheckIn.ID = field.NewInt64(tableName, "id")
-	_dailyCheckIn.Status = field.NewString(tableName, "status")
 	_dailyCheckIn.UserID = field.NewInt64(tableName, "user_id")
 
 	_dailyCheckIn.fillFieldMap()
@@ -52,11 +52,11 @@ type dailyCheckIn struct {
 	CheckInAt        field.Time
 	ReminderSentAt   field.Time
 	AlertTriggeredAt field.Time
+	Status           field.String
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
 	DeletedAt        field.Field
 	ID               field.Int64
-	Status           field.String
 	UserID           field.Int64
 
 	fieldMap map[string]field.Expr
@@ -78,11 +78,11 @@ func (d *dailyCheckIn) updateTableName(table string) *dailyCheckIn {
 	d.CheckInAt = field.NewTime(table, "check_in_at")
 	d.ReminderSentAt = field.NewTime(table, "reminder_sent_at")
 	d.AlertTriggeredAt = field.NewTime(table, "alert_triggered_at")
+	d.Status = field.NewString(table, "status")
 	d.CreatedAt = field.NewTime(table, "created_at")
 	d.UpdatedAt = field.NewTime(table, "updated_at")
 	d.DeletedAt = field.NewField(table, "deleted_at")
 	d.ID = field.NewInt64(table, "id")
-	d.Status = field.NewString(table, "status")
 	d.UserID = field.NewInt64(table, "user_id")
 
 	d.fillFieldMap()
@@ -105,11 +105,11 @@ func (d *dailyCheckIn) fillFieldMap() {
 	d.fieldMap["check_in_at"] = d.CheckInAt
 	d.fieldMap["reminder_sent_at"] = d.ReminderSentAt
 	d.fieldMap["alert_triggered_at"] = d.AlertTriggeredAt
+	d.fieldMap["status"] = d.Status
 	d.fieldMap["created_at"] = d.CreatedAt
 	d.fieldMap["updated_at"] = d.UpdatedAt
 	d.fieldMap["deleted_at"] = d.DeletedAt
 	d.fieldMap["id"] = d.ID
-	d.fieldMap["status"] = d.Status
 	d.fieldMap["user_id"] = d.UserID
 }
 

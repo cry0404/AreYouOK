@@ -28,13 +28,13 @@ func newQuotaTransaction(db *gorm.DB, opts ...gen.DOOption) quotaTransaction {
 
 	tableName := _quotaTransaction.quotaTransactionDo.TableName()
 	_quotaTransaction.ALL = field.NewAsterisk(tableName)
+	_quotaTransaction.Channel = field.NewString(tableName, "channel")
+	_quotaTransaction.TransactionType = field.NewString(tableName, "transaction_type")
+	_quotaTransaction.Reason = field.NewString(tableName, "reason")
 	_quotaTransaction.CreatedAt = field.NewTime(tableName, "created_at")
 	_quotaTransaction.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_quotaTransaction.DeletedAt = field.NewField(tableName, "deleted_at")
 	_quotaTransaction.ID = field.NewInt64(tableName, "id")
-	_quotaTransaction.Channel = field.NewString(tableName, "channel")
-	_quotaTransaction.TransactionType = field.NewString(tableName, "transaction_type")
-	_quotaTransaction.Reason = field.NewString(tableName, "reason")
 	_quotaTransaction.UserID = field.NewInt64(tableName, "user_id")
 	_quotaTransaction.Amount = field.NewInt(tableName, "amount")
 	_quotaTransaction.BalanceAfter = field.NewInt(tableName, "balance_after")
@@ -48,13 +48,13 @@ type quotaTransaction struct {
 	quotaTransactionDo
 
 	ALL             field.Asterisk
+	Channel         field.String
+	TransactionType field.String
+	Reason          field.String
 	CreatedAt       field.Time
 	UpdatedAt       field.Time
 	DeletedAt       field.Field
 	ID              field.Int64
-	Channel         field.String
-	TransactionType field.String
-	Reason          field.String
 	UserID          field.Int64
 	Amount          field.Int
 	BalanceAfter    field.Int
@@ -74,13 +74,13 @@ func (q quotaTransaction) As(alias string) *quotaTransaction {
 
 func (q *quotaTransaction) updateTableName(table string) *quotaTransaction {
 	q.ALL = field.NewAsterisk(table)
+	q.Channel = field.NewString(table, "channel")
+	q.TransactionType = field.NewString(table, "transaction_type")
+	q.Reason = field.NewString(table, "reason")
 	q.CreatedAt = field.NewTime(table, "created_at")
 	q.UpdatedAt = field.NewTime(table, "updated_at")
 	q.DeletedAt = field.NewField(table, "deleted_at")
 	q.ID = field.NewInt64(table, "id")
-	q.Channel = field.NewString(table, "channel")
-	q.TransactionType = field.NewString(table, "transaction_type")
-	q.Reason = field.NewString(table, "reason")
 	q.UserID = field.NewInt64(table, "user_id")
 	q.Amount = field.NewInt(table, "amount")
 	q.BalanceAfter = field.NewInt(table, "balance_after")
@@ -101,13 +101,13 @@ func (q *quotaTransaction) GetFieldByName(fieldName string) (field.OrderExpr, bo
 
 func (q *quotaTransaction) fillFieldMap() {
 	q.fieldMap = make(map[string]field.Expr, 10)
+	q.fieldMap["channel"] = q.Channel
+	q.fieldMap["transaction_type"] = q.TransactionType
+	q.fieldMap["reason"] = q.Reason
 	q.fieldMap["created_at"] = q.CreatedAt
 	q.fieldMap["updated_at"] = q.UpdatedAt
 	q.fieldMap["deleted_at"] = q.DeletedAt
 	q.fieldMap["id"] = q.ID
-	q.fieldMap["channel"] = q.Channel
-	q.fieldMap["transaction_type"] = q.TransactionType
-	q.fieldMap["reason"] = q.Reason
 	q.fieldMap["user_id"] = q.UserID
 	q.fieldMap["amount"] = q.Amount
 	q.fieldMap["balance_after"] = q.BalanceAfter

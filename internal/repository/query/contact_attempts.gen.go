@@ -31,13 +31,13 @@ func newContactAttempt(db *gorm.DB, opts ...gen.DOOption) contactAttempt {
 	_contactAttempt.AttemptedAt = field.NewTime(tableName, "attempted_at")
 	_contactAttempt.ResponseCode = field.NewString(tableName, "response_code")
 	_contactAttempt.ResponseMessage = field.NewString(tableName, "response_message")
+	_contactAttempt.ContactPhoneHash = field.NewString(tableName, "contact_phone_hash")
+	_contactAttempt.Channel = field.NewString(tableName, "channel")
+	_contactAttempt.Status = field.NewString(tableName, "status")
 	_contactAttempt.CreatedAt = field.NewTime(tableName, "created_at")
 	_contactAttempt.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_contactAttempt.DeletedAt = field.NewField(tableName, "deleted_at")
 	_contactAttempt.ID = field.NewInt64(tableName, "id")
-	_contactAttempt.ContactPhoneHash = field.NewString(tableName, "contact_phone_hash")
-	_contactAttempt.Channel = field.NewString(tableName, "channel")
-	_contactAttempt.Status = field.NewString(tableName, "status")
 	_contactAttempt.TaskID = field.NewInt64(tableName, "task_id")
 	_contactAttempt.ContactPriority = field.NewInt(tableName, "contact_priority")
 	_contactAttempt.CostCents = field.NewInt(tableName, "cost_cents")
@@ -55,13 +55,13 @@ type contactAttempt struct {
 	AttemptedAt      field.Time
 	ResponseCode     field.String
 	ResponseMessage  field.String
+	ContactPhoneHash field.String
+	Channel          field.String
+	Status           field.String
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
 	DeletedAt        field.Field
 	ID               field.Int64
-	ContactPhoneHash field.String
-	Channel          field.String
-	Status           field.String
 	TaskID           field.Int64
 	ContactPriority  field.Int
 	CostCents        field.Int
@@ -85,13 +85,13 @@ func (c *contactAttempt) updateTableName(table string) *contactAttempt {
 	c.AttemptedAt = field.NewTime(table, "attempted_at")
 	c.ResponseCode = field.NewString(table, "response_code")
 	c.ResponseMessage = field.NewString(table, "response_message")
+	c.ContactPhoneHash = field.NewString(table, "contact_phone_hash")
+	c.Channel = field.NewString(table, "channel")
+	c.Status = field.NewString(table, "status")
 	c.CreatedAt = field.NewTime(table, "created_at")
 	c.UpdatedAt = field.NewTime(table, "updated_at")
 	c.DeletedAt = field.NewField(table, "deleted_at")
 	c.ID = field.NewInt64(table, "id")
-	c.ContactPhoneHash = field.NewString(table, "contact_phone_hash")
-	c.Channel = field.NewString(table, "channel")
-	c.Status = field.NewString(table, "status")
 	c.TaskID = field.NewInt64(table, "task_id")
 	c.ContactPriority = field.NewInt(table, "contact_priority")
 	c.CostCents = field.NewInt(table, "cost_cents")
@@ -116,13 +116,13 @@ func (c *contactAttempt) fillFieldMap() {
 	c.fieldMap["attempted_at"] = c.AttemptedAt
 	c.fieldMap["response_code"] = c.ResponseCode
 	c.fieldMap["response_message"] = c.ResponseMessage
+	c.fieldMap["contact_phone_hash"] = c.ContactPhoneHash
+	c.fieldMap["channel"] = c.Channel
+	c.fieldMap["status"] = c.Status
 	c.fieldMap["created_at"] = c.CreatedAt
 	c.fieldMap["updated_at"] = c.UpdatedAt
 	c.fieldMap["deleted_at"] = c.DeletedAt
 	c.fieldMap["id"] = c.ID
-	c.fieldMap["contact_phone_hash"] = c.ContactPhoneHash
-	c.fieldMap["channel"] = c.Channel
-	c.fieldMap["status"] = c.Status
 	c.fieldMap["task_id"] = c.TaskID
 	c.fieldMap["contact_priority"] = c.ContactPriority
 	c.fieldMap["cost_cents"] = c.CostCents

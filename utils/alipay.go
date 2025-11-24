@@ -34,7 +34,7 @@ type AlipayEncryptedResponse struct {
 	Sign        string `json:"sign"`         // RSA2 签名（base64 编码）
 	SignType    string `json:"sign_type"`    // 签名算法，通常为 "RSA2"
 	EncryptType string `json:"encrypt_type"` // 加密算法，通常为 "AES"
-	Charset     string `json:"charset"`      // 字符集，通常为 "UTF-8"
+	Charset     string `json:"charset"`      
 }
 
 // AlipayResponse 兼容旧版本的 response 结构
@@ -72,8 +72,6 @@ func loadAlipayPrivateKey() (*rsa.PrivateKey, error) {
 			// 尝试 base64 解码
 			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPrivateKey)
 			if err != nil {
-				// 如果 base64 解码失败，尝试直接使用原始字符串
-				logger.Logger.Debug("Private key is not base64, using raw string")
 				keyBytes = []byte(config.Cfg.AlipayPrivateKey)
 			} else {
 				logger.Logger.Debug("Private key decoded from base64")
@@ -82,7 +80,6 @@ func loadAlipayPrivateKey() (*rsa.PrivateKey, error) {
 
 		logger.Logger.Debug("Loading private key",
 			zap.Int("key_bytes_length", len(keyBytes)),
-			zap.String("key_preview", getPreview(string(keyBytes), 50)),
 		)
 
 		var privateKey interface{}
@@ -136,13 +133,13 @@ func loadAlipayPublicKey() (*rsa.PublicKey, error) {
 		block, _ := pem.Decode([]byte(config.Cfg.AlipayPublicKey))
 		if block != nil {
 			keyBytes = block.Bytes
-			logger.Logger.Debug("Public key is PEM format")
+
 		} else {
-			// 尝试 base64 解码
+
 			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPublicKey)
 			if err != nil {
-				// 如果 base64 解码失败，尝试直接使用原始字符串
-				logger.Logger.Debug("Public key is not base64, using raw string")
+
+
 				keyBytes = []byte(config.Cfg.AlipayPublicKey)
 			} else {
 				logger.Logger.Debug("Public key decoded from base64")
@@ -151,7 +148,7 @@ func loadAlipayPublicKey() (*rsa.PublicKey, error) {
 
 		logger.Logger.Debug("Loading public key",
 			zap.Int("key_bytes_length", len(keyBytes)),
-			zap.String("key_preview", getPreview(string(keyBytes), 50)),
+
 		)
 
 		var publicKey interface{}
@@ -334,7 +331,6 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 		zap.String("encrypt_type", encryptType),
 		zap.String("sign_type", signType),
 		zap.Int("response_length", len(responseData)),
-		zap.String("response_preview", getPreview(responseData, 50)),
 	)
 
 	// Base64 解码 response 数据
@@ -374,15 +370,10 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 			return "", fmt.Errorf("failed to decrypt with AES: %w", err)
 		}
 
-		logger.Logger.Debug("AES decryption successful",
-			zap.Int("plaintext_length", len(plaintext)),
-			zap.String("plaintext_preview", getPreview(string(plaintext), 100)),
-		)
+		
 	} else {
 
-		logger.Logger.Warn("Using legacy RSA decryption",
-			zap.String("encrypt_type", encryptType),
-		)
+		
 		privateKey, err := loadAlipayPrivateKey()
 		if err != nil {
 			return "", fmt.Errorf("failed to load private key: %w", err)
@@ -454,12 +445,5 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 	return phoneData.Mobile, nil
 }
 
-// getPreview 获取字符串预览（用于日志）
-func getPreview(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
 
 

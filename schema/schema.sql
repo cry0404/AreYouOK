@@ -73,7 +73,7 @@ CREATE TABLE journeys (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id),
   title VARCHAR(64) NOT NULL,
-  note VARCHAR(255) NOT NULL DEFAULT '',
+  note TEXT NOT NULL DEFAULT '',
   expected_return_time TIMESTAMPTZ NOT NULL, --设定返回时间
   actual_return_time TIMESTAMPTZ,             -- 实际返回时间
   status VARCHAR(16) NOT NULL DEFAULT 'ongoing',
@@ -126,7 +126,7 @@ CREATE INDEX idx_contact_attempts_contact ON contact_attempts(contact_phone_hash
 -- 通知任务：统一调度短信与外呼。
 CREATE TABLE notification_tasks (
   id BIGSERIAL PRIMARY KEY,
-  task_code BIGINT NOT NULL, -- 也就是 task_id 
+  task_code BIGINT NOT NULL, -- 与 task_id 做区分，taskID 生成出来是为了在消息队列中做区别
   user_id BIGINT NOT NULL REFERENCES users(id),
   contact_priority SMALLINT, -- 紧急联系人优先级（1-3），对应 users.emergency_contacts 数组中的 priority
   contact_phone_hash CHAR(64), -- 紧急联系人手机号哈希（用于快速查找）

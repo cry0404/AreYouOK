@@ -33,14 +33,14 @@ func newJourney(db *gorm.DB, opts ...gen.DOOption) journey {
 	_journey.ReminderSentAt = field.NewTime(tableName, "reminder_sent_at")
 	_journey.AlertTriggeredAt = field.NewTime(tableName, "alert_triggered_at")
 	_journey.AlertLastAttemptAt = field.NewTime(tableName, "alert_last_attempt_at")
-	_journey.CreatedAt = field.NewTime(tableName, "created_at")
-	_journey.UpdatedAt = field.NewTime(tableName, "updated_at")
-	_journey.DeletedAt = field.NewField(tableName, "deleted_at")
-	_journey.ID = field.NewInt64(tableName, "id")
 	_journey.Title = field.NewString(tableName, "title")
 	_journey.Note = field.NewString(tableName, "note")
 	_journey.Status = field.NewString(tableName, "status")
 	_journey.AlertStatus = field.NewString(tableName, "alert_status")
+	_journey.CreatedAt = field.NewTime(tableName, "created_at")
+	_journey.UpdatedAt = field.NewTime(tableName, "updated_at")
+	_journey.DeletedAt = field.NewField(tableName, "deleted_at")
+	_journey.ID = field.NewInt64(tableName, "id")
 	_journey.UserID = field.NewInt64(tableName, "user_id")
 	_journey.AlertAttempts = field.NewInt(tableName, "alert_attempts")
 
@@ -58,14 +58,14 @@ type journey struct {
 	ReminderSentAt     field.Time
 	AlertTriggeredAt   field.Time
 	AlertLastAttemptAt field.Time
-	CreatedAt          field.Time
-	UpdatedAt          field.Time
-	DeletedAt          field.Field
-	ID                 field.Int64
 	Title              field.String
 	Note               field.String
 	Status             field.String
 	AlertStatus        field.String
+	CreatedAt          field.Time
+	UpdatedAt          field.Time
+	DeletedAt          field.Field
+	ID                 field.Int64
 	UserID             field.Int64
 	AlertAttempts      field.Int
 
@@ -89,14 +89,14 @@ func (j *journey) updateTableName(table string) *journey {
 	j.ReminderSentAt = field.NewTime(table, "reminder_sent_at")
 	j.AlertTriggeredAt = field.NewTime(table, "alert_triggered_at")
 	j.AlertLastAttemptAt = field.NewTime(table, "alert_last_attempt_at")
-	j.CreatedAt = field.NewTime(table, "created_at")
-	j.UpdatedAt = field.NewTime(table, "updated_at")
-	j.DeletedAt = field.NewField(table, "deleted_at")
-	j.ID = field.NewInt64(table, "id")
 	j.Title = field.NewString(table, "title")
 	j.Note = field.NewString(table, "note")
 	j.Status = field.NewString(table, "status")
 	j.AlertStatus = field.NewString(table, "alert_status")
+	j.CreatedAt = field.NewTime(table, "created_at")
+	j.UpdatedAt = field.NewTime(table, "updated_at")
+	j.DeletedAt = field.NewField(table, "deleted_at")
+	j.ID = field.NewInt64(table, "id")
 	j.UserID = field.NewInt64(table, "user_id")
 	j.AlertAttempts = field.NewInt(table, "alert_attempts")
 
@@ -121,14 +121,14 @@ func (j *journey) fillFieldMap() {
 	j.fieldMap["reminder_sent_at"] = j.ReminderSentAt
 	j.fieldMap["alert_triggered_at"] = j.AlertTriggeredAt
 	j.fieldMap["alert_last_attempt_at"] = j.AlertLastAttemptAt
-	j.fieldMap["created_at"] = j.CreatedAt
-	j.fieldMap["updated_at"] = j.UpdatedAt
-	j.fieldMap["deleted_at"] = j.DeletedAt
-	j.fieldMap["id"] = j.ID
 	j.fieldMap["title"] = j.Title
 	j.fieldMap["note"] = j.Note
 	j.fieldMap["status"] = j.Status
 	j.fieldMap["alert_status"] = j.AlertStatus
+	j.fieldMap["created_at"] = j.CreatedAt
+	j.fieldMap["updated_at"] = j.UpdatedAt
+	j.fieldMap["deleted_at"] = j.DeletedAt
+	j.fieldMap["id"] = j.ID
 	j.fieldMap["user_id"] = j.UserID
 	j.fieldMap["alert_attempts"] = j.AlertAttempts
 }

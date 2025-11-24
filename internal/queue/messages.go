@@ -51,6 +51,7 @@ type NotificationMessage struct {
 	Channel         string                 `json:"channel"`
 	PhoneHash       string                 `json:"phone_hash"`
 	TaskID          int64                  `json:"task_id"`
+	TaskCode        int64                  `json:"task_code"` //幂等性帮助
 	UserID          int64                  `json:"user_id"`
 	ContactPriority int                    `json:"contact_priority"`
 	CheckInDate     string                 `json:"check_in_date,omitempty"` // 打卡日期（仅用于 check_in_reminder 类别）
