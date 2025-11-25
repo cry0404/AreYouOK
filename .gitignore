@@ -6,6 +6,8 @@ TODO.md
 test/
 config/.env
 .env
+.env.api
+.env.worker
 .vscode/
 *.http
 idea.md

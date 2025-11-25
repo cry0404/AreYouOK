@@ -75,6 +75,11 @@ var (
 	OnboardingStepInvalid = Definition{Code: "ONBOARDING_STEP_INVALID", Message: "Onboarding step invalid"}
 )
 
+// 限流错误。
+var (
+	TooManyRequests = Definition{Code: "TOO_MANY_REQUESTS", Message: "Too many requests"}
+)
+
 // 系统错误（用于内部错误，通常需要包装）
 var (
 	ErrTokenGeneratorNotInitialized = Definition{Code: "TOKEN_GENERATOR_NOT_INITIALIZED", Message: "Token generator not initialized, call token.Init() first"}
@@ -142,6 +147,7 @@ var Lookup = map[string]Definition{
 	ErrPhonesCodesMismatch.Code:          ErrPhonesCodesMismatch,
 	ErrTencentSMSNotImplemented.Code:     ErrTencentSMSNotImplemented,
 	ErrUnsupportedSMSProvider.Code:       ErrUnsupportedSMSProvider,
+	TooManyRequests.Code:                 TooManyRequests,
 }
 
 // Get 根据错误码返回 Definition，若不存在则返回空 Definition。

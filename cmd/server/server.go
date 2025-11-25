@@ -80,6 +80,8 @@ func main() {
 	addr := net.JoinHostPort(config.Cfg.ServerHost, config.Cfg.ServerPort)
 	h := server.Default(server.WithHostPorts(addr))
 
+	
+
 	router.Register(h)
 
 	go func() {

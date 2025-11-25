@@ -9,18 +9,26 @@ import (
 
 func Register(h *server.Hertz) {
 
+	h.Use(middleware.RecoverMiddleware())
 	h.Use(middleware.CORSMiddleware())
-
+	//h.Use(middleware.CSRFMiddleware()) csrf 中间件，支付宝小程序似乎不需要
 	v1 := h.Group("/v1")
 
 	// 认证相关路由
 	auth := v1.Group("/auth")
+	auth.Use(middleware.AuthRateLimitMiddleware()) // 认证接口限流
 	{
 		auth.POST("/miniapp/alipay/exchange", handler.ExchangeAlipayAuth)
-		auth.POST("/phone/send-captcha", handler.SendCaptcha)
-		auth.POST("/phone/verify-slider", handler.VerifySlider)
-		auth.POST("/phone/verify", handler.VerifyCaptcha)
 		auth.POST("/token/refresh", handler.RefreshToken)
+
+		// 验证码相关路由
+		captcha := auth.Group("/phone", middleware.CaptchaRateLimitMiddleware())
+		{
+			captcha.POST("/send-captcha", handler.SendCaptcha)
+			captcha.POST("/verify-slider", handler.VerifySlider)
+			captcha.POST("/verify", handler.VerifyCaptcha)
+		}
+
 		// auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	}
 
@@ -30,7 +38,7 @@ func Register(h *server.Hertz) {
 	{
 		users.GET("/me/status", handler.GetUserStatus)
 		users.GET("/me", handler.GetUserProfile)
-		users.PUT("/me/settings", handler.UpdateUserSettings)
+		users.PUT("/me/settings", middleware.UserSettingsRateLimitMiddleware(), handler.UpdateUserSettings) // 用户设置修改限流
 		users.GET("/me/quotas", handler.GetUserQuotas)
 	}
 
@@ -60,18 +68,11 @@ func Register(h *server.Hertz) {
 		journeys.GET("", handler.ListJourneys)
 		journeys.POST("", handler.CreateJourney)
 		journeys.GET("/:journey_id", handler.GetJourneyDetail)
-		journeys.PATCH("/:journey_id", handler.UpdateJourney)
+		journeys.PATCH("/:journey_id", middleware.JourneySettingsRateLimitMiddleware(), handler.UpdateJourney) //行程修改限流，这里最后还需要考虑最后几分钟就不能修改了的问题
 		journeys.POST("/:journey_id/complete", handler.CompleteJourney)
 		journeys.POST("/:journey_id/ack-alert", handler.AckJourneyAlert)
 		journeys.GET("/:journey_id/alerts", handler.GetJourneyAlerts)
 	}
-
-	// 通知任务路由
-	notifications := v1.Group("/notifications")
-	notifications.Use(middleware.AuthMiddleware())
-	{
-		notifications.GET("/tasks", handler.ListNotificationTasks)
-		notifications.GET("/tasks/:task_id", handler.GetNotificationTaskDetail)
-		notifications.POST("/ack", handler.AckNotification)
-	}
 }
+
+	

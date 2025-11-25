@@ -12,14 +12,14 @@ processors:
     spike_limit_percentage: 25
 
 exporters:     #导出的对应服务
-  logging:
-    loglevel: warn
+  debug:
+    verbosity: basic
 
 service:
   pipelines:
     traces:
       receivers: [otlp]
       processors: [memory_limiter, batch]
-      exporters: [logging]
+      exporters: [debug]
 
 

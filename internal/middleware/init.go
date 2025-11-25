@@ -1,6 +1,7 @@
 package middleware
 
 // TODO: 统一的关闭逻辑
+// 事后看似乎不需要关闭
 import (
 	"go.uber.org/zap"
 

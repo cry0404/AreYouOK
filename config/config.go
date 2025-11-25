@@ -11,6 +11,8 @@ import (
 var Cfg Config
 
 type Config struct {
+	SessionSecret			string `env:"SESSION_SECRET_KEY"`
+	CSRFSecret				string `env:"CSRF_SECRET_KEY"`
 	AliPayAESKey            string `env:"ALIPAY_AES_KEY"`
 	AlipayAppSecret         string `env:"ALIPAY_APP_SECRET"`
 	CaptchaSceneId          string `env:"CAPTCHA_SCENE_ID"`

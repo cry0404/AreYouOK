@@ -1,3 +1,4 @@
+# 国内服务器部署时镜像源记得换成 1ms 镜像
 services:
   postgres:
     image: postgres:16-alpine
@@ -76,47 +77,32 @@ services:
       rabbitmq:
         condition: service_healthy
     # 加载外部 .env 文件到环境变量
-    # 优先加载 .env.api，如果不存在则加载 .env
-    # 注意：如果 .env.api 不存在，docker-compose 会报错，可以创建符号链接：ln -s .env .env.api
+    # 注意：如果 .env.api 不存在，docker-compose 会报错
     env_file:
       - ../.env.api
-      - ../.env
     environment:
-      SERVICE_NAME: areyouok-api
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      SERVER_HOST: ${SERVER_HOST:-0.0.0.0}
-      SERVER_PORT: ${SERVER_PORT:-8080}
-      
-      POSTGRESQL_HOST: ${POSTGRESQL_HOST:-postgres}
-      POSTGRESQL_PORT: ${POSTGRESQL_PORT:-5432}
-      POSTGRESQL_USER: ${POSTGRESQL_USER:-postgres}
-      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:-postgres}
-      POSTGRESQL_DATABASE: ${POSTGRESQL_DATABASE:-areyouok}
-      POSTGRESQL_SCHEMA: ${POSTGRESQL_SCHEMA:-public}
-      POSTGRESQL_SSLMODE: ${POSTGRESQL_SSLMODE:-disable}
-      
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_DB: ${REDIS_DB:-0}
-      REDIS_PREFIX: ${REDIS_PREFIX:-ayok}
-      
-      # RabbitMQ 配置
-      RABBITMQ_ADDR: ${RABBITMQ_ADDR:-rabbitmq}
-      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
-      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      
-      SNOWFLAKE_DATACENTER_ID: ${SNOWFLAKE_DATACENTER_ID:-1}
-      SNOWFLAKE_MACHINE_ID: ${SNOWFLAKE_MACHINE_ID:-1}
-      
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
-      
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-01234567890123456789012345678901}
-      
-      LOGGER_FORMAT: ${LOGGER_FORMAT:-json}
-      LOGGER_LEVEL: ${LOGGER_LEVEL:-INFO}
-      LOGGER_OUTPUT_PATH: ${LOGGER_OUTPUT_PATH:-stdout}
+      # 服务配置（从 .env.api 加载）
+      # SERVICE_NAME, ENVIRONMENT, SERVER_HOST, SERVER_PORT
+
+      # 数据库配置（从 .env.api 加载）
+      # POSTGRESQL_HOST=postgres 等
+
+      # Redis 配置（从 .env.api 加载）
+      # REDIS_ADDR=redis:6379 等
+
+      # RabbitMQ 配置（从 .env.api 加载）
+      # RABBITMQ_ADDR=rabbitmq 等
+
+      # Snowflake 配置（从 .env.api 加载）
+      # SNOWFLAKE_MACHINE_ID=1 等
+
+      # 加密配置（从 .env.api 加载）
+      # ENCRYPTION_KEY, JWT_SECRET 等
+
+      # 日志配置（从 .env.api 加载）
+      # LOGGER_LEVEL, LOGGER_FORMAT 等
+
+      # Infrastructure endpoints
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       PROM_METRICS_ADDR: ${PROM_METRICS_ADDR:-:9464}
     # 将外部 .env 文件映射到容器内的 .env（如果应用需要读取文件）
@@ -142,61 +128,37 @@ services:
       rabbitmq:
         condition: service_healthy
     # 加载外部 .env 文件到环境变量
-    # 优先加载 .env.worker，如果不存在则加载 .env
-    # 注意：如果 .env.worker 不存在，docker-compose 会报错，可以创建符号链接：ln -s .env .env.worker
+    # 注意：如果 .env.worker 不存在，docker-compose 会报错
     env_file:
       - ../.env.worker
-      - ../.env
     environment:
-      # 服务配置
-      SERVICE_NAME: areyouok-worker
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      
-      # 数据库配置
-      POSTGRESQL_HOST: ${POSTGRESQL_HOST:-postgres}
-      POSTGRESQL_PORT: ${POSTGRESQL_PORT:-5432}
-      POSTGRESQL_USER: ${POSTGRESQL_USER:-postgres}
-      POSTGRESQL_PASSWORD: ${POSTGRESQL_PASSWORD:-postgres}
-      POSTGRESQL_DATABASE: ${POSTGRESQL_DATABASE:-areyouok}
-      POSTGRESQL_SCHEMA: ${POSTGRESQL_SCHEMA:-public}
-      POSTGRESQL_SSLMODE: ${POSTGRESQL_SSLMODE:-disable}
-      
-      # Redis 配置
-      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
-      REDIS_DB: ${REDIS_DB:-0}
-      REDIS_PREFIX: ${REDIS_PREFIX:-ayok}
-      
-      # RabbitMQ 配置
-      RABBITMQ_ADDR: ${RABBITMQ_ADDR:-rabbitmq}
-      RABBITMQ_PORT: ${RABBITMQ_PORT:-5672}
-      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-guest}
-      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-guest}
-      RABBITMQ_VHOST: ${RABBITMQ_VHOST:-/}
-      
-      # Snowflake 配置
-      SNOWFLAKE_DATACENTER_ID: ${SNOWFLAKE_DATACENTER_ID:-1}
-      SNOWFLAKE_MACHINE_ID: ${SNOWFLAKE_MACHINE_ID:-2}
-      
-      # JWT 配置（Worker 不需要，但保持一致性）
-      JWT_SECRET: ${JWT_SECRET:-your-secret-key-change-in-production}
-      
-      # 加密密钥（需要设置）
-      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-01234567890123456789012345678901}
-      
-      # 日志配置
-      LOGGER_FORMAT: ${LOGGER_FORMAT:-json}
-      LOGGER_LEVEL: ${LOGGER_LEVEL:-INFO}
-      LOGGER_OUTPUT_PATH: ${LOGGER_OUTPUT_PATH:-stdout}
+      # 服务配置（从 .env.worker 加载）
+      # SERVICE_NAME, ENVIRONMENT 等
+
+      # 数据库配置（从 .env.worker 加载）
+      # POSTGRESQL_HOST=postgres, POSTGRESQL_PORT=5432 等
+
+      # Redis 配置（从 .env.worker 加载）
+      # REDIS_ADDR=redis:6379 等
+
+      # RabbitMQ 配置（从 .env.worker 加载）
+      # RABBITMQ_ADDR=rabbitmq 等
+
+      # Snowflake 配置（从 .env.worker 加载）
+      # SNOWFLAKE_MACHINE_ID=2 等
+
+      # 加密密钥（从 .env.worker 加载）
+      # ENCRYPTION_KEY, PHONEHASH_SALT 等
+
+      # 日志配置（从 .env.worker 加载）
+      # LOGGER_LEVEL, LOGGER_FORMAT 等
+
+      # SMS 配置（从 .env.worker 加载）
+      # SMS_PROVIDER, ALIBABA_CLOUD_ACCESS_KEY_ID, SMS_SIGN_NAME 等
+
+      # Infrastructure endpoints (can be overridden here if needed)
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
       PROM_METRICS_ADDR: ${PROM_METRICS_ADDR:-:9464}
-      
-      # SMS 配置（Worker 需要发送短信）
-      SMS_PROVIDER: ${SMS_PROVIDER:-aliyun}
-      ALIBABA_CLOUD_ACCESS_KEY_ID: ${ALIBABA_CLOUD_ACCESS_KEY_ID:-}
-      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${ALIBABA_CLOUD_ACCESS_KEY_SECRET:-}
-      SMS_SIGN_NAME: ${SMS_SIGN_NAME:-}
-      SMS_TEMPLATE_CODE: ${SMS_TEMPLATE_CODE:-}
     # 将外部 .env 文件映射到容器内的 .env（如果应用需要读取文件）
     # 优先使用 .env.worker，如果不存在会报错，可以创建符号链接：ln -s .env .env.worker
     volumes:

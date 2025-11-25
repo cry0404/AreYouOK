@@ -119,7 +119,7 @@ func (s *UserService) GetUserProfile(
 			phoneMasked = ""
 			phoneVerified = false
 		} else {
-			phoneMasked = utils.MaskPhone(phone)
+			phoneMasked = phone //不再加密
 			phoneVerified = true
 		}
 	} else {
