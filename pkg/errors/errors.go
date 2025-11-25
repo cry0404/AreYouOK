@@ -165,3 +165,29 @@ func IsSkipMessageError(err error) bool {
 	_, ok := err.(*SkipMessageError)
 	return ok
 }
+
+// NonRetryableError 表示不可重试的错误（如配置错误、参数错误等）
+// 这类错误应该直接进入死信队列，而不是重试
+type NonRetryableError struct {
+	Code    string
+	Message string
+	Reason  string
+}
+
+func (e *NonRetryableError) Error() string {
+	return fmt.Sprintf("non-retryable error [%s]: %s - %s", e.Code, e.Message, e.Reason)
+}
+
+func IsNonRetryableError(err error) bool {
+	_, ok := err.(*NonRetryableError)
+	return ok
+}
+
+// NewNonRetryableError 创建不可重试错误
+func NewNonRetryableError(code, message, reason string) *NonRetryableError {
+	return &NonRetryableError{
+		Code:    code,
+		Message: message,
+		Reason:  reason,
+	}
+}

@@ -19,6 +19,7 @@ import (
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/snowflake"
 	"AreYouOK/pkg/token"
+	"AreYouOK/storage/database"
 	"AreYouOK/utils"
 )
 
@@ -85,7 +86,6 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
 			}
 
-			// 创建新用户，绑定手机号后状态为 contact（可以开始填写紧急联系人）
 			// 使用 phone_hash 作为 alipay_open_id，因为数据库要求该字段非空且唯一
 			alipayOpenID := "phone_" + phoneHash
 			user = &model.User{
@@ -97,11 +97,48 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				PhoneHash:    &phoneHash,
 			}
 
-			// 设置加密手机号
 			user.PhoneCipher = phoneCipherBytes
 
-			if err := query.User.Create(user); err != nil {
-				return nil, fmt.Errorf("failed to create user: %w", err)
+			// 使用事务确保用户创建和额度分配原子性
+			db := database.DB().WithContext(ctx)
+			err = db.Transaction(func(tx *gorm.DB) error {
+				txQ := query.Use(tx)
+
+				// 创建用户
+				if err := txQ.User.Create(user); err != nil {
+					return fmt.Errorf("failed to create user: %w", err)
+				}
+
+				// 分配默认 SMS 额度（20 次短信 = 100 cents）
+				defaultQuotaCents := config.Cfg.DefaultSMSQuota
+				if defaultQuotaCents <= 0 {
+					defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
+				}
+
+				quotaTransaction := &model.QuotaTransaction{
+					UserID:          user.ID,
+					Channel:         model.QuotaChannelSMS,
+					TransactionType: model.TransactionTypeGrant,
+					Reason:          "new_user_bonus", // 新用户奖励
+					Amount:          defaultQuotaCents,
+					BalanceAfter:    defaultQuotaCents, // 首次充值，余额等于充值金额
+				}
+
+				if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+					return fmt.Errorf("failed to grant default SMS quota: %w", err)
+				}
+
+				logger.Logger.Info("User created with default SMS quota in transaction",
+					zap.Int64("public_id", publicID),
+					zap.Int64("user_id", user.ID),
+					zap.Int("quota_cents", defaultQuotaCents),
+				)
+
+				return nil
+			})
+
+			if err != nil {
+				return nil, fmt.Errorf("failed to create user with quota: %w", err)
 			}
 
 			isNewUser = true
@@ -314,8 +351,44 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				PhoneCipher:  phoneCipherBytes,
 			}
 
-			if err := query.User.Create(user); err != nil {
-				return nil, fmt.Errorf("failed to create user: %w", err)
+			db := database.DB().WithContext(ctx)
+			err = db.Transaction(func(tx *gorm.DB) error {
+				txQ := query.Use(tx)
+
+				// 创建用户
+				if err := txQ.User.Create(user); err != nil {
+					return fmt.Errorf("failed to create user: %w", err)
+				}
+
+				defaultQuotaCents := config.Cfg.DefaultSMSQuota
+				if defaultQuotaCents <= 0 {
+					defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
+				}
+
+				quotaTransaction := &model.QuotaTransaction{
+					UserID:          user.ID,
+					Channel:         model.QuotaChannelSMS,
+					TransactionType: model.TransactionTypeGrant,
+					Reason:          "new_user_bonus", // 新用户奖励
+					Amount:          defaultQuotaCents,
+					BalanceAfter:    defaultQuotaCents, // 首次充值，余额等于充值金额
+				}
+
+				if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+					return fmt.Errorf("failed to grant default SMS quota: %w", err)
+				}
+
+				logger.Logger.Info("User created with default SMS quota in transaction",
+					zap.Int64("public_id", publicID),
+					zap.Int64("user_id", user.ID),
+					zap.Int("quota_cents", defaultQuotaCents),
+				)
+
+				return nil
+			})
+
+			if err != nil {
+				return nil, fmt.Errorf("failed to create user with quota: %w", err)
 			}
 
 			isNewUser = true

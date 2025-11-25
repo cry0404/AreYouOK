@@ -84,7 +84,7 @@ type JourneyReminderContactMessage struct {
 	smsMessage
 	Name     string    `json:"name"`
 	Trip     string    `json:"trip"`
-	Deadline time.Time `json:"deadline"`
+	Deadline time.Time `json:"time"`
 	Note     string    `json:"note"`
 }
 
@@ -104,15 +104,17 @@ func (m *JourneyReminderContactMessage) GetMessageType() string {
 }
 
 // CheckInReminder 打卡提醒（发送给用户本人）
-// 模板内容：安否温馨提示您，您开启了平安打卡功能，请于 ${deadline} 前进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。
+// 模板内容：亲爱的${name},您今日的打卡任务还未完成,请在设定时间${time} 完成打卡,如若没有按成完成打卡,我们将按照约定提醒您的紧急联系人
 type CheckInReminder struct {
 	smsMessage
-	Deadline string `json:"deadline"` // 打卡截止时间，格式：HH:mm:ss
+	Name string `json:"name"` // 用户昵称
+	Time string `json:"time"` // 打卡截止时间，格式：HH:mm:ss
 }
 
 func (m *CheckInReminder) GetTemplateParams() (string, error) {
 	params := map[string]string{
-		"deadline": m.Deadline,
+		"name": m.Name,
+		"time": m.Time,
 	}
 	data, err := json.Marshal(params)
 	return string(data), err
@@ -141,7 +143,7 @@ func (m *JourneyTimeOut) GetMessageType() string {
 type CheckInTimeOut struct {
 	smsMessage
 	Name     string    `json:"name"`
-	Deadline time.Time `json:"deadline"`
+	Deadline time.Time `json:"time"`
 }
 
 func (m *CheckInTimeOut) GetTemplateParams() (string, error) {

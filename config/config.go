@@ -46,8 +46,9 @@ type Config struct {
 	AliCloudAccessKeyID     string `env:"ALIBABA_CLOUD_ACCESS_KEY_ID"`
 	AliCloudAccessKeySecret string `env:"ALIBABA_CLOUD_ACCESS_KEY_SECRET"`
 	SMSProvider             string `env:"SMS_PROVIDER" envDefault:"aliyun"`
-	SMSSignName             string `env:"SMS_SIGN_NAME"`     // 默认签名（向后兼容）
-	SMSTemplateCode         string `env:"SMS_TEMPLATE_CODE"` // 默认模板代码（向后兼容）
+	// 短信验证码配置
+	SMSSignName     string `env:"SMS_SIGN_NAME"`
+	SMSTemplateCode string `env:"SMS_TEMPLATE_CODE"`
 	// 打卡提醒配置（发送给用户本人）
 	SMSCheckInReminderSignName string `env:"SMS_CHECKIN_REMINDER_SIGN_NAME"`
 	SMSCheckInReminderTemplate string `env:"SMS_CHECKIN_REMINDER_TEMPLATE"`
@@ -63,27 +64,27 @@ type Config struct {
 	// 打卡超时提醒配置
 	SMSCheckInTimeoutSignName string `env:"SMS_CHECKIN_TIMEOUT_SIGN_NAME"`
 	SMSCheckInTimeoutTemplate string `env:"SMS_CHECKIN_TIMEOUT_TEMPLATE"`
-	
-	VoiceProvider             string `env:"VOICE_PROVIDER" envDefault:"aliyun"`
-	VoiceAccessKey            string `env:"VOICE_ACCESS_KEY"`
-	VoiceSecretKey            string `env:"VOICE_SECRET_KEY"`
-	VoiceAppID                string `env:"VOICE_APP_ID"`
-	EncryptionKey             string `env:"ENCRYPTION_KEY"`
-	CaptchaExpireSeconds      int    `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
-	CaptchaSliderThreshold    int    `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
-	SnowflakeDataCenter       int64  `env:"SNOWFLAKE_DATACENTER_ID" envDefault:"1"`
-	JWTRefreshDays            int    `env:"JWT_REFRESH_DAYS" envDefault:"7"`
-	JWTExpireMinutes          int    `env:"JWT_EXPIRE_MINUTES" envDefault:"30"`
-	WaitlistMaxUsers          int    `env:"WAITLIST_MAX_USERS" envDefault:"1000"`
-	SnowflakeMachineID        int64  `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
-	PostgreSQLMaxOpen         int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
-	RedisDB                   int    `env:"REDIS_DB" envDefault:"0"`
-	CaptchaMaxDaily           int    `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
-	RateLimitRPS              int    `env:"RATE_LIMIT_RPS" envDefault:"100"`
-	PostgreSQLMaxIdle         int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
-	DefaultSMSQuota           int    `env:"DEFAULT_SMS_QUOTA" envDefault:"100"`
-	DefaultVoiceQuota         int    `env:"DEFAULT_VOICE_QUOTA" envDefault:"50"`
-	RateLimitEnabled          bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
+
+	VoiceProvider          string `env:"VOICE_PROVIDER" envDefault:"aliyun"`
+	VoiceAccessKey         string `env:"VOICE_ACCESS_KEY"`
+	VoiceSecretKey         string `env:"VOICE_SECRET_KEY"`
+	VoiceAppID             string `env:"VOICE_APP_ID"`
+	EncryptionKey          string `env:"ENCRYPTION_KEY"`
+	CaptchaExpireSeconds   int    `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
+	CaptchaSliderThreshold int    `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
+	SnowflakeDataCenter    int64  `env:"SNOWFLAKE_DATACENTER_ID" envDefault:"1"`
+	JWTRefreshDays         int    `env:"JWT_REFRESH_DAYS" envDefault:"7"`
+	JWTExpireMinutes       int    `env:"JWT_EXPIRE_MINUTES" envDefault:"30"`
+	WaitlistMaxUsers       int    `env:"WAITLIST_MAX_USERS" envDefault:"1000"`
+	SnowflakeMachineID     int64  `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
+	PostgreSQLMaxOpen      int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
+	RedisDB                int    `env:"REDIS_DB" envDefault:"0"`
+	CaptchaMaxDaily        int    `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
+	RateLimitRPS           int    `env:"RATE_LIMIT_RPS" envDefault:"100"`
+	PostgreSQLMaxIdle      int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
+	DefaultSMSQuota        int    `env:"DEFAULT_SMS_QUOTA" envDefault:"100"` // 默认 SMS 额度（cents），100 cents = 20 次短信（每次 5 cents）
+	DefaultVoiceQuota      int    `env:"DEFAULT_VOICE_QUOTA" envDefault:"50"`
+	RateLimitEnabled       bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
 }
 
 func init() {
@@ -116,6 +117,17 @@ func validateConfig() {
 		log.Printf("WARN: ALIPAY_APP_ID is not set, Alipay integration will not work")
 	}
 
+	// 验证 SMS 配置
+	validateSMSConfig()
+
+	if Cfg.VoiceAccessKey == "" {
+		log.Printf("WARN: VOICE_ACCESS_KEY is not set, Voice service will not work")
+	}
+}
+
+// validateSMSConfig 验证 SMS 模板配置
+func validateSMSConfig() {
+	// 验证默认 SMS 配置（作为降级选项）
 	if Cfg.SMSSignName == "" {
 		log.Printf("WARN: SMS_SIGN_NAME is not set, SMS service may not work properly")
 	}
@@ -123,8 +135,46 @@ func validateConfig() {
 		log.Printf("WARN: SMS_TEMPLATE_CODE is not set, SMS service may not work properly")
 	}
 
-	if Cfg.VoiceAccessKey == "" {
-		log.Printf("WARN: VOICE_ACCESS_KEY is not set, Voice service will not work")
+	// 验证 checkin_reminder 配置（必须配置，无降级）
+	if Cfg.SMSCheckInReminderSignName == "" {
+		log.Fatal("SMS_CHECKIN_REMINDER_SIGN_NAME is required for checkin_reminder messages")
+	}
+	// templateCode 可以为空，会使用默认的 SMSTemplateCode
+	if Cfg.SMSCheckInReminderTemplate == "" && Cfg.SMSTemplateCode == "" {
+		log.Fatal("Either SMS_CHECKIN_REMINDER_TEMPLATE or SMS_TEMPLATE_CODE must be configured for checkin_reminder messages")
+	}
+
+	// 验证其他消息类型的配置（有降级逻辑，但需要确保至少有一个可用的配置）
+	// checkin_reminder_contact: 如果没有配置，会使用默认的 SMSSignName 和 SMSTemplateCode
+	if Cfg.SMSCheckInReminderContactSignName == "" && Cfg.SMSSignName == "" {
+		log.Fatal("Either SMS_CHECKIN_REMINDER_CONTACT_SIGN_NAME or SMS_SIGN_NAME must be configured")
+	}
+	if Cfg.SMSCheckInReminderContactTemplate == "" && Cfg.SMSTemplateCode == "" {
+		log.Fatal("Either SMS_CHECKIN_REMINDER_CONTACT_TEMPLATE or SMS_TEMPLATE_CODE must be configured")
+	}
+
+	// journey_reminder_contact
+	if Cfg.SMSJourneyReminderContactSignName == "" && Cfg.SMSSignName == "" {
+		log.Fatal("Either SMS_JOURNEY_REMINDER_CONTACT_SIGN_NAME or SMS_SIGN_NAME must be configured")
+	}
+	if Cfg.SMSJourneyReminderContactTemplate == "" && Cfg.SMSTemplateCode == "" {
+		log.Fatal("Either SMS_JOURNEY_REMINDER_CONTACT_TEMPLATE or SMS_TEMPLATE_CODE must be configured")
+	}
+
+	// journey_timeout
+	if Cfg.SMSJourneyTimeoutSignName == "" && Cfg.SMSSignName == "" {
+		log.Fatal("Either SMS_JOURNEY_TIMEOUT_SIGN_NAME or SMS_SIGN_NAME must be configured")
+	}
+	if Cfg.SMSJourneyTimeoutTemplate == "" && Cfg.SMSTemplateCode == "" {
+		log.Fatal("Either SMS_JOURNEY_TIMEOUT_TEMPLATE or SMS_TEMPLATE_CODE must be configured")
+	}
+
+	// checkin_timeout
+	if Cfg.SMSCheckInTimeoutSignName == "" && Cfg.SMSSignName == "" {
+		log.Fatal("Either SMS_CHECKIN_TIMEOUT_SIGN_NAME or SMS_SIGN_NAME must be configured")
+	}
+	if Cfg.SMSCheckInTimeoutTemplate == "" && Cfg.SMSTemplateCode == "" {
+		log.Fatal("Either SMS_CHECKIN_TIMEOUT_TEMPLATE or SMS_TEMPLATE_CODE must be configured")
 	}
 }
 
@@ -158,20 +208,18 @@ func (c *Config) GetSMSTemplateConfig(messageType string) (signName, templateCod
 	case "checkin_reminder":
 		signName = c.SMSCheckInReminderSignName
 		templateCode = c.SMSCheckInReminderTemplate
-		if signName == "" {
-			signName = c.SMSSignName // 回退到默认签名
-		}
+		// signName 在 validateConfig 中已验证，不会为空
 		if templateCode == "" {
-			templateCode = c.SMSTemplateCode // 回退到默认模板
+			templateCode = c.SMSTemplateCode
 		}
 	case "checkin_reminder_contact":
 		signName = c.SMSCheckInReminderContactSignName
 		templateCode = c.SMSCheckInReminderContactTemplate
 		if signName == "" {
-			signName = c.SMSSignName // 回退到默认签名
+			signName = c.SMSSignName
 		}
 		if templateCode == "" {
-			templateCode = c.SMSTemplateCode // 回退到默认模板
+			templateCode = c.SMSTemplateCode
 		}
 	case "journey_reminder_contact":
 		signName = c.SMSJourneyReminderContactSignName
@@ -201,7 +249,7 @@ func (c *Config) GetSMSTemplateConfig(messageType string) (signName, templateCod
 			templateCode = c.SMSTemplateCode
 		}
 	default:
-		// 未知类型，使用默认配置
+
 		signName = c.SMSSignName
 		templateCode = c.SMSTemplateCode
 	}

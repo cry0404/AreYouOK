@@ -17,6 +17,7 @@ import (
 	"AreYouOK/internal/repository/query"
 	pkgerrors "AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
+
 	"AreYouOK/utils"
 )
 
@@ -309,3 +310,61 @@ func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatu
 
 	return result, nil
 }
+
+// 分配额度，已废弃
+// func (s *UserService) GrantDefaultSMSQuota(ctx context.Context, userID int64) error {
+// 	db := database.DB().WithContext(ctx)
+// 	q := query.Use(db)
+
+// 	// 检查是否已经分配过额度（防止重复分配）
+// 	existingTransactions, err := q.QuotaTransaction.
+// 		Where(q.QuotaTransaction.UserID.Eq(userID)).
+// 		Where(q.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
+// 		Where(q.QuotaTransaction.TransactionType.Eq(string(model.TransactionTypeGrant))).
+// 		Where(q.QuotaTransaction.Reason.Eq("new_user_bonus")).
+// 		Find()
+
+// 	if err != nil {
+// 		return fmt.Errorf("failed to check existing quota transactions: %w", err)
+// 	}
+
+// 	if len(existingTransactions) > 0 {
+// 		logger.Logger.Info("Default SMS quota already granted",
+// 			zap.Int64("user_id", userID),
+// 		)
+// 		return nil // 已经分配过，直接返回成功
+// 	}
+
+// 	// 获取默认额度（cents），20 次短信 = 20 * 5 = 100 cents
+// 	defaultQuotaCents := config.Cfg.DefaultSMSQuota
+// 	if defaultQuotaCents <= 0 {
+// 		defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
+// 	}
+
+// 	// 创建额度充值记录
+// 	quotaTransaction := &model.QuotaTransaction{
+// 		UserID:          userID,
+// 		Channel:         model.QuotaChannelSMS,
+// 		TransactionType: model.TransactionTypeGrant,
+// 		Reason:          "new_user_bonus", // 新用户奖励
+// 		Amount:          defaultQuotaCents,
+// 		BalanceAfter:    defaultQuotaCents, // 首次充值，余额等于充值金额
+// 	}
+
+// 	if err := q.QuotaTransaction.Create(quotaTransaction); err != nil {
+// 		logger.Logger.Error("Failed to grant default SMS quota",
+// 			zap.Int64("user_id", userID),
+// 			zap.Int("amount", defaultQuotaCents),
+// 			zap.Error(err),
+// 		)
+// 		return fmt.Errorf("failed to grant default SMS quota: %w", err)
+// 	}
+
+// 	logger.Logger.Info("Default SMS quota granted to new user",
+// 		zap.Int64("user_id", userID),
+// 		zap.Int("amount_cents", defaultQuotaCents),
+// 		zap.Int("sms_count", defaultQuotaCents/5), // 每次短信 5 cents
+// 	)
+
+// 	return nil
+// }

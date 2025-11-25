@@ -142,7 +142,7 @@ func (s *NotificationService) SendSMS(
 				zap.Error(err),
 			)
 		}
-		// 返回 SkipMessageError，避免无限重试（额度不足是业务状态问题，重试不会改变结果）
+		// 返回 SkipMessageError，避免无限重试（额度不足是业务状态问题，重试不会改变结果)
 		return &errors.SkipMessageError{Reason: fmt.Sprintf("quota insufficient: balance=%d, required=%d", smsBalance, smsUnitPriceCents)}
 	}
 
@@ -151,6 +151,7 @@ func (s *NotificationService) SendSMS(
 	if err != nil {
 		logger.Logger.Error("Failed to parse SMS message",
 			zap.Int64("task_code", taskCode),
+			zap.Any("payload", payload),
 			zap.Error(err),
 		)
 		// 解析失败，更新任务状态为失败
@@ -167,8 +168,44 @@ func (s *NotificationService) SendSMS(
 				zap.Error(updateErr),
 			)
 		}
-		return fmt.Errorf("failed to parse SMS message: %w", err)
+		// 解析失败是配置或数据格式错误，不应该重试
+		return &errors.SkipMessageError{Reason: fmt.Sprintf("failed to parse SMS message: %v", err)}
 	}
+
+	// 打印解析后的消息对象内容（用于调试）
+	// 根据消息类型打印具体字段
+	logFields := []zap.Field{
+		zap.Int64("task_code", taskCode),
+		zap.String("message_type", smsMsg.GetMessageType()),
+		zap.String("phone", smsMsg.GetPhone()),
+		zap.String("sign_name", smsMsg.GetSignName()),
+		zap.String("template_code", smsMsg.GetTemplateCode()),
+	}
+
+	// 根据消息类型打印具体字段值
+	switch msg := smsMsg.(type) {
+	case *model.CheckInReminder:
+		logFields = append(logFields,
+			zap.String("name", msg.Name),
+			zap.String("deadline", msg.Time),
+		)
+	case *model.CheckInReminderContactMessage:
+		logFields = append(logFields, zap.String("name", msg.Name))
+	case *model.JourneyReminderContactMessage:
+		logFields = append(logFields,
+			zap.String("name", msg.Name),
+			zap.String("trip", msg.Trip),
+			zap.String("note", msg.Note),
+			zap.Time("deadline", msg.Deadline),
+		)
+	case *model.CheckInTimeOut:
+		logFields = append(logFields,
+			zap.String("name", msg.Name),
+			zap.Time("deadline", msg.Deadline),
+		)
+	}
+
+	logger.Logger.Info("Parsed SMS message", logFields...)
 
 	if smsMsg.GetPhone() == "" {
 		smsMsg.SetPhone(phone)
@@ -231,6 +268,19 @@ func (s *NotificationService) SendSMS(
 		return fmt.Errorf("failed to get template params: %w", err)
 	}
 
+	// 记录发送的模板参数（用于调试）
+	// 打印原始 payload 和解析后的消息内容
+	logger.Logger.Info("SMS message details",
+		zap.Int64("task_code", taskCode),
+		zap.String("message_type", smsMsg.GetMessageType()),
+		zap.Any("original_payload", payload),
+		zap.String("parsed_phone", smsMsg.GetPhone()),
+		zap.String("parsed_sign_name", smsMsg.GetSignName()),
+		zap.String("parsed_template_code", smsMsg.GetTemplateCode()),
+		zap.String("template_params_json", templateParams),
+		zap.String("template_params_length", fmt.Sprintf("%d bytes", len(templateParams))),
+	)
+
 	err = sms.SendSingle(
 		ctx,
 		smsMsg.GetPhone(),
@@ -260,6 +310,16 @@ func (s *NotificationService) SendSMS(
 				zap.Error(updateErr),
 			)
 		}
+
+		// 如果是不可重试的错误（如配置错误），返回 SkipMessageError 避免重试
+		if errors.IsNonRetryableError(err) {
+			logger.Logger.Warn("Non-retryable error detected, skipping message",
+				zap.Int64("task_code", taskCode),
+				zap.Error(err),
+			)
+			return &errors.SkipMessageError{Reason: fmt.Sprintf("non-retryable error: %v", err)}
+		}
+
 		return fmt.Errorf("failed to send SMS: %w", err)
 	}
 

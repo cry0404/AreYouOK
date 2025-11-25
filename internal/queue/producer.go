@@ -14,7 +14,6 @@ import (
 
 // PublishCheckInReminder 发布打卡提醒消息（延迟消息）
 func PublishCheckInReminder(msg model.CheckInReminderMessage) error {
-	// 生成 MessageID 如果为空
 	if msg.MessageID == "" {
 		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 		if err != nil {
@@ -171,7 +170,6 @@ func ScheduleJourneyTimeoutIfNeeded(journeyID, userID int64, expectedReturnTime 
 		return false, nil
 	}
 
-	// 生成 MessageID
 	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
 		return false, fmt.Errorf("failed to generate message ID: %w", err)
@@ -196,9 +194,7 @@ func ScheduleJourneyTimeoutIfNeeded(journeyID, userID int64, expectedReturnTime 
 
 // PublishSMSNotification 发布短信通知任务
 func PublishSMSNotification(msg model.NotificationMessage) error {
-	// 生成 MessageID 如果为空（使用 Snowflake 确保唯一性）
-	// 注意：正常情况下，调用者应该在创建消息时设置 MessageID
-	// 这里的生成逻辑仅作为后备方案
+
 	if msg.MessageID == "" {
 		logger.Logger.Warn("MessageID is empty, generating fallback MessageID",
 			zap.Int64("task_code", msg.TaskCode),
@@ -236,56 +232,6 @@ func PublishSMSNotification(msg model.NotificationMessage) error {
 	}
 
 	logger.Logger.Info("Published SMS notification",
-		zap.String("message_id", msg.MessageID),
-		zap.Int64("task_code", msg.TaskCode),
-		zap.Int64("user_id", msg.UserID),
-		zap.String("routing_key", routingKey),
-	)
-
-	return nil
-}
-
-// PublishVoiceNotification 发布语音通知任务
-func PublishVoiceNotification(msg model.NotificationMessage) error {
-	// 生成 MessageID 如果为空（使用 Snowflake 确保唯一性）
-	// 注意：正常情况下，调用者应该在创建消息时设置 MessageID
-	if msg.MessageID == "" {
-		logger.Logger.Warn("MessageID is empty, generating fallback MessageID",
-			zap.Int64("task_code", msg.TaskCode),
-			zap.Int64("user_id", msg.UserID),
-		)
-		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
-		if err != nil {
-			logger.Logger.Error("Failed to generate message ID",
-				zap.Int64("task_code", msg.TaskCode),
-				zap.Error(err),
-			)
-			return fmt.Errorf("failed to generate message ID: %w", err)
-		}
-		msg.MessageID = fmt.Sprintf("notification_voice_%d", id)
-	}
-
-	// 根据 category 构建 routing key
-	routingKey := fmt.Sprintf("notification.voice.%s", msg.Category)
-
-	err := mq.PublishMessage(
-		"notification.topic",
-		routingKey,
-		msg,
-	)
-
-	if err != nil {
-		logger.Logger.Error("Failed to publish voice notification",
-			zap.String("message_id", msg.MessageID),
-			zap.Int64("task_code", msg.TaskCode),
-			zap.Int64("user_id", msg.UserID),
-			zap.String("routing_key", routingKey),
-			zap.Error(err),
-		)
-		return err
-	}
-
-	logger.Logger.Info("Published voice notification",
 		zap.String("message_id", msg.MessageID),
 		zap.Int64("task_code", msg.TaskCode),
 		zap.Int64("user_id", msg.UserID),
@@ -384,3 +330,53 @@ func PublishQuotaDepletedEvent(userID int64, channel string) error {
 
 	return nil
 }
+
+
+
+// // PublishVoiceNotification 发布语音通知任务
+// func PublishVoiceNotification(msg model.NotificationMessage) error {
+// 	if msg.MessageID == "" {
+// 		logger.Logger.Warn("MessageID is empty, generating fallback MessageID",
+// 			zap.Int64("task_code", msg.TaskCode),
+// 			zap.Int64("user_id", msg.UserID),
+// 		)
+// 		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+// 		if err != nil {
+// 			logger.Logger.Error("Failed to generate message ID",
+// 				zap.Int64("task_code", msg.TaskCode),
+// 				zap.Error(err),
+// 			)
+// 			return fmt.Errorf("failed to generate message ID: %w", err)
+// 		}
+// 		msg.MessageID = fmt.Sprintf("notification_voice_%d", id)
+// 	}
+
+// 	// 根据 category 构建 routing key
+// 	routingKey := fmt.Sprintf("notification.voice.%s", msg.Category)
+
+// 	err := mq.PublishMessage(
+// 		"notification.topic",
+// 		routingKey,
+// 		msg,
+// 	)
+
+// 	if err != nil {
+// 		logger.Logger.Error("Failed to publish voice notification",
+// 			zap.String("message_id", msg.MessageID),
+// 			zap.Int64("task_code", msg.TaskCode),
+// 			zap.Int64("user_id", msg.UserID),
+// 			zap.String("routing_key", routingKey),
+// 			zap.Error(err),
+// 		)
+// 		return err
+// 	}
+
+// 	logger.Logger.Info("Published voice notification",
+// 		zap.String("message_id", msg.MessageID),
+// 		zap.Int64("task_code", msg.TaskCode),
+// 		zap.Int64("user_id", msg.UserID),
+// 		zap.String("routing_key", routingKey),
+// 	)
+
+// 	return nil
+// }

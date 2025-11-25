@@ -94,6 +94,7 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 		ConsumerTag:   "check_in_reminder_consumer",
 		PrefetchCount: 10, // 每次预取10条消息
 		Handler:       handler,
+		Context:       ctx,
 	})
 }
 
@@ -157,6 +158,7 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 		ConsumerTag:   "check_in_timeout_consumer",
 		PrefetchCount: 10,
 		Handler:       handler,
+		Context:       ctx,
 	})
 }
 
@@ -219,20 +221,22 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 		ConsumerTag:   "journey_timeout_consumer",
 		PrefetchCount: 10,
 		Handler:       handler,
+		Context:       ctx,
 	})
 }
 
 //==================== 分界线 ====================
 
-// StartSMSNotificationConsumer 启动短信通知消费者
+// StartSMSNotificationConsumer 启动短信通知消费者，也就是打卡部分的通知
 func StartSMSNotificationConsumer(ctx context.Context) error {
+	// 消息队列发过来的消息需要消费
 	handler := func(body []byte) error {
 		var msg model.NotificationMessage
 		if err := json.Unmarshal(body, &msg); err != nil {
 			return fmt.Errorf("failed to unmarshal SMS notification message: %w", err)
 		}
 
-		// 【幂等性检查】使用 SETNX 原子性地检查并标记消息正在处理
+		//使用 SETNX 原子性地检查并标记消息正在处理
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -330,6 +334,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 		ConsumerTag:   "sms_notification_consumer",
 		PrefetchCount: 20, // 不足的话届时再说
 		Handler:       handler,
+		Context:       ctx,
 	})
 }
 
@@ -363,6 +368,8 @@ func updateReminderSentAt(ctx context.Context, publicUserID int64, checkInDateSt
 	}
 
 	// 使用 GORM 的 Clauses 实现 Upsert
+	// 根据 GORM 文档，当指定 Columns 时，这些列必须有唯一约束
+	// 添加了 uniqueIndex:idx_daily_check_ins_user_date
 	err = db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "user_id"}, {Name: "check_in_date"}},
 		DoUpdates: clause.AssignmentColumns([]string{"reminder_sent_at", "updated_at"}),
@@ -380,9 +387,6 @@ func updateReminderSentAt(ctx context.Context, publicUserID int64, checkInDateSt
 
 	return nil
 }
-
-
-
 
 // StartVoiceNotificationConsumer 启动语音通知消费者
 func StartVoiceNotificationConsumer(ctx context.Context) error {
@@ -448,6 +452,7 @@ func StartVoiceNotificationConsumer(ctx context.Context) error {
 		ConsumerTag:   "voice_notification_consumer",
 		PrefetchCount: 10,
 		Handler:       handler,
+		Context:       ctx,
 	})
 }
 
