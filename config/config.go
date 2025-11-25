@@ -65,10 +65,6 @@ type Config struct {
 	SMSCheckInTimeoutSignName string `env:"SMS_CHECKIN_TIMEOUT_SIGN_NAME"`
 	SMSCheckInTimeoutTemplate string `env:"SMS_CHECKIN_TIMEOUT_TEMPLATE"`
 
-	VoiceProvider          string `env:"VOICE_PROVIDER" envDefault:"aliyun"`
-	VoiceAccessKey         string `env:"VOICE_ACCESS_KEY"`
-	VoiceSecretKey         string `env:"VOICE_SECRET_KEY"`
-	VoiceAppID             string `env:"VOICE_APP_ID"`
 	EncryptionKey          string `env:"ENCRYPTION_KEY"`
 	CaptchaExpireSeconds   int    `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
 	CaptchaSliderThreshold int    `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
@@ -83,7 +79,6 @@ type Config struct {
 	RateLimitRPS           int    `env:"RATE_LIMIT_RPS" envDefault:"100"`
 	PostgreSQLMaxIdle      int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
 	DefaultSMSQuota        int    `env:"DEFAULT_SMS_QUOTA" envDefault:"100"` // 默认 SMS 额度（cents），100 cents = 20 次短信（每次 5 cents）
-	DefaultVoiceQuota      int    `env:"DEFAULT_VOICE_QUOTA" envDefault:"50"`
 	RateLimitEnabled       bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
 }
 
@@ -119,10 +114,6 @@ func validateConfig() {
 
 	// 验证 SMS 配置
 	validateSMSConfig()
-
-	if Cfg.VoiceAccessKey == "" {
-		log.Printf("WARN: VOICE_ACCESS_KEY is not set, Voice service will not work")
-	}
 }
 
 // validateSMSConfig 验证 SMS 模板配置

@@ -14,6 +14,7 @@ import (
 	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/repository/query"
+	"AreYouOK/internal/service"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/storage/database"
@@ -32,8 +33,8 @@ func SetNotificationService(s NotificationService) {
 }
 
 // sms 和 voice 都属于消息，由两个部分来投递，task 作为消费
-
-// StartCheckInReminderConsumer 启动打卡提醒消费者
+// 打卡对应的是两条消息，所以投递的时候就应该同时投递两条，在更新 userSetting 时也不例外
+// StartCheckInReminderConsumer 启动打卡提醒消费者， 有关打卡部分
 func StartCheckInReminderConsumer(ctx context.Context) error {
 	handler := func(body []byte) error {
 		var msg model.CheckInReminderMessage
@@ -49,33 +50,186 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			)
 			// 如果检查失败，继续处理（不阻塞业务），但可能重复处理
 		} else if !processed {
-			logger.Logger.Info("Message already processed or being processed, skipping",
+			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.String("batch_id", msg.BatchID),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
 		}
 
-		logger.Logger.Info("Processing check-in reminder batch",
+		logger.Logger.Debug("Processing check-in reminder batch",
 			zap.String("message_id", msg.MessageID),
 			zap.String("batch_id", msg.BatchID),
 			zap.Int("user_count", len(msg.UserIDs)),
 		)
 
-		// TODO: 调用 service 层处理打卡提醒逻辑
-		// 1. 批量查询用户信息
-		// 2. 批量检查额度
-		// 3. 批量创建 notification_tasks
-		// 4. 批量发送短信
-		// 5. 批量更新 daily_check_ins.reminder_sent_at
+		// 1. 验证用户设置是否变更
+		// 对比快照与当前设置，返回三种用户列表
+		checkInService := service.CheckIn()
+		validationResult, err := checkInService.ValidateReminderBatch(
+			ctx,
+			msg.UserSettings,
+			msg.CheckInDate,
+			msg.ScheduledAt,
+		)
+		if err != nil {
+			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			logger.Logger.Error("Failed to validate reminder batch",
+				zap.String("message_id", msg.MessageID),
+				zap.String("batch_id", msg.BatchID),
+				zap.Error(err),
+			)
+			return fmt.Errorf("failed to validate reminder batch: %w", err)
+		}
 
-		// checkInService := service.CheckIn()
-		// err = checkInService.ProcessReminderBatch(ctx, msg.UserIDs, msg.CheckInDate)
-		// if err != nil {
-		// 	// 处理失败，取消标记，允许重试
-		// 	cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-		// 	return fmt.Errorf("failed to process reminder batch: %w", err)
-		// }
+		logger.Logger.Debug("Validation result",
+			zap.String("message_id", msg.MessageID),
+			zap.Int("process_now_count", len(validationResult.ProcessNow)),
+			zap.Int("republish_count", len(validationResult.Republish)),
+			zap.Int("skipped_count", len(validationResult.Skipped)),
+		)
+
+		// 2. 处理 ProcessNow 用户（设置未变更）
+		// 这些用户可以直接创建通知任务
+		if len(validationResult.ProcessNow) > 0 {
+			err = checkInService.ProcessReminderBatch(ctx, validationResult.ProcessNow, msg.CheckInDate)
+			if err != nil {
+				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				logger.Logger.Error("Failed to process ProcessNow batch",
+					zap.String("message_id", msg.MessageID),
+					zap.Int("user_count", len(validationResult.ProcessNow)),
+					zap.Error(err),
+				)
+				return fmt.Errorf("failed to process ProcessNow batch: %w", err)
+			}
+		}
+
+		// 3. 处理 Republish 用户（设置已变更）
+		// 需要重新查询用户设置并按提醒时间分组投放消息
+		if len(validationResult.Republish) > 0 {
+			logger.Logger.Debug("Republishing messages for users with changed settings",
+				zap.String("message_id", msg.MessageID),
+				zap.Int("republish_count", len(validationResult.Republish)),
+				zap.String("check_in_date", msg.CheckInDate),
+			)
+
+			// 查询这些用户的最新设置（重新投递需要最新的设置快照）
+			users, err := query.User.WithContext(ctx).
+				Where(query.User.PublicID.In(validationResult.Republish...)).
+				Find()
+			if err != nil {
+				logger.Logger.Error("Failed to query user settings for republish",
+					zap.String("message_id", msg.MessageID),
+					zap.Error(err),
+				)
+				// 即使查询失败，也继续处理，记录错误但不阻塞主流程
+			} else {
+				// 按提醒时间分组用户（不同的提醒时间需要不同的延迟）
+				// key: remindAt, value: 该时间的用户列表
+				userGroups := make(map[string][]*model.User)
+
+				for _, user := range users {
+					if !user.DailyCheckInEnabled || user.Status != model.UserStatusActive {
+						// 用户关闭了打卡或状态不是active，跳过
+						continue
+					}
+
+					remindAt := user.DailyCheckInRemindAt
+					if remindAt == "" {
+						remindAt = "20:00:00" // 默认提醒时间
+					}
+
+					userGroups[remindAt] = append(userGroups[remindAt], user)
+				}
+
+				// 为每个提醒时间组生成独立的消息
+				currentTime := time.Now()
+				for remindAt, usersInGroup := range userGroups {
+					// 构建该组的 userSettings
+					userSettings := make(map[string]model.UserSettingSnapshot)
+					for _, user := range usersInGroup {
+						userIDStr := fmt.Sprintf("%d", user.PublicID)
+						userSettings[userIDStr] = model.UserSettingSnapshot{
+							RemindAt:   user.DailyCheckInRemindAt,
+							Deadline:   user.DailyCheckInDeadline,
+							GraceUntil: user.DailyCheckInGraceUntil,
+							Timezone:   user.Timezone,
+						}
+					}
+
+					// 计算延迟时间：从当前时间到提醒时间的秒数
+					// 解析提醒时间
+					remindTime, err := time.Parse("15:04:05", remindAt)
+					if err != nil {
+						logger.Logger.Error("Failed to parse remindAt time",
+							zap.String("remindAt", remindAt),
+							zap.String("message_id", msg.MessageID),
+							zap.Error(err),
+						)
+						continue // 跳过这个组
+					}
+
+					// 在今天的日期基础上设置提醒时间
+					today := currentTime.Truncate(24 * time.Hour)
+					remindDateTime := time.Date(
+						today.Year(), today.Month(), today.Day(),
+						remindTime.Hour(), remindTime.Minute(), remindTime.Second(),
+						0, currentTime.Location(),
+					)
+
+					// 如果提醒时间已过，应该直接丢弃，甚至不会到这一层，因为在上一层的 service 中对应的修改消息就会被丢弃
+					if remindDateTime.Before(currentTime) {
+						remindDateTime = remindDateTime.Add(24 * time.Hour)
+					}
+
+					// 计算延迟秒数
+					delaySeconds := int(remindDateTime.Sub(currentTime).Seconds())
+					if delaySeconds < 0 {
+						delaySeconds = 0 // 最小延迟为0（立即发送）
+					}
+
+					// 生成新的 batch ID
+					newBatchID := fmt.Sprintf("republish_%s_%s_%d",
+						msg.BatchID, remindAt, time.Now().Unix())
+
+					// 构建新的消息
+					republishMsg := model.CheckInReminderMessage{
+						MessageID:    fmt.Sprintf("ci_reminder_rep_%s_%d", remindAt, time.Now().UnixNano()),
+						BatchID:      newBatchID,
+						CheckInDate:  msg.CheckInDate,
+						ScheduledAt:  currentTime.Format(time.RFC3339),
+						UserSettings: userSettings,
+						DelaySeconds: delaySeconds,
+					}
+
+					// 发布到队列（重新投递）
+					if err := PublishCheckInReminder(republishMsg); err != nil {
+						logger.Logger.Error("Failed to publish republish message",
+							zap.String("original_message_id", msg.MessageID),
+							zap.String("new_batch_id", newBatchID),
+							zap.String("remind_at", remindAt),
+							zap.Int("user_count", len(usersInGroup)),
+							zap.Int("delay_seconds", delaySeconds),
+							zap.Error(err),
+						)
+					} else {
+						logger.Logger.Debug("Successfully published republish message",
+							zap.String("original_message_id", msg.MessageID),
+							zap.String("new_batch_id", newBatchID),
+							zap.String("remind_at", remindAt),
+							zap.Int("user_count", len(usersInGroup)),
+							zap.Int("delay_seconds", delaySeconds),
+						)
+					}
+				}
+			}
+		}
+
+		logger.Logger.Debug("Successfully processed check-in reminder batch",
+			zap.String("message_id", msg.MessageID),
+			zap.String("batch_id", msg.BatchID),
+			zap.Int("user_count", len(msg.UserIDs)),
+		)
 
 		// 处理完成后标记消息已处理（延长 TTL）
 		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
@@ -106,7 +260,7 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal check-in timeout message: %w", err)
 		}
 
-		// 【幂等性检查】使用 SETNX 原子性地检查并标记消息正在处理
+		// 使用 SETNX 原子性地检查并标记消息正在处理
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -114,14 +268,14 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 				zap.Error(err),
 			)
 		} else if !processed {
-			logger.Logger.Info("Message already processed or being processed, skipping",
+			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.String("batch_id", msg.BatchID),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
 		}
 
-		logger.Logger.Info("Processing check-in timeout batch",
+		logger.Logger.Debug("Processing check-in timeout batch",
 			zap.String("message_id", msg.MessageID),
 			zap.String("batch_id", msg.BatchID),
 			zap.Int("user_count", len(msg.UserIDs)),
@@ -170,7 +324,7 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal journey timeout message: %w", err)
 		}
 
-		// 【幂等性检查】使用 SETNX 原子性地检查并标记消息正在处理
+		// 使用 SETNX 原子性地检查并标记消息正在处理
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -178,19 +332,19 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 				zap.Error(err),
 			)
 		} else if !processed {
-			logger.Logger.Info("Message already processed or being processed, skipping",
+			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("journey_id", msg.JourneyID),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
 		}
 
-		logger.Logger.Info("Processing journey timeout",
+		logger.Logger.Debug("Processing journey timeout",
 			zap.String("message_id", msg.MessageID),
 			zap.Int64("journey_id", msg.JourneyID),
 			zap.Int64("user_id", msg.UserID),
 		)
-
+		// 现在已修改成同时发送短信，可能按照时间长短间隔发送
 		// TODO: 调用 service 层处理行程超时逻辑
 		// 1. 更新 journey.status = 'timeout'
 		// 2. 获取紧急联系人列表
@@ -246,14 +400,14 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			)
 
 		} else if !processed {
-			logger.Logger.Info("Message already processed or being processed, skipping",
+			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("task_code", msg.TaskCode),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
 		}
 
-		logger.Logger.Info("Processing SMS notification",
+		logger.Logger.Debug("Processing SMS notification",
 			zap.String("message_id", msg.MessageID),
 			zap.Int64("task_code", msg.TaskCode),
 			zap.Int64("user_id", msg.UserID),
@@ -304,7 +458,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to send SMS: %w", err)
 		}
 
-		// 处理成功，标记为已完成（TTL 延长到 48 小时）
+		// 处理成功，标记为已完成
 		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
 			logger.Logger.Warn("Failed to mark message as processed",
 				zap.String("message_id", msg.MessageID),
@@ -343,7 +497,6 @@ func updateReminderSentAt(ctx context.Context, publicUserID int64, checkInDateSt
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
-	// 查询用户（使用 public_id）
 	user, err := q.User.GetByPublicID(publicUserID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -352,13 +505,11 @@ func updateReminderSentAt(ctx context.Context, publicUserID int64, checkInDateSt
 		return fmt.Errorf("failed to query user: %w", err)
 	}
 
-	// 解析打卡日期
 	checkInDate, err := time.Parse("2006-01-02", checkInDateStr)
 	if err != nil {
 		return fmt.Errorf("failed to parse check_in_date: %w", err)
 	}
 
-	// 使用 Upsert 更新 reminder_sent_at 字段（如果记录不存在则创建）
 	now := time.Now()
 	checkIn := &model.DailyCheckIn{
 		UserID:         user.ID,
@@ -379,81 +530,13 @@ func updateReminderSentAt(ctx context.Context, publicUserID int64, checkInDateSt
 		return fmt.Errorf("failed to update reminder_sent_at: %w", err)
 	}
 
-	logger.Logger.Info("Updated reminder_sent_at",
+	logger.Logger.Debug("Updated reminder_sent_at",
 		zap.Int64("user_id", user.ID),
 		zap.String("check_in_date", checkInDateStr),
 		zap.Time("reminder_sent_at", now),
 	)
 
 	return nil
-}
-
-// StartVoiceNotificationConsumer 启动语音通知消费者
-func StartVoiceNotificationConsumer(ctx context.Context) error {
-	handler := func(body []byte) error {
-		var msg model.NotificationMessage
-		if err := json.Unmarshal(body, &msg); err != nil {
-			return fmt.Errorf("failed to unmarshal voice notification message: %w", err)
-		}
-
-		// 【幂等性检查】使用 SETNX 原子性地检查并标记消息正在处理
-		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
-		if err != nil {
-			logger.Logger.Warn("Failed to check message processed status",
-				zap.String("message_id", msg.MessageID),
-				zap.Int64("task_code", msg.TaskCode),
-				zap.Error(err),
-			)
-		} else if !processed {
-			logger.Logger.Info("Message already processed or being processed, skipping",
-				zap.String("message_id", msg.MessageID),
-				zap.Int64("task_code", msg.TaskCode),
-			)
-			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
-		}
-
-		logger.Logger.Info("Processing voice notification",
-			zap.String("message_id", msg.MessageID),
-			zap.Int64("task_code", msg.TaskCode),
-			zap.Int64("user_id", msg.UserID),
-		)
-
-		// TODO: 调用 service 层处理语音发送逻辑
-		// 1. 更新 notification_tasks.status = 'processing'
-		// 2. 调用语音服务发送外呼
-		// 3. 更新 notification_tasks.status = 'success'/'failed'
-		// 4. 记录 contact_attempts
-		// 5. 扣除额度
-
-		// notificationService := service.Notification()
-		// err = notificationService.SendVoice(ctx, msg.TaskCode, msg.UserID, msg.PhoneHash, msg.Payload)
-		// if err != nil {
-		// 	// 处理失败，取消标记，允许重试
-		// 	cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-		// 	if errors.IsSkipMessageError(err) {
-		// 		return err
-		// 	}
-		// 	return fmt.Errorf("failed to send voice: %w", err)
-		// }
-
-		// 【幂等性标记】处理完成后标记消息已处理（延长 TTL）
-		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
-			logger.Logger.Warn("Failed to mark message as processed",
-				zap.String("message_id", msg.MessageID),
-				zap.Error(err),
-			)
-		}
-
-		return nil
-	}
-
-	return mq.Consume(mq.ConsumeOptions{
-		Queue:         "notification.voice",
-		ConsumerTag:   "voice_notification_consumer",
-		PrefetchCount: 10,
-		Handler:       handler,
-		Context:       ctx,
-	})
 }
 
 // StartAllConsumers 启动所有消费者（在服务启动时调用）， 定义程序终对应的消费者
@@ -468,7 +551,7 @@ func StartAllConsumers(ctx context.Context) {
 		{"check_in_timeout", StartCheckInTimeoutConsumer},
 		{"journey_timeout", StartJourneyTimeoutConsumer},
 		{"sms_notification", StartSMSNotificationConsumer},
-		{"voice_notification", StartVoiceNotificationConsumer},
+		//{"voice_notification", StartVoiceNotificationConsumer}, 现有全部切换为短信通知
 	}
 
 	for _, c := range consumers {
@@ -493,3 +576,70 @@ func StartAllConsumers(ctx context.Context) {
 
 	logger.Logger.Info("All consumers started")
 }
+
+// // StartVoiceNotificationConsumer 启动语音通知消费者
+// func StartVoiceNotificationConsumer(ctx context.Context) error {
+// 	handler := func(body []byte) error {
+// 		var msg model.NotificationMessage
+// 		if err := json.Unmarshal(body, &msg); err != nil {
+// 			return fmt.Errorf("failed to unmarshal voice notification message: %w", err)
+// 		}
+
+// 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
+// 		if err != nil {
+// 			logger.Logger.Warn("Failed to check message processed status",
+// 				zap.String("message_id", msg.MessageID),
+// 				zap.Int64("task_code", msg.TaskCode),
+// 				zap.Error(err),
+// 			)
+// 		} else if !processed {
+// 			logger.Logger.Info("Message already processed or being processed, skipping",
+// 				zap.String("message_id", msg.MessageID),
+// 				zap.Int64("task_code", msg.TaskCode),
+// 			)
+// 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+// 		}
+
+// 		logger.Logger.Info("Processing voice notification",
+// 			zap.String("message_id", msg.MessageID),
+// 			zap.Int64("task_code", msg.TaskCode),
+// 			zap.Int64("user_id", msg.UserID),
+// 		)
+
+// 		// TODO: 调用 service 层处理语音发送逻辑
+// 		// 1. 更新 notification_tasks.status = 'processing'
+// 		// 2. 调用语音服务发送外呼
+// 		// 3. 更新 notification_tasks.status = 'success'/'failed'
+// 		// 4. 记录 contact_attempts
+// 		// 5. 扣除额度
+
+// 		// notificationService := service.Notification()
+// 		// err = notificationService.SendVoice(ctx, msg.TaskCode, msg.UserID, msg.PhoneHash, msg.Payload)
+// 		// if err != nil {
+// 		// 	// 处理失败，取消标记，允许重试
+// 		// 	cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+// 		// 	if errors.IsSkipMessageError(err) {
+// 		// 		return err
+// 		// 	}
+// 		// 	return fmt.Errorf("failed to send voice: %w", err)
+// 		// }
+
+// 		// 【幂等性标记】处理完成后标记消息已处理（延长 TTL）
+// 		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
+// 			logger.Logger.Warn("Failed to mark message as processed",
+// 				zap.String("message_id", msg.MessageID),
+// 				zap.Error(err),
+// 			)
+// 		}
+
+// 		return nil
+// 	}
+
+// 	return mq.Consume(mq.ConsumeOptions{
+// 		Queue:         "notification.voice",
+// 		ConsumerTag:   "voice_notification_consumer",
+// 		PrefetchCount: 10,
+// 		Handler:       handler,
+// 		Context:       ctx,
+// 	})
+// }

@@ -173,7 +173,6 @@ func (s *NotificationService) SendSMS(
 	}
 
 	// 打印解析后的消息对象内容（用于调试）
-	// 根据消息类型打印具体字段
 	logFields := []zap.Field{
 		zap.Int64("task_code", taskCode),
 		zap.String("message_type", smsMsg.GetMessageType()),
@@ -211,7 +210,6 @@ func (s *NotificationService) SendSMS(
 		smsMsg.SetPhone(phone)
 	}
 
-	// 根据消息类型从配置中获取签名和模板代码（如果 payload 中没有）
 	cfg := config.Cfg
 	if smsMsg.GetSignName() == "" || smsMsg.GetTemplateCode() == "" {
 		signName, templateCode, err := cfg.GetSMSTemplateConfig(smsMsg.GetMessageType())
@@ -244,7 +242,6 @@ func (s *NotificationService) SendSMS(
 		}
 	}
 
-	// 获取模板参数
 	templateParams, err := smsMsg.GetTemplateParams()
 	if err != nil {
 		logger.Logger.Error("Failed to get template params",
@@ -269,7 +266,6 @@ func (s *NotificationService) SendSMS(
 	}
 
 	// 记录发送的模板参数（用于调试）
-	// 打印原始 payload 和解析后的消息内容
 	logger.Logger.Info("SMS message details",
 		zap.Int64("task_code", taskCode),
 		zap.String("message_type", smsMsg.GetMessageType()),
@@ -350,10 +346,8 @@ func (s *NotificationService) SendSMS(
 			return fmt.Errorf("insufficient SMS quota: balance=%d, required=%d", currentBalance, smsUnitPriceCents)
 		}
 
-		// 计算扣除后的余额
 		newBalance := currentBalance - smsUnitPriceCents
 
-		// 创建额度扣除记录
 		quotaTransaction := &model.QuotaTransaction{
 			UserID:          user.ID,
 			Channel:         model.QuotaChannelSMS,
@@ -367,7 +361,6 @@ func (s *NotificationService) SendSMS(
 			return fmt.Errorf("failed to create quota transaction: %w", err)
 		}
 
-		// 更新任务状态为成功
 		now := time.Now()
 		_, err = txQ.NotificationTask.
 			Where(txQ.NotificationTask.ID.Eq(task.ID)).
@@ -399,7 +392,7 @@ func (s *NotificationService) SendSMS(
 		)
 		// 短信已发送成功，但额度扣除或状态更新失败
 		// 这种情况下需要人工介入处理，因为短信已发送但未扣费
-		// 可以考虑记录到告警系统或重试队列
+		// 送入日志部分
 		return fmt.Errorf("SMS sent but failed to deduct quota or update task: %w", err)
 	}
 

@@ -119,8 +119,8 @@ func (s *ContactService) CreateContact(
 		return nil, fmt.Errorf("failed to update user contacts: %w", err)
 	}
 
-	// 脱敏手机号用于响应
-	phoneMasked := utils.MaskPhone(req.Phone)
+	// 脱敏手机号用于响应, 不再处理
+	phoneMasked := req.Phone
 
 	return &dto.CreateContactResponse{
 		DisplayName:  newContact.DisplayName,

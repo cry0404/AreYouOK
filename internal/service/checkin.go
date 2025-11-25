@@ -4,7 +4,6 @@ import (
 	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/model/dto"
-	"AreYouOK/internal/queue"
 	"AreYouOK/internal/repository/query"
 	pkgerrors "AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
@@ -22,6 +21,42 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
+
+// validateCheckInReminderPayload 验证CheckInReminder消息payload格式， 只针对 checkinreminder， 可以考虑合并到 validate.go 当中去
+func validateCheckInReminderPayload(payload model.JSONB) error {
+
+	typeVal, ok := payload["type"]
+	if !ok {
+		return fmt.Errorf("payload missing 'type' field")
+	}
+	if typeVal != "checkin_reminder" {
+		return fmt.Errorf("payload type must be 'checkin_reminder', got '%v'", typeVal)
+	}
+
+
+	if _, ok := payload["name"]; !ok {
+		return fmt.Errorf("payload missing 'name' field")
+	}
+
+
+	timeVal, ok := payload["time"]
+	if !ok {
+		return fmt.Errorf("payload missing 'time' field")
+	}
+
+
+	timeStr, ok := timeVal.(string)
+	if !ok {
+		return fmt.Errorf("payload 'time' must be string, got %T", timeVal)
+	}
+
+	_, err := time.Parse("15:04:05", timeStr)
+	if err != nil {
+		return fmt.Errorf("payload 'time' format invalid, expected HH:mm:ss, got '%s'", timeStr)
+	}
+
+	return nil
+}
 
 type CheckInService struct{}
 
@@ -196,7 +231,7 @@ func (s *CheckInService) ProcessReminderBatch(
 	}
 
 	if len(users) == 0 {
-		logger.Logger.Info("No valid users to process")
+		logger.Logger.Debug("No valid users to process")
 		return nil
 	}
 
@@ -213,144 +248,119 @@ func (s *CheckInService) ProcessReminderBatch(
 
 		// 为每个用户处理
 		for _, publicID := range userIDs {
-			func() {
-				user, ok := userMap[publicID]
-				if !ok {
-					logger.Logger.Warn("User not found or invalid",
-						zap.Int64("public_id", publicID),
-					)
-					return
-				}
-
-				// 检查是否已创建通知任务（防止重复）
-				// 查询今日是否已有 check_in_reminder 类型的通知任务
-				nt := txQ.NotificationTask
-
-				existingTasks, err := nt.WithContext(ctx).
-					Where(nt.UserID.Eq(user.ID)).
-					Where(nt.Category.Eq(string(model.NotificationCategoryCheckInReminder))).
-					Where(nt.ScheduledAt.Gte(date)).
-					Where(nt.ScheduledAt.Lt(date.AddDate(0, 0, 1))).
-					Find()
-
-				if err != nil && err != gorm.ErrRecordNotFound {
-					logger.Logger.Error("Failed to query existing tasks",
-						zap.Int64("user_id", publicID),
-						zap.Error(err),
-					)
-					return
-				}
-
-				if len(existingTasks) > 0 {
-					logger.Logger.Info("Notification task already exists, skipping",
-						zap.Int64("user_id", publicID),
-						zap.Int64("task_id", existingTasks[0].ID),
-					)
-					return
-				}
-
-				taskID, err := snowflake.NextID(snowflake.GeneratorTypeTask)
-				if err != nil {
-					logger.Logger.Error("Failed to generate task ID",
-						zap.Int64("user_id", publicID),
-						zap.Error(err),
-					)
-					return
-				}
-
-				taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
-				if err != nil {
-					logger.Logger.Error("Failed to generate task code",
-						zap.Int64("user_id", publicID),
-						zap.Error(err),
-					)
-					return
-				}
-
-				// 生成 MessageID（用于消息队列幂等性）
-				messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
-				if err != nil {
-					logger.Logger.Error("Failed to generate message ID",
-						zap.Int64("user_id", publicID),
-						zap.Error(err),
-					)
-					return
-				}
-
-				// 构建短信内容
-				deadline := user.DailyCheckInDeadline
-				if deadline == "" {
-					deadline = "21:00:00" // 默认截止时间
-				}
-
-				// 构建符合 SMSMessage 接口的 payload
-				payload := model.JSONB{
-					"type":     "checkin_reminder",
-					"deadline": deadline,
-				}
-
-				phoneHash := ""
-				if user.PhoneHash != nil {
-					phoneHash = *user.PhoneHash
-				}
-
-				notificationTask := &model.NotificationTask{
-					TaskCode:         taskCode,
-					UserID:           user.ID,
-					Category:         model.NotificationCategoryCheckInReminder,
-					Channel:          model.NotificationChannelSMS,
-					Status:           model.NotificationTaskStatusPending,
-					Payload:          payload,
-					ScheduledAt:      now,
-					ContactPriority:  nil, // 提醒消息不需要联系人优先级，消费者也可以根据优先级来进行投递
-					ContactPhoneHash: nil,
-					RetryCount:       0,
-					CostCents:        0,
-					Deducted:         false,
-				}
-
-				if err := txQ.NotificationTask.WithContext(ctx).Create(notificationTask); err != nil {
-					logger.Logger.Error("Failed to create notification task",
-						zap.Int64("user_id", publicID),
-						zap.Error(err),
-					)
-					return
-				}
-
-				// 发送消息到队列（不扣款，只是投递消息）， 扣款需要在消费者处进行事务处理
-				// reminder_sent_at 会在消费者成功发送短信后更新
-				notificationMsg := model.NotificationMessage{
-					MessageID: fmt.Sprintf("notification_sms_%d", messageID), // 新增：用于幂等性检查
-					TaskCode:  taskCode,
-					TaskID:    taskID,
-					UserID:    publicID, // 消息中使用 public_id
-					Category:  "check_in_reminder",
-					Channel:   "sms",
-					PhoneHash: phoneHash,
-					Payload: map[string]interface{}{
-						"type":     "checkin_reminder",
-						"deadline": deadline,
-					},
-					ContactPriority: 0,
-					CheckInDate:     checkInDate, // 添加打卡日期，用于后续更新 reminder_sent_at
-				}
-
-				if err := queue.PublishSMSNotification(notificationMsg); err != nil {
-					logger.Logger.Error("Failed to publish SMS notification",
-						zap.Int64("user_id", publicID),
-						zap.Int64("task_id", taskID),
-						zap.Error(err),
-					)
-					// 消息投递失败不影响事务，继续处理其他用户
-					return
-				}
-
-				logger.Logger.Info("Processed reminder for user",
-					zap.Int64("user_id", publicID),
-					zap.Int64("task_id", taskID),
-					zap.String("check_in_date", checkInDate),
+			user, ok := userMap[publicID]
+			if !ok {
+				logger.Logger.Warn("User not found or invalid",
+					zap.Int64("public_id", publicID),
 				)
-			}()
+				continue
+			}
+
+			// 检查是否已创建通知任务（防止重复）
+			// 查询今日是否已有 check_in_reminder 类型的通知任务
+			nt := txQ.NotificationTask
+
+			existingTasks, err := nt.WithContext(ctx).
+				Where(nt.UserID.Eq(user.ID)).
+				Where(nt.Category.Eq(string(model.NotificationCategoryCheckInReminder))).
+				Where(nt.ScheduledAt.Gte(date)).
+				Where(nt.ScheduledAt.Lt(date.AddDate(0, 0, 1))).
+				Find()
+
+			if err != nil && err != gorm.ErrRecordNotFound {
+				logger.Logger.Error("Failed to query existing tasks",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				return err // 发生错误时回滚事务
+			}
+
+			if len(existingTasks) > 0 {
+				logger.Logger.Debug("Notification task already exists, skipping",
+					zap.Int64("user_id", publicID),
+					zap.Int64("task_id", existingTasks[0].ID),
+				)
+				continue // 继续处理其他用户，但不回滚事务
+			}
+
+			taskID, err := snowflake.NextID(snowflake.GeneratorTypeTask)
+			if err != nil {
+				logger.Logger.Error("Failed to generate task ID",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				return err // 发生错误时回滚事务
+			}
+
+			taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
+			if err != nil {
+				logger.Logger.Error("Failed to generate task code",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				return err // 发生错误时回滚事务
+			}
+
+			// 构建短信内容
+			deadline := user.DailyCheckInDeadline
+			if deadline == "" {
+				deadline = "21:00:00" // 默认截止时间
+			}
+
+			// 获取用户昵称（默认为用户ID）
+			userName := fmt.Sprintf("%d", publicID)
+			if user.Nickname != "" {
+				userName = user.Nickname
+			}
+
+			// 构建符合 SMSMessage 接口的 payload
+			// CheckInReminder 需要 type, name, time 三个字段
+			payload := model.JSONB{
+				"type": "checkin_reminder",
+				"name": userName,
+				"time": deadline,
+			}
+
+			// 验证payload格式是否正确
+			if err := validateCheckInReminderPayload(payload); err != nil {
+				logger.Logger.Error("Invalid payload format",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				return err // 格式错误，回滚事务
+			}
+
+			notificationTask := &model.NotificationTask{
+				TaskCode:         taskCode,
+				UserID:           user.ID,
+				Category:         model.NotificationCategoryCheckInReminder,
+				Channel:          model.NotificationChannelSMS,
+				Status:           model.NotificationTaskStatusPending,
+				Payload:          payload,
+				ScheduledAt:      now,
+				ContactPriority:  nil, // 提醒消息不需要联系人优先级，消费者也可以根据优先级来进行投递
+				ContactPhoneHash: nil,
+				RetryCount:       0,
+				CostCents:        0,
+				Deducted:         false,
+			}
+
+			if err := txQ.NotificationTask.WithContext(ctx).Create(notificationTask); err != nil {
+				logger.Logger.Error("Failed to create notification task",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				return err // 创建失败，回滚事务
+			}
+
+
+			// reminder_sent_at 会在消费者成功发送短信后更新
+
+			logger.Logger.Debug("Processed reminder for user",
+				zap.Int64("user_id", publicID),
+				zap.Int64("task_id", taskID),
+				zap.String("check_in_date", checkInDate),
+			)
 		}
 
 		return nil

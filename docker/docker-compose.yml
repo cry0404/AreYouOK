@@ -117,6 +117,8 @@ services:
       LOGGER_FORMAT: ${LOGGER_FORMAT:-json}
       LOGGER_LEVEL: ${LOGGER_LEVEL:-INFO}
       LOGGER_OUTPUT_PATH: ${LOGGER_OUTPUT_PATH:-stdout}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      PROM_METRICS_ADDR: ${PROM_METRICS_ADDR:-:9464}
     # 将外部 .env 文件映射到容器内的 .env（如果应用需要读取文件）
     # 优先使用 .env.api，如果不存在会报错，可以创建符号链接：ln -s .env .env.api
     volumes:
@@ -186,6 +188,8 @@ services:
       LOGGER_FORMAT: ${LOGGER_FORMAT:-json}
       LOGGER_LEVEL: ${LOGGER_LEVEL:-INFO}
       LOGGER_OUTPUT_PATH: ${LOGGER_OUTPUT_PATH:-stdout}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
+      PROM_METRICS_ADDR: ${PROM_METRICS_ADDR:-:9464}
       
       # SMS 配置（Worker 需要发送短信）
       SMS_PROVIDER: ${SMS_PROVIDER:-aliyun}
@@ -203,6 +207,47 @@ services:
     deploy:
       replicas: 1
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.128.0
+    container_name: areyouok-otel-collector
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    networks:
+      - areyouok-network
+
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: areyouok-prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - areyouok-network
+
+  grafana:
+    image: grafana/grafana:10.1.0
+    container_name: areyouok-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+    volumes:
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - areyouok-network
+
 volumes:
   postgres_data:
     driver: local
@@ -210,8 +255,11 @@ volumes:
     driver: local
   rabbitmq_data:
     driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
 
 networks:
   areyouok-network:
     driver: bridge
-

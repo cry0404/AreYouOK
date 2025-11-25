@@ -1,0 +1,13 @@
+global:
+  scrape_interval: ${PROMETHEUS_SCRAPE_INTERVAL:-15s}
+
+scrape_configs:
+  - job_name: areyouok-api
+    static_configs:
+      - targets: ["areyouok-api:9464"]
+
+  - job_name: areyouok-worker
+    static_configs:
+      - targets: ["areyouok-worker:9464"]
+
+

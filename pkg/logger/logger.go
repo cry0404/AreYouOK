@@ -1,65 +1,44 @@
 package logger
 
 import (
+	"io"
+	"os"
+	"strings"
+
+	"github.com/cloudwego/hertz/pkg/common/hlog"
+	hertzzap "github.com/hertz-contrib/logger/zap"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 
 	"AreYouOK/config"
 )
 
-// 也可考虑 hertz 本身自带的日志组件 ？
-var Logger *zap.Logger
+var (
+	Logger   *zap.Logger
+	logClose io.Closer
+)
 
 func Init() {
-	var zapConfig zap.Config
+	coreLevel := zap.NewAtomicLevel()
+	coreLevel.SetLevel(parseZapLevel(config.Cfg.LoggerLevel))
 
-	if config.Cfg.IsDevelopment() {
-		zapConfig = zap.NewDevelopmentConfig()
-
-		zapConfig.Encoding = "console"
-		zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
-		zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-		zapConfig.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
-	} else {
-		zapConfig = zap.NewProductionConfig()
+	opts := []hertzzap.Option{
+		hertzzap.WithCoreEnc(buildEncoder()),
+		hertzzap.WithCoreWs(buildWriteSyncer()),
+		hertzzap.WithCoreLevel(coreLevel),
+		hertzzap.WithZapOptions(
+			zap.AddCaller(),
+			zap.AddStacktrace(zapcore.ErrorLevel),
+		),
 	}
 
-	// 日志级别
-	switch config.Cfg.LoggerLevel {
-	case "DEBUG":
-		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.DebugLevel)
-	case "INFO":
-		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
-	case "WARN":
-		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.WarnLevel)
-	case "ERROR":
-		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.ErrorLevel)
-	default:
-		zapConfig.Level = zap.NewAtomicLevelAt(zapcore.InfoLevel)
-	}
+	hzLogger := hertzzap.NewLogger(opts...)
+	hlog.SetLogger(hzLogger)
+	hlog.SetLevel(toHlogLevel(coreLevel.Level()))
 
-	if !config.Cfg.IsDevelopment() {
-		if config.Cfg.LoggerFormat == "text" {
-			zapConfig.Encoding = "console"
-		} else {
-			zapConfig.Encoding = "json"
-		}
-	}
-
-	// 输出路径
-	if config.Cfg.LoggerOutputPath != "stdout" {
-		zapConfig.OutputPaths = []string{config.Cfg.LoggerOutputPath}
-		zapConfig.ErrorOutputPaths = []string{config.Cfg.LoggerOutputPath}
-	}
-
-	var err error
-	Logger, err = zapConfig.Build(zap.AddCaller(), zap.AddStacktrace(zapcore.ErrorLevel))
-	if err != nil {
-		panic("Failed to initialize zap logger: " + err.Error())
-	}
-
+	Logger = hzLogger.Logger()
 	Logger.Info("Logger initialized successfully",
-		zap.String("level", config.Cfg.LoggerLevel),
+		zap.String("level", strings.ToUpper(config.Cfg.LoggerLevel)),
 		zap.String("format", config.Cfg.LoggerFormat),
 		zap.String("environment", config.Cfg.Environment),
 	)
@@ -70,5 +49,68 @@ func Sync() {
 		if err := Logger.Sync(); err != nil {
 			_ = err
 		}
+	}
+
+	if logClose != nil {
+		_ = logClose.Close()
+	}
+}
+
+func buildEncoder() zapcore.Encoder {
+	encoderConfig := zap.NewProductionEncoderConfig()
+	encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+	encoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+
+	isText := config.Cfg.IsDevelopment() || strings.EqualFold(config.Cfg.LoggerFormat, "text")
+	if isText {
+		encoderConfig.EncodeLevel = zapcore.CapitalColorLevelEncoder
+		return zapcore.NewConsoleEncoder(encoderConfig)
+	}
+
+	encoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	return zapcore.NewJSONEncoder(encoderConfig)
+}
+
+func buildWriteSyncer() zapcore.WriteSyncer {
+	if strings.EqualFold(config.Cfg.LoggerOutputPath, "stdout") {
+		return zapcore.AddSync(os.Stdout)
+	}
+
+	file, err := os.OpenFile(config.Cfg.LoggerOutputPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		panic("failed to open log file: " + err.Error())
+	}
+	logClose = file
+
+	return zapcore.AddSync(file)
+}
+
+func parseZapLevel(level string) zapcore.Level {
+	switch strings.ToUpper(level) {
+	case "DEBUG":
+		return zapcore.DebugLevel
+	case "INFO":
+		return zapcore.InfoLevel
+	case "WARN":
+		return zapcore.WarnLevel
+	case "ERROR":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+func toHlogLevel(level zapcore.Level) hlog.Level {
+	switch level {
+	case zapcore.DebugLevel:
+		return hlog.LevelDebug
+	case zapcore.InfoLevel:
+		return hlog.LevelInfo
+	case zapcore.WarnLevel:
+		return hlog.LevelWarn
+	case zapcore.ErrorLevel:
+		return hlog.LevelError
+	default:
+		return hlog.LevelInfo
 	}
 }

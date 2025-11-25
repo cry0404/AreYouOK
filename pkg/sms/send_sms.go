@@ -12,6 +12,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+
 )
 
 // SendSingle 发送单条短信
@@ -33,7 +34,7 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
 	}
 
 	// 打印实际发送给阿里云的参数（用于调试）
-	logger.Logger.Info("Sending SMS to Aliyun",
+	logger.Logger.Debug("Sending SMS to Aliyun",
 		zap.String("phone", phone),
 		zap.String("sign_name", signName),
 		zap.String("template_code", templateCode),
@@ -99,7 +100,7 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
 		}
 	}
 
-	logger.Logger.Info("SMS sent successfully",
+	logger.Logger.Debug("SMS sent successfully",
 		zap.String("phone", phone),
 		zap.String("template", templateCode),
 	)
@@ -232,7 +233,7 @@ func (c *AliyunClient) SendBatch(ctx context.Context, phones []string, signName,
 		}
 	}
 
-	logger.Logger.Info("Batch SMS sent successfully",
+	logger.Logger.Debug("Batch SMS sent successfully",
 		zap.Int("count", len(phones)),
 		zap.String("template", templateCode),
 	)

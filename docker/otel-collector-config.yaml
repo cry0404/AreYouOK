@@ -1,0 +1,25 @@
+receivers:
+  otlp:
+    protocols: # 传输的对应协议
+      grpc:
+      http:
+
+processors:
+  batch:
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+
+exporters:     #导出的对应服务
+  logging:
+    loglevel: warn
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [logging]
+
+
