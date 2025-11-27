@@ -83,12 +83,11 @@ func (s *NotificationService) SendSMS(
 		return fmt.Errorf("failed to query user: %w", err)
 	}
 
-
 	smsUnitPriceCents := 5
 	quotaService := Quota()
 	// 发送成功才扣减
 	if err := quotaService.PreDeduct(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents); err != nil {
-		if err == errors.QuotaInsufficient {
+		if errors.IsQuotaInsufficient(err) {
 			// 额度不足，更新任务状态为失败
 			now := time.Now()
 			_, updateErr := q.NotificationTask.WithContext(ctx).

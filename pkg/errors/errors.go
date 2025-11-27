@@ -197,3 +197,13 @@ func NewNonRetryableError(code, message, reason string) *NonRetryableError {
 		Reason:  reason,
 	}
 }
+
+// IsQuotaInsufficient 检查错误是否为额度不足错误
+func IsQuotaInsufficient(err error) bool {
+	if err == nil {
+		return false
+	}
+	errStr := err.Error()
+	return errStr == QuotaInsufficient.Error() ||
+		errStr == QuotaInsufficient.Message
+}

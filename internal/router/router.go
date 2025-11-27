@@ -70,7 +70,7 @@ func Register(h *server.Hertz) {
 		journeys.GET("/:journey_id", handler.GetJourneyDetail)
 		journeys.PATCH("/:journey_id", middleware.JourneySettingsRateLimitMiddleware(), handler.UpdateJourney) //行程修改限流，这里最后还需要考虑最后几分钟就不能修改了的问题
 		journeys.POST("/:journey_id/complete", handler.CompleteJourney)
-		journeys.POST("/:journey_id/ack-alert", handler.AckJourneyAlert)
+		//journeys.POST("/:journey_id/ack-alert", handler.AckJourneyAlert)
 		journeys.GET("/:journey_id/alerts", handler.GetJourneyAlerts)
 	}
 }

@@ -61,7 +61,7 @@ func (s *QuotaService) PreDeduct(ctx context.Context, userID int64, channel mode
 		}
 
 		if currentBalance < amount {
-			return errors.QuotaInsufficient
+			return fmt.Errorf("%w", errors.QuotaInsufficient)
 		}
 
 		newBalance := currentBalance - amount
@@ -92,54 +92,53 @@ func (s *QuotaService) PreDeduct(ctx context.Context, userID int64, channel mode
 	})
 }
 
-
 // ConfirmDeduction 确认扣减（解冻并正式扣除）
 // 余额不变（因为已经预扣减了），但创建一条确认记录用于审计
 // 也就是消费者正式消费后扣减, 需要根据消费是否成功来扣减
 
-func (s *QuotaService) ConfirmDeduction(ctx context.Context, userID int64, channel model.QuotaChannel, amount int) error{
+func (s *QuotaService) ConfirmDeduction(ctx context.Context, userID int64, channel model.QuotaChannel, amount int) error {
 	db := database.DB().WithContext(ctx)
 
-    return db.Transaction(func(tx *gorm.DB) error {
-        txQ := query.Use(tx)
-        
-        // 查询当前余额
-        transactions, err := txQ.QuotaTransaction.
-            Where(txQ.QuotaTransaction.UserID.Eq(userID)).
-            Where(txQ.QuotaTransaction.Channel.Eq(string(channel))).
-            Order(txQ.QuotaTransaction.CreatedAt.Desc()).
-            Limit(1).
-            Find()
-        if err != nil {
-            return fmt.Errorf("failed to query quota balance: %w", err)
-        }
-        
-        var currentBalance int
-        if len(transactions) > 0 {
-            currentBalance = transactions[0].BalanceAfter
-        }
-        
-        // 确认扣减：余额不变（因为已经预扣减了），但创建一条确认记录
-        transaction := &model.QuotaTransaction{
-            UserID:          userID,
-            Channel:         channel,
-            TransactionType: model.TransactionTypeDeduct,
-            Reason:          model.QuotaReasonConfirmDeduct, // 确认扣减标识
-            Amount:          amount,
-            BalanceAfter:    currentBalance, // 余额不变（已预扣减）
-        }
-		
-		 if err := txQ.QuotaTransaction.Create(transaction); err != nil {
-            return fmt.Errorf("failed to create confirm-deduct transaction: %w", err)
-        }
-        
-        logger.Logger.Info("Quota deduction confirmed",
-            zap.Int64("user_id", userID),
-            zap.String("channel", string(channel)),
-            zap.Int("amount", amount),
-        )
-        
-        return nil
+	return db.Transaction(func(tx *gorm.DB) error {
+		txQ := query.Use(tx)
+
+		// 查询当前余额
+		transactions, err := txQ.QuotaTransaction.
+			Where(txQ.QuotaTransaction.UserID.Eq(userID)).
+			Where(txQ.QuotaTransaction.Channel.Eq(string(channel))).
+			Order(txQ.QuotaTransaction.CreatedAt.Desc()).
+			Limit(1).
+			Find()
+		if err != nil {
+			return fmt.Errorf("failed to query quota balance: %w", err)
+		}
+
+		var currentBalance int
+		if len(transactions) > 0 {
+			currentBalance = transactions[0].BalanceAfter
+		}
+
+		// 确认扣减：余额不变（因为已经预扣减了），但创建一条确认记录
+		transaction := &model.QuotaTransaction{
+			UserID:          userID,
+			Channel:         channel,
+			TransactionType: model.TransactionTypeDeduct,
+			Reason:          model.QuotaReasonConfirmDeduct, // 确认扣减标识
+			Amount:          amount,
+			BalanceAfter:    currentBalance, // 余额不变（已预扣减）
+		}
+
+		if err := txQ.QuotaTransaction.Create(transaction); err != nil {
+			return fmt.Errorf("failed to create confirm-deduct transaction: %w", err)
+		}
+
+		logger.Logger.Info("Quota deduction confirmed",
+			zap.Int64("user_id", userID),
+			zap.String("channel", string(channel)),
+			zap.Int("amount", amount),
+		)
+
+		return nil
 	})
 }
 
@@ -148,52 +147,50 @@ func (s *QuotaService) ConfirmDeduction(ctx context.Context, userID int64, chann
 
 func (s *QuotaService) Refund(ctx context.Context, userID int64, channel model.QuotaChannel, amount int) error {
 	db := database.DB().WithContext(ctx)
-    
-    return db.Transaction(func(tx *gorm.DB) error {
-        txQ := query.Use(tx)
-        
-        // 查询当前余额
-        transactions, err := txQ.QuotaTransaction.
-            Where(txQ.QuotaTransaction.UserID.Eq(userID)).
-            Where(txQ.QuotaTransaction.Channel.Eq(string(channel))).
-            Order(txQ.QuotaTransaction.CreatedAt.Desc()).
-            Limit(1).
-            Find()
-        if err != nil {
-            return fmt.Errorf("failed to query quota balance: %w", err)
-        }
 
-		 var currentBalance int
-        if len(transactions) > 0 {
-            currentBalance = transactions[0].BalanceAfter
-        }
-        
-        // 退款：余额恢复
-        newBalance := currentBalance + amount
-        
-        transaction := &model.QuotaTransaction{
-            UserID:          userID,
-            Channel:         channel,
-            TransactionType: model.TransactionTypeGrant, // 退款算作充值
-            Reason:          model.QuotaReasonGrantRefund, // 退款标识
-            Amount:          amount,
-            BalanceAfter:    newBalance,
-        }
-        
-        if err := txQ.QuotaTransaction.Create(transaction); err != nil {
-            return fmt.Errorf("failed to create refund transaction: %w", err)
-        }
-        
-        logger.Logger.Info("Quota refunded",
-            zap.Int64("user_id", userID),
-            zap.String("channel", string(channel)),
-            zap.Int("amount", amount),
-            zap.Int("balance_before", currentBalance),
-            zap.Int("balance_after", newBalance),
-        )
+	return db.Transaction(func(tx *gorm.DB) error {
+		txQ := query.Use(tx)
 
+		// 查询当前余额
+		transactions, err := txQ.QuotaTransaction.
+			Where(txQ.QuotaTransaction.UserID.Eq(userID)).
+			Where(txQ.QuotaTransaction.Channel.Eq(string(channel))).
+			Order(txQ.QuotaTransaction.CreatedAt.Desc()).
+			Limit(1).
+			Find()
+		if err != nil {
+			return fmt.Errorf("failed to query quota balance: %w", err)
+		}
 
+		var currentBalance int
+		if len(transactions) > 0 {
+			currentBalance = transactions[0].BalanceAfter
+		}
 
-	return nil
+		// 退款：余额恢复
+		newBalance := currentBalance + amount
+
+		transaction := &model.QuotaTransaction{
+			UserID:          userID,
+			Channel:         channel,
+			TransactionType: model.TransactionTypeGrant,   // 退款算作充值
+			Reason:          model.QuotaReasonGrantRefund, // 退款标识
+			Amount:          amount,
+			BalanceAfter:    newBalance,
+		}
+
+		if err := txQ.QuotaTransaction.Create(transaction); err != nil {
+			return fmt.Errorf("failed to create refund transaction: %w", err)
+		}
+
+		logger.Logger.Info("Quota refunded",
+			zap.Int64("user_id", userID),
+			zap.String("channel", string(channel)),
+			zap.Int("amount", amount),
+			zap.Int("balance_before", currentBalance),
+			zap.Int("balance_after", newBalance),
+		)
+
+		return nil
 	})
 }

@@ -260,7 +260,7 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal check-in timeout message: %w", err)
 		}
 
-		// 使用 SETNX 原子性地检查并标记消息正在处理
+		//不重复消费一条消息，这种 checkIn 部分都是一天一次
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -281,22 +281,68 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 			zap.Int("user_count", len(msg.UserIDs)),
 		)
 
-		// TODO: 调用 service 层处理打卡超时逻辑
 		// 1. 批量更新 daily_check_ins.alert_triggered_at
 		// 2. 批量查询紧急联系人列表
 		// 3. 按优先级批量创建通知任务
-		// 4. 批量发送外呼/短信
-		// 5. 批量记录 contact_attempts
+		// 4. 批量发送短信
+		// 5. 批量记录 contact_attempts, 每次尝试的记录记录到 contact_attempts
 
-		// checkInService := service.CheckIn()
-		// err = checkInService.ProcessTimeoutBatch(ctx, msg.UserIDs, msg.CheckInDate)
-		// if err != nil {
-		// 	// 处理失败，取消标记，允许重试
-		// 	cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-		// 	return fmt.Errorf("failed to process timeout batch: %w", err)
-		// }
+		checkInService := service.CheckIn()
+		err = checkInService.ProcessTimeoutBatch(ctx, msg.UserIDs, msg.CheckInDate)
+		if err != nil {
+			// 处理失败，取消标记，允许重试
+			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			return fmt.Errorf("failed to process timeout batch: %w", err)
+		}
 
-		// 【幂等性标记】处理完成后标记消息已处理（延长 TTL）
+		db := database.DB().WithContext(ctx)
+		q := query.Use(db)
+
+		today := time.Now().Truncate(24 * time.Hour)
+		tasks, err := q.NotificationTask.
+			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInTimeout))).
+			Where(q.NotificationTask.CreatedAt.Gte(today)).
+			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+			Find()
+
+		if err == nil {
+			for _, task := range tasks {
+				// 查询用户 public_id
+				user, err := q.User.GetByID(task.UserID)
+				if err != nil {
+					logger.Logger.Warn("Failed to query user for notification",
+						zap.Int64("task_id", task.ID),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				// 构建通知消息
+				notificationMsg := model.NotificationMessage{
+					MessageID: fmt.Sprintf("notification_%d", task.TaskCode),
+					TaskCode:  task.TaskCode,
+					UserID:    user.PublicID,
+					Category:  string(task.Category),
+					Channel:   string(task.Channel),
+					PhoneHash: "",
+					Payload:   task.Payload,
+				}
+
+				// 如果有联系人信息，设置 phone_hash
+				if task.ContactPhoneHash != nil {
+					notificationMsg.PhoneHash = *task.ContactPhoneHash
+				}
+
+				// 发布到队列
+				if err := PublishSMSNotification(notificationMsg); err != nil {
+					logger.Logger.Error("Failed to publish notification message",
+						zap.Int64("task_code", task.TaskCode),
+						zap.Error(err),
+					)
+				}
+			}
+		}
+
 		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
 			logger.Logger.Warn("Failed to mark message as processed",
 				zap.String("message_id", msg.MessageID),
@@ -316,7 +362,7 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 	})
 }
 
-// StartJourneyTimeoutConsumer 启动行程超时消费者
+// 修改 StartJourneyTimeoutConsumer，实现完整的业务逻辑
 func StartJourneyTimeoutConsumer(ctx context.Context) error {
 	handler := func(body []byte) error {
 		var msg model.JourneyTimeoutMessage
@@ -324,7 +370,7 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal journey timeout message: %w", err)
 		}
 
-		// 使用 SETNX 原子性地检查并标记消息正在处理
+		// 幂等性检查
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -344,22 +390,69 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			zap.Int64("journey_id", msg.JourneyID),
 			zap.Int64("user_id", msg.UserID),
 		)
-		// 现在已修改成同时发送短信，可能按照时间长短间隔发送
-		// TODO: 调用 service 层处理行程超时逻辑
-		// 1. 更新 journey.status = 'timeout'
-		// 2. 获取紧急联系人列表
-		// 3. 按优先级创建通知任务
-		// 4. 发送外呼/短信
 
-		// journeyService := service.Journey()
-		// err = journeyService.ProcessTimeout(ctx, msg.JourneyID, msg.UserID)
-		// if err != nil {
-		// 	// 处理失败，取消标记，允许重试
-		// 	cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-		// 	return fmt.Errorf("failed to process journey timeout: %w", err)
-		// }
+		// 调用 service 层处理行程超时逻辑
+		journeyService := service.Journey()
+		err = journeyService.ProcessTimeout(ctx, msg.JourneyID, msg.UserID)
+		if err != nil {
+			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			logger.Logger.Error("Failed to process journey timeout",
+				zap.String("message_id", msg.MessageID),
+				zap.Int64("journey_id", msg.JourneyID),
+				zap.Error(err),
+			)
+			return fmt.Errorf("failed to process journey timeout: %w", err)
+		}
 
-		// 【幂等性标记】处理完成后标记消息已处理（延长 TTL）
+		// 发布通知消息到队列（类似打卡超时的逻辑）
+		db := database.DB().WithContext(ctx)
+		q := query.Use(db)
+
+		// 查询今天创建的行程超时通知任务
+		today := time.Now().Truncate(24 * time.Hour)
+		tasks, err := q.NotificationTask.
+			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryJourneyTimeout))).
+			Where(q.NotificationTask.CreatedAt.Gte(today)).
+			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+			Find()
+		if err == nil {
+			for _, task := range tasks {
+				// 查询用户 public_id
+				user, err := q.User.GetByID(task.UserID)
+				if err != nil {
+					logger.Logger.Warn("Failed to query user for notification",
+						zap.Int64("task_id", task.ID),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				// 构建通知消息
+				notificationMsg := model.NotificationMessage{
+					MessageID: fmt.Sprintf("notification_%d", task.TaskCode),
+					TaskCode:  task.TaskCode,
+					UserID:    user.PublicID,
+					Category:  string(task.Category),
+					Channel:   string(task.Channel),
+					PhoneHash: "",
+					Payload:   task.Payload,
+				}
+
+				if task.ContactPhoneHash != nil {
+					notificationMsg.PhoneHash = *task.ContactPhoneHash
+				}
+
+				// 发布到队列
+				if err := PublishSMSNotification(notificationMsg); err != nil {
+					logger.Logger.Error("Failed to publish notification message",
+						zap.Int64("task_code", task.TaskCode),
+						zap.Error(err),
+					)
+				}
+			}
+		}
+
+		// 标记消息已处理
 		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
 			logger.Logger.Warn("Failed to mark message as processed",
 				zap.String("message_id", msg.MessageID),

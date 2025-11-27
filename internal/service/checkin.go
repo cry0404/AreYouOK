@@ -13,6 +13,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -33,17 +34,14 @@ func validateCheckInReminderPayload(payload model.JSONB) error {
 		return fmt.Errorf("payload type must be 'checkin_reminder', got '%v'", typeVal)
 	}
 
-
 	if _, ok := payload["name"]; !ok {
 		return fmt.Errorf("payload missing 'name' field")
 	}
-
 
 	timeVal, ok := payload["time"]
 	if !ok {
 		return fmt.Errorf("payload missing 'time' field")
 	}
-
 
 	timeStr, ok := timeVal.(string)
 	if !ok {
@@ -353,7 +351,6 @@ func (s *CheckInService) ProcessReminderBatch(
 				return err // 创建失败，回滚事务
 			}
 
-
 			// reminder_sent_at 会在消费者成功发送短信后更新
 
 			logger.Logger.Debug("Processed reminder for user",
@@ -501,9 +498,210 @@ func (s *CheckInService) CompleteCheckIn(
 	}, nil
 }
 
+// ProcessTimeoutBatch 批量处理打卡超时
+// 由超时 consuemer 消费
+// 查询超时用户（21:00未打卡且已发送提醒），通知紧急联系人
+func (s *CheckInService) ProcessTimeoutBatch(
+	ctx context.Context,
+	userIDs []int64,
+	checkInDate string,
+) error {
+	db := database.DB().WithContext(ctx)
 
+	q := query.Use(db)
 
+	users, err := q.User.WithContext(ctx).
+		Where(q.User.PublicID.In(userIDs...)).
+		Find()
 
+	if err != nil {
+		return fmt.Errorf("failed to query users: %w", err)
+	}
+
+	userMap := make(map[int64]*model.User)
+
+	for _, user := range users {
+		userMap[user.PublicID] = user
+	}
+
+	// 解析日期
+	checkInDateParsed, err := time.Parse("2006-01-02", checkInDate)
+	if err != nil {
+		return fmt.Errorf("invalid check_in_date format: %w", err)
+	}
+
+	// 批量查询打卡记录
+	checkIns, err := q.DailyCheckIn.WithContext(ctx).
+		Where(q.DailyCheckIn.CheckInDate.Eq(checkInDateParsed)).
+		Where(q.DailyCheckIn.UserID.In(func() []int64 {
+			ids := make([]int64, 0, len(users))
+			for _, u := range users {
+				ids = append(ids, u.ID)
+			}
+			return ids
+		}()...)).
+		Find()
+
+	if err != nil {
+		return fmt.Errorf("failed to query check-ins: %w", err)
+	}
+
+	checkInMap := make(map[int64]*model.DailyCheckIn)
+	for _, ci := range checkIns {
+		checkInMap[ci.UserID] = ci
+	}
+
+	now := time.Now()
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		txQ := query.Use(tx)
+
+		for _, publicID := range userIDs {
+			user, ok := userMap[publicID]
+			if !ok {
+				logger.Logger.Warn("User not found in timeout batch",
+					zap.Int64("public_id", publicID),
+				)
+				continue
+			}
+
+			checkIn, ok := checkInMap[user.ID]
+			if !ok {
+				logger.Logger.Warn("Check-in record not found",
+					zap.Int64("user_id", user.ID),
+					zap.String("check_in_date", checkInDate),
+				)
+				continue
+			}
+
+			// 检查是否已经触发过告警, 也就是提前发短信那部分
+			if checkIn.AlertTriggeredAt != nil {
+				logger.Logger.Debug("Alert already triggered for this check-in",
+					zap.Int64("user_id", user.ID),
+					zap.String("check_in_date", checkInDate),
+				)
+				continue
+			}
+
+			smsTransactions, err := txQ.QuotaTransaction.
+				Where(txQ.QuotaTransaction.UserID.Eq(user.ID)).
+				Where(txQ.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
+				Order(txQ.QuotaTransaction.CreatedAt.Desc()).
+				Limit(1).
+				Find()
+			if err != nil {
+				logger.Logger.Error("Failed to query SMS quota",
+					zap.Int64("user_id", user.ID),
+					zap.Error(err),
+				)
+				continue // 跳过这个用户
+			}
+
+			var smsBalance int
+			if len(smsTransactions) > 0 {
+				smsBalance = smsTransactions[0].BalanceAfter
+			}
+
+			smsUnitPriceCents := 5
+			contactCount := len(user.EmergencyContacts)
+			totalCost := smsUnitPriceCents * contactCount
+
+			if smsBalance < totalCost {
+				logger.Logger.Warn("Insufficient quota for timeout alert",
+					zap.Int64("user_id", user.ID),
+					zap.Int("balance", smsBalance),
+					zap.Int("required", totalCost),
+					zap.Int("contact_count", contactCount),
+				)
+				continue // 跳过这个用户
+			}
+
+			_, err = txQ.DailyCheckIn.
+				Where(txQ.DailyCheckIn.ID.Eq(checkIn.ID)).
+				Updates(map[string]interface{}{
+					"alert_triggered_at": now,
+					"status":             model.CheckInStatusTimeout,
+					"updated_at":         now,
+				})
+			if err != nil {
+				logger.Logger.Error("Failed to update check-in alert status",
+					zap.Int64("check_in_id", checkIn.ID),
+					zap.Error(err),
+				)
+				return fmt.Errorf("failed to update check-in: %w", err)
+			}
+
+			contacts := user.EmergencyContacts
+			sort.Slice(contacts, func(i, j int) bool {
+				return contacts[i].Priority < contacts[j].Priority
+			})
+
+			// 最多通知3位紧急联系人
+			maxContacts := 3
+			if len(contacts) > maxContacts {
+				contacts = contacts[:maxContacts]
+			}
+
+			// 获取用户昵称, 用户昵称应该必须设置才对
+			userName := user.Nickname
+
+			// 获取截止时间
+			deadline := user.DailyCheckInDeadline
+			if deadline == "" {
+				deadline = "21:00:00"
+			}
+
+			for _, contact := range contacts {
+				// 生成 task_code
+				taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
+				if err != nil {
+					logger.Logger.Error("Failed to generate task code",
+						zap.Int64("user_id", user.ID),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				// 构建 payload
+				payload := model.JSONB{
+					"type":     "check_in_timeout",
+					"name":     userName,
+					"deadline": deadline,
+				}
+
+				// 创建通知任务
+				notificationTask := &model.NotificationTask{
+					TaskCode:         taskCode,
+					UserID:           user.ID,
+					Category:         model.NotificationCategoryCheckInTimeout,
+					Channel:          model.NotificationChannelSMS,
+					Status:           model.NotificationTaskStatusPending,
+					Payload:          payload,
+					ContactPriority:  &contact.Priority,
+					ContactPhoneHash: &contact.PhoneHash,
+					ScheduledAt:      now,
+				}
+
+				if err := txQ.NotificationTask.Create(notificationTask); err != nil {
+					logger.Logger.Error("Failed to create notification task",
+						zap.Int64("user_id", user.ID),
+						zap.Int("priority", contact.Priority),
+						zap.Error(err),
+					)
+					return fmt.Errorf("failed to create notification task: %w", err)
+				}
+			}
+
+			logger.Logger.Info("Processed timeout check-in",
+				zap.Int64("user_id", user.ID),
+				zap.String("check_in_date", checkInDate),
+				zap.Int("contact_count", len(contacts)),
+			)
+		}
+		return nil
+	})
+
+}
 
 // // 处理单个用户的打卡信息, 这里需要对接到具体的短信服务需要的 payload 是什么才可以知道如何去做
 

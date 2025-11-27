@@ -296,43 +296,6 @@ func CompleteJourney(ctx context.Context, c *app.RequestContext) {
 	response.Success(ctx, c, result)
 }
 
-// AckJourneyAlert 确认已知晓行程超时提醒
-// POST /v1/journeys/:journey_id/ack-alert
-func AckJourneyAlert(ctx context.Context, c *app.RequestContext) {
-		journeyIDStr := c.Param("journey_id")
-		journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
-		if err != nil {
-			response.Error(ctx, c, errors.Definition{
-				Code: "INVALID_JOURNEY_ID",
-				Message: "Invalid journey ID format",
-			})
-			return
-		}
-
-		userIDStr, ok := middleware.GetUserID(ctx, c)
-	if !ok {
-		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
-		return
-	}
-
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil {
-		response.Error(ctx, c, errors.Definition{
-			Code:    "INVALID_USER_ID",
-			Message: "Invalid user ID format",
-		})
-		return
-	}
-
-	journeyService := service.Journey()
-	if err := journeyService.AckJourneyAlert(ctx, userID, journeyID); err != nil {
-		response.Error(ctx, c, err)
-		return
-	}
-
-	response.NoContent(ctx, c)
-}
-
 // GetJourneyAlerts 查询行程提醒执行状态
 // GET /v1/journeys/:journey_id/alerts
 func GetJourneyAlerts(ctx context.Context, c *app.RequestContext) {
@@ -370,3 +333,41 @@ func GetJourneyAlerts(ctx context.Context, c *app.RequestContext) {
 
 	response.Success(ctx, c, result)
 }
+
+
+// // AckJourneyAlert 确认已知晓行程超时提醒
+// // POST /v1/journeys/:journey_id/ack-alert
+// func AckJourneyAlert(ctx context.Context, c *app.RequestContext) {
+// 		journeyIDStr := c.Param("journey_id")
+// 		journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+// 		if err != nil {
+// 			response.Error(ctx, c, errors.Definition{
+// 				Code: "INVALID_JOURNEY_ID",
+// 				Message: "Invalid journey ID format",
+// 			})
+// 			return
+// 		}
+
+// 		userIDStr, ok := middleware.GetUserID(ctx, c)
+// 	if !ok {
+// 		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+// 		return
+// 	}
+
+// 	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+// 	if err != nil {
+// 		response.Error(ctx, c, errors.Definition{
+// 			Code:    "INVALID_USER_ID",
+// 			Message: "Invalid user ID format",
+// 		})
+// 		return
+// 	}
+
+// 	journeyService := service.Journey()
+// 	if err := journeyService.AckJourneyAlert(ctx, userID, journeyID); err != nil {
+// 		response.Error(ctx, c, err)
+// 		return
+// 	}
+
+// 	response.NoContent(ctx, c)
+// }
