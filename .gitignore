@@ -20,3 +20,6 @@ frontendTest/
 CLAUDE.md
 
 docker/*.md
+.claude/
+
+scripts/

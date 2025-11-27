@@ -1,16 +1,23 @@
 
+-- ============================================
+-- AreYouOK 数据库 Schema
+-- 版本: 2.0
+-- 更新日期: 2025-01-25
+-- 说明: 支持 P0.3-P0.7 业务逻辑实现
+-- ============================================
+
 -- 用户主表：记录账号基础信息与状态。
 -- status 枚举值：
 --   waitlisted: 内测排队中, 以及没有注册
---   onboarding: 引导中（已激活，正在完成注册流程）, 可以考虑细化一下注册到哪个地步，反正也是个枚举值
---   contact
---  填手机号和填紧急联系人对应的枚举值
+--   onboarding: 引导中（已激活，正在完成注册流程）
+--   contact: 填手机号和填紧急联系人对应的枚举值
 --   active: 正常使用
-
+--
 -- 内部 id 加外部 id 模式，id 是数据库自增主键，用于内部外键关联查询
 -- 外部，处理 api 请求时使用的是 public_id ，用于 api 对外暴露，防止枚举遍历
 CREATE TABLE users (
   id BIGSERIAL PRIMARY KEY, -- 关联的主键 id
+  avatar_url VARCHAR(255), -- 头像 url
   public_id BIGINT NOT NULL,
   alipay_open_id VARCHAR(64) NOT NULL, -- aliyun 的 openid, 做主键性能也很差
   nickname VARCHAR(64) NOT NULL DEFAULT '', -- 默认支付宝的 nickname
@@ -66,7 +73,7 @@ CREATE TABLE daily_check_ins (
 );
 CREATE INDEX idx_daily_check_ins_status ON daily_check_ins(status);
 CREATE INDEX idx_daily_check_ins_alert ON daily_check_ins(alert_triggered_at);
-
+CREATE INDEX idx_daily_check_ins_user_date_status ON daily_check_ins(user_id, check_in_date, status); -- 对于每天的打卡的快速查询索引
 
 -- 行程报备。
 CREATE TABLE journeys (
@@ -84,35 +91,78 @@ CREATE TABLE journeys (
   alert_status VARCHAR(16) NOT NULL DEFAULT 'pending',
   alert_attempts INTEGER NOT NULL DEFAULT 0,
   alert_last_attempt_at TIMESTAMPTZ,
+  
+  -- P0.7: 延迟消息追踪（用于取消未触发的超时检查）
+  timeout_message_id VARCHAR(128), -- 延迟消息的 message_id，用于在 consumer 中检查行程状态
+  
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ
 );
 CREATE INDEX idx_journeys_user_status ON journeys(user_id, status);
 CREATE INDEX idx_journeys_expected ON journeys(expected_return_time);
-
+CREATE INDEX idx_journeys_timeout_message_id ON journeys(timeout_message_id);
 
 -- 额度流水：记录充值与扣减，类似于提供支付记录之类的
+-- 余额计算：查询最新一条交易的 balance_after 字段
+-- 预扣减机制：通过 reason 字段区分（pre_deduct, confirm_deduct, refund）
 CREATE TABLE quota_transactions (
   id BIGSERIAL PRIMARY KEY,
   user_id BIGINT NOT NULL REFERENCES users(id),
-  channel VARCHAR(16) NOT NULL, -- 区分 sms 、phone
-  transaction_type VARCHAR(16) NOT NULL, -- 充值, 扣减
-  reason VARCHAR(16) NOT NULL, -- 从哪个地方充值的，扣减的部分，以及
+  channel VARCHAR(16) NOT NULL, -- 区分 sms、voice
+  transaction_type VARCHAR(16) NOT NULL, -- grant(充值), deduct(扣减)
+  reason VARCHAR(32) NOT NULL, -- 交易原因：
+                                --   充值: "grant_default", "grant_recharge", "grant_refund"
+                                --   扣减: "sms_notification", "voice_notification", 
+                                --        "pre_deduct" (预扣减), "confirm_deduct" (确认扣减)
   amount INTEGER NOT NULL,              -- 本次的金额变动 
   balance_after INTEGER NOT NULL,       -- 操作后余额，对账部分
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_quota_transactions_user ON quota_transactions(user_id, created_at);
+CREATE INDEX idx_quota_transactions_user_channel_created ON quota_transactions(user_id, channel, created_at DESC);
 
+-- 通知任务：统一调度短信与外呼。
+-- 注意：必须先创建 notification_tasks，因为 contact_attempts 依赖它
+CREATE TABLE notification_tasks (
+  id BIGSERIAL PRIMARY KEY,
+  task_code BIGINT NOT NULL, -- 与 task_id 做区分，taskID 生成出来是为了在消息队列中做区别
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  contact_priority SMALLINT, -- 紧急联系人优先级（1-3），对应 users.emergency_contacts 数组中的 priority
+  contact_phone_hash CHAR(64), -- 紧急联系人手机号哈希（用于快速查找）
+  category VARCHAR(32) NOT NULL, -- 通知类别：check_in_reminder, check_in_timeout, journey_timeout, journey_reminder
+  channel VARCHAR(16) NOT NULL, -- 通知渠道：sms, voice
+  payload JSONB NOT NULL, -- 模板变量和通知内容
+  status VARCHAR(16) NOT NULL DEFAULT 'pending', -- pending, processing, success, failed
+  retry_count SMALLINT NOT NULL DEFAULT 0,
+  scheduled_at TIMESTAMPTZ NOT NULL,
+  processed_at TIMESTAMPTZ,
+  cost_cents INTEGER NOT NULL DEFAULT 0,
+  deducted BOOLEAN NOT NULL DEFAULT FALSE,
+  
+  -- P0.3: 短信发送状态统计字段
+  sms_message_id VARCHAR(128), -- 阿里云返回的 MessageID（BizId）
+  sms_status_code VARCHAR(32), -- 阿里云返回的状态码（如 "OK", "isv.BUSINESS_LIMIT_CONTROL"）
+  sms_error_message VARCHAR(255), -- 错误消息（如果有）
+  
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (task_code)
+);
+CREATE INDEX idx_notification_tasks_status ON notification_tasks(status, scheduled_at);
+CREATE INDEX idx_notification_tasks_contact ON notification_tasks(user_id, contact_priority);
+CREATE INDEX idx_notification_tasks_user_category_status ON notification_tasks(user_id, category, status);
+CREATE INDEX idx_notification_tasks_sms_message_id ON notification_tasks(sms_message_id);
+CREATE INDEX idx_notification_tasks_sms_status ON notification_tasks(sms_status_code);
 
 -- 通知尝试：需要保留对应的通知记录方便查询
+-- 注意：必须在 notification_tasks 之后创建，因为它引用了 notification_tasks(id)
 CREATE TABLE contact_attempts (
   id BIGSERIAL PRIMARY KEY,
   task_id BIGINT NOT NULL REFERENCES notification_tasks(id) ON DELETE CASCADE,
   contact_priority SMALLINT NOT NULL, -- 紧急联系人优先级（1-3）
   contact_phone_hash CHAR(64) NOT NULL, -- 紧急联系人手机号哈希
-  channel VARCHAR(16) NOT NULL,  -- sms or phone
+  channel VARCHAR(16) NOT NULL,  -- sms or voice
   status VARCHAR(16) NOT NULL DEFAULT 'pending',
   response_code VARCHAR(32),
   response_message VARCHAR(255),
@@ -123,39 +173,29 @@ CREATE TABLE contact_attempts (
 CREATE INDEX idx_contact_attempts_task ON contact_attempts(task_id);
 CREATE INDEX idx_contact_attempts_contact ON contact_attempts(contact_phone_hash);
 
--- 通知任务：统一调度短信与外呼。
-CREATE TABLE notification_tasks (
-  id BIGSERIAL PRIMARY KEY,
-  task_code BIGINT NOT NULL, -- 与 task_id 做区分，taskID 生成出来是为了在消息队列中做区别
-  user_id BIGINT NOT NULL REFERENCES users(id),
-  contact_priority SMALLINT, -- 紧急联系人优先级（1-3），对应 users.emergency_contacts 数组中的 priority
-  contact_phone_hash CHAR(64), -- 紧急联系人手机号哈希（用于快速查找）
-  category VARCHAR(32) NOT NULL, -- 通知类别：check_in_reminder, journey_reminder ，打卡与行程报备
-  channel VARCHAR(16) NOT NULL, -- 通知渠道：sms, voice
-  payload JSONB NOT NULL, -- 模板变量和通知内容
-  status VARCHAR(16) NOT NULL DEFAULT 'pending', -- processing，failed
-  retry_count SMALLINT NOT NULL DEFAULT 0,
-  scheduled_at TIMESTAMPTZ NOT NULL,
-  processed_at TIMESTAMPTZ,
-  cost_cents INTEGER NOT NULL DEFAULT 0,
-  deducted BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE (task_code)
-);
-CREATE INDEX idx_notification_tasks_status ON notification_tasks(status, scheduled_at);
-CREATE INDEX idx_notification_tasks_contact ON notification_tasks(user_id, contact_priority);
+-- ============================================
+-- 注释说明
+-- ============================================
 
+-- quota_transactions.reason 字段说明：
+--   充值类型（transaction_type='grant'）:
+--     - "grant_default": 默认赠送
+--     - "grant_recharge": 用户充值
+--     - "grant_refund": 退款（预扣减失败后的退款）
+--   
+--   扣减类型（transaction_type='deduct'）:
+--     - "sms_notification": 短信通知扣减（已废弃，改为预扣减机制）
+--     - "voice_notification": 语音通知扣减
+--     - "pre_deduct": 预扣减（冻结额度）
+--     - "confirm_deduct": 确认扣减（解冻并正式扣除）
 
+-- notification_tasks.category 字段说明：
+--   - "check_in_reminder": 打卡提醒
+--   - "check_in_timeout": 打卡超时通知
+--   - "journey_timeout": 行程超时通知
+--   - "journey_reminder": 行程提醒（预留）
 
-
-
-
-
-
-
-
-
-
-
-
+-- journeys.timeout_message_id 字段说明：
+--   记录投放的延迟消息 ID，用于在 consumer 中检查行程状态
+--   如果行程已完成，consumer 可以跳过超时处理
+--   RabbitMQ 延迟消息无法直接取消，只能通过检查状态跳过

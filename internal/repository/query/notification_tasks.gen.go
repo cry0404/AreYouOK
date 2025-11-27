@@ -36,6 +36,9 @@ func newNotificationTask(db *gorm.DB, opts ...gen.DOOption) notificationTask {
 	_notificationTask.Channel = field.NewString(tableName, "channel")
 	_notificationTask.Category = field.NewString(tableName, "category")
 	_notificationTask.Status = field.NewString(tableName, "status")
+	_notificationTask.SMSMessageID = field.NewString(tableName, "sms_message_id")
+	_notificationTask.SMSStatusCode = field.NewString(tableName, "sms_status_code")
+	_notificationTask.SMSErrorMessage = field.NewString(tableName, "sms_error_message")
 	_notificationTask.CreatedAt = field.NewTime(tableName, "created_at")
 	_notificationTask.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_notificationTask.DeletedAt = field.NewField(tableName, "deleted_at")
@@ -63,6 +66,9 @@ type notificationTask struct {
 	Channel          field.String
 	Category         field.String
 	Status           field.String
+	SMSMessageID     field.String
+	SMSStatusCode    field.String
+	SMSErrorMessage  field.String
 	CreatedAt        field.Time
 	UpdatedAt        field.Time
 	DeletedAt        field.Field
@@ -96,6 +102,9 @@ func (n *notificationTask) updateTableName(table string) *notificationTask {
 	n.Channel = field.NewString(table, "channel")
 	n.Category = field.NewString(table, "category")
 	n.Status = field.NewString(table, "status")
+	n.SMSMessageID = field.NewString(table, "sms_message_id")
+	n.SMSStatusCode = field.NewString(table, "sms_status_code")
+	n.SMSErrorMessage = field.NewString(table, "sms_error_message")
 	n.CreatedAt = field.NewTime(table, "created_at")
 	n.UpdatedAt = field.NewTime(table, "updated_at")
 	n.DeletedAt = field.NewField(table, "deleted_at")
@@ -121,7 +130,7 @@ func (n *notificationTask) GetFieldByName(fieldName string) (field.OrderExpr, bo
 }
 
 func (n *notificationTask) fillFieldMap() {
-	n.fieldMap = make(map[string]field.Expr, 17)
+	n.fieldMap = make(map[string]field.Expr, 20)
 	n.fieldMap["scheduled_at"] = n.ScheduledAt
 	n.fieldMap["processed_at"] = n.ProcessedAt
 	n.fieldMap["contact_priority"] = n.ContactPriority
@@ -130,6 +139,9 @@ func (n *notificationTask) fillFieldMap() {
 	n.fieldMap["channel"] = n.Channel
 	n.fieldMap["category"] = n.Category
 	n.fieldMap["status"] = n.Status
+	n.fieldMap["sms_message_id"] = n.SMSMessageID
+	n.fieldMap["sms_status_code"] = n.SMSStatusCode
+	n.fieldMap["sms_error_message"] = n.SMSErrorMessage
 	n.fieldMap["created_at"] = n.CreatedAt
 	n.fieldMap["updated_at"] = n.UpdatedAt
 	n.fieldMap["deleted_at"] = n.DeletedAt

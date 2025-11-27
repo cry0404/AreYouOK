@@ -14,7 +14,9 @@ type NotificationCategory string
 
 const (
 	NotificationCategoryCheckInReminder NotificationCategory = "check_in_reminder" // 打卡提醒
-	NotificationCategoryJourneyReminder NotificationCategory = "journey_reminder"  // 行程提醒
+	NotificationCategoryCheckInTimeout  NotificationCategory = "check_in_timeout"  // 打卡超时通知
+	NotificationCategoryJourneyReminder NotificationCategory = "journey_reminder"  // 行程提醒（预留）
+	NotificationCategoryJourneyTimeout  NotificationCategory = "journey_timeout"   // 行程超时通知
 )
 
 // NotificationChannel 通知渠道枚举
@@ -45,9 +47,15 @@ type NotificationTask struct {
 	Channel          NotificationChannel    `gorm:"type:varchar(16);not null" json:"channel"`
 	Category         NotificationCategory   `gorm:"type:varchar(32);not null" json:"category"`
 	Status           NotificationTaskStatus `gorm:"type:varchar(16);not null;default:'pending';index:idx_notification_tasks_status" json:"status"`
+
+	// P0.3: 短信发送状态统计字段
+	SMSMessageID    *string `gorm:"type:varchar(128);index:idx_notification_tasks_sms_message_id" json:"sms_message_id,omitempty"` // 阿里云返回的 MessageID（BizId）
+	SMSStatusCode   *string `gorm:"type:varchar(32);index:idx_notification_tasks_sms_status" json:"sms_status_code,omitempty"`     // 阿里云返回的状态码（如 "OK", "isv.BUSINESS_LIMIT_CONTROL"）
+	SMSErrorMessage *string `gorm:"type:varchar(255)" json:"sms_error_message,omitempty"`                                          // 错误消息（如果有）
+
 	BaseModel
 	RetryCount int   `gorm:"type:smallint;not null;default:0" json:"retry_count"`
-	UserID     int64 `gorm:"not null;index:idx_notification_tasks_contact" json:"user_id"`
+	UserID     int64 `gorm:"not null;index:idx_notification_tasks_contact;index:idx_notification_tasks_user_category_status" json:"user_id"`
 	TaskCode   int64 `gorm:"uniqueIndex;not null" json:"task_code"`
 	CostCents  int   `gorm:"not null;default:0" json:"cost_cents"`
 	Deducted   bool  `gorm:"not null;default:false" json:"deducted"`

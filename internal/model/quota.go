@@ -16,14 +16,39 @@ const (
 	TransactionTypeDeduct TransactionType = "deduct" // 扣减
 )
 
-// QuotaTransaction 额度流水模型
+// QuotaTransactionReason 交易原因常量
+// 充值类型（transaction_type='grant'）:
+//   - "grant_default": 默认赠送
+//   - "grant_recharge": 用户充值
+//   - "grant_refund": 退款（预扣减失败后的退款）
+//
+// 扣减类型（transaction_type='deduct'）:
+//   - "sms_notification": 短信通知扣减（已废弃，改为预扣减机制）
+//   - "voice_notification": 语音通知扣减
+//   - "pre_deduct": 预扣减（冻结额度）
+//   - "confirm_deduct": 确认扣减（解冻并正式扣除）
+const (
+	// 充值原因
+	QuotaReasonGrantDefault  = "grant_default"  // 默认赠送
+	QuotaReasonGrantRecharge = "grant_recharge" // 用户充值
+	QuotaReasonGrantRefund   = "grant_refund"   // 退款
 
+	// 扣减原因
+	QuotaReasonSMSNotification   = "sms_notification"   // 短信通知扣减（已废弃）
+	QuotaReasonVoiceNotification = "voice_notification" // 语音通知扣减
+	QuotaReasonPreDeduct         = "pre_deduct"         // 预扣减（冻结额度）
+	QuotaReasonConfirmDeduct     = "confirm_deduct"     // 确认扣减（解冻并正式扣除）
+)
+
+// QuotaTransaction 额度流水模型
+// 余额计算：查询最新一条交易的 balance_after 字段
+// 预扣减机制：通过 reason 字段区分（pre_deduct, confirm_deduct, refund）
 type QuotaTransaction struct {
 	Channel         QuotaChannel    `gorm:"type:varchar(16);not null" json:"channel"`
 	TransactionType TransactionType `gorm:"type:varchar(16);not null" json:"transaction_type"`
-	Reason          string          `gorm:"type:varchar(16);not null" json:"reason"`
+	Reason          string          `gorm:"type:varchar(32);not null" json:"reason"` // 扩展为 32 字符，支持更详细的 reason
 	BaseModel
-	UserID       int64 `gorm:"not null;index:idx_quota_transactions_user" json:"user_id"`
+	UserID       int64 `gorm:"not null;index:idx_quota_transactions_user;index:idx_quota_transactions_user_channel_created" json:"user_id"`
 	Amount       int   `gorm:"not null" json:"amount"`
 	BalanceAfter int   `gorm:"not null" json:"balance_after"`
 }

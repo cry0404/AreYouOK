@@ -29,9 +29,13 @@ type Journey struct {
 	AlertTriggeredAt   *time.Time    `gorm:"type:timestamptz" json:"alert_triggered_at,omitempty"`
 	AlertLastAttemptAt *time.Time    `gorm:"type:timestamptz" json:"alert_last_attempt_at,omitempty"`
 	Title              string        `gorm:"type:varchar(64);not null" json:"title"`
-	Note               string        `gorm:"type:varchar(255);not null;default:''" json:"note"`
+	Note               string        `gorm:"type:text;not null;default:''" json:"note"`
 	Status             JourneyStatus `gorm:"type:varchar(16);not null;default:'ongoing';index:idx_journeys_user_status" json:"status"`
 	AlertStatus        AlertStatus   `gorm:"type:varchar(16);not null;default:'pending'" json:"alert_status"`
+	
+	// P0.7: 延迟消息追踪（用于取消未触发的超时检查）
+	TimeoutMessageID *string `gorm:"type:varchar(128);index:idx_journeys_timeout_message_id" json:"timeout_message_id,omitempty"` // 延迟消息的 message_id，用于在 consumer 中检查行程状态
+	
 	BaseModel
 	UserID        int64 `gorm:"not null;index:idx_journeys_user_status" json:"user_id"`
 	AlertAttempts int   `gorm:"not null;default:0" json:"alert_attempts"`

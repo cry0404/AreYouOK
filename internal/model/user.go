@@ -28,15 +28,15 @@ type User struct {
 	DailyCheckInRemindAt   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
 	DailyCheckInGraceUntil string  `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
 	DailyCheckInDeadline   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
-	PhoneHash              *string `gorm:"type:char(64)" json:"-"` // 暂时省略掉 uniqueIndex
+	PhoneHash              *string `gorm:"type:char(64);uniqueIndex:users_phone_hash_key" json:"-"` // phone_hash 唯一约束，匹配数据库中的约束名称
 	BaseModel
 	Status              UserStatus        `gorm:"type:varchar(16);not null;default:'waitlisted';index:idx_users_status" json:"status"`
 	Timezone            string            `gorm:"type:varchar(64);not null;default:'Asia/Shanghai'" json:"timezone"`
 	Nickname            string            `gorm:"type:varchar(64);not null;default:''" json:"nickname"`
-	AlipayOpenID        string            `gorm:"uniqueIndex;type:varchar(64);not null" json:"alipay_open_id"`
+	AlipayOpenID        string            `gorm:"uniqueIndex:users_alipay_open_id_key;type:varchar(64);not null" json:"alipay_open_id"` // 匹配数据库中的约束名称
 	PhoneCipher         []byte            `gorm:"type:bytea" json:"-"`
 	EmergencyContacts   EmergencyContacts `gorm:"type:jsonb;default:'[]'" json:"emergency_contacts"`
-	PublicID            int64             `gorm:"uniqueIndex;not null" json:"public_id"`
+	PublicID            int64             `gorm:"uniqueIndex:users_public_id_key;not null" json:"public_id"` // 匹配数据库中的约束名称
 	DailyCheckInEnabled bool              `gorm:"not null;default:false" json:"daily_check_in_enabled"`
 	JourneyAutoNotify   bool              `gorm:"not null;default:true" json:"journey_auto_notify"`
 
@@ -75,7 +75,7 @@ func (ec *EmergencyContacts) Scan(value interface{}) error {
 	return json.Unmarshal(bytes, ec)
 }
 
-// Value 实现 driver.Valuer 接口，用于将数据写入数据库
+
 func (ec EmergencyContacts) Value() (driver.Value, error) {
 	if ec == nil {
 		return "[]", nil

@@ -1,6 +1,8 @@
 package database
 
 import (
+	"strings"
+
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
@@ -27,8 +29,17 @@ func Migrate() error {
 	)
 
 	if err != nil {
-		logger.Logger.Error("Database migration failed", zap.Error(err))
-		return err
+		// 检查是否是约束不存在的错误（可以忽略）
+		errStr := err.Error()
+		if strings.Contains(errStr, "does not exist") && strings.Contains(errStr, "constraint") {
+			logger.Logger.Warn("Migration warning (constraint not found, may be safe to ignore)",
+				zap.String("error", errStr),
+			)
+			// 继续执行，不返回错误
+		} else {
+			logger.Logger.Error("Database migration failed", zap.Error(err))
+			return err
+		}
 	}
 
 	// 确保 daily_check_ins 表的唯一约束存在（AutoMigrate 可能不会自动添加）

@@ -37,6 +37,7 @@ func newJourney(db *gorm.DB, opts ...gen.DOOption) journey {
 	_journey.Note = field.NewString(tableName, "note")
 	_journey.Status = field.NewString(tableName, "status")
 	_journey.AlertStatus = field.NewString(tableName, "alert_status")
+	_journey.TimeoutMessageID = field.NewString(tableName, "timeout_message_id")
 	_journey.CreatedAt = field.NewTime(tableName, "created_at")
 	_journey.UpdatedAt = field.NewTime(tableName, "updated_at")
 	_journey.DeletedAt = field.NewField(tableName, "deleted_at")
@@ -62,6 +63,7 @@ type journey struct {
 	Note               field.String
 	Status             field.String
 	AlertStatus        field.String
+	TimeoutMessageID   field.String
 	CreatedAt          field.Time
 	UpdatedAt          field.Time
 	DeletedAt          field.Field
@@ -93,6 +95,7 @@ func (j *journey) updateTableName(table string) *journey {
 	j.Note = field.NewString(table, "note")
 	j.Status = field.NewString(table, "status")
 	j.AlertStatus = field.NewString(table, "alert_status")
+	j.TimeoutMessageID = field.NewString(table, "timeout_message_id")
 	j.CreatedAt = field.NewTime(table, "created_at")
 	j.UpdatedAt = field.NewTime(table, "updated_at")
 	j.DeletedAt = field.NewField(table, "deleted_at")
@@ -115,7 +118,7 @@ func (j *journey) GetFieldByName(fieldName string) (field.OrderExpr, bool) {
 }
 
 func (j *journey) fillFieldMap() {
-	j.fieldMap = make(map[string]field.Expr, 15)
+	j.fieldMap = make(map[string]field.Expr, 16)
 	j.fieldMap["expected_return_time"] = j.ExpectedReturnTime
 	j.fieldMap["actual_return_time"] = j.ActualReturnTime
 	j.fieldMap["reminder_sent_at"] = j.ReminderSentAt
@@ -125,6 +128,7 @@ func (j *journey) fillFieldMap() {
 	j.fieldMap["note"] = j.Note
 	j.fieldMap["status"] = j.Status
 	j.fieldMap["alert_status"] = j.AlertStatus
+	j.fieldMap["timeout_message_id"] = j.TimeoutMessageID
 	j.fieldMap["created_at"] = j.CreatedAt
 	j.fieldMap["updated_at"] = j.UpdatedAt
 	j.fieldMap["deleted_at"] = j.DeletedAt
