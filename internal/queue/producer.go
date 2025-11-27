@@ -146,51 +146,7 @@ func PublishJourneyTimeout(msg model.JourneyTimeoutMessage) error {
 	return nil
 }
 
-// ScheduleJourneyTimeoutIfNeeded 根据预计返回时间决定是否发送延迟消息
-// 如果延迟时间 <= 1天，发送延迟消息
-// 如果延迟时间 > 1天，不发送消息，等待定时任务扫描
-// 返回是否已发送延迟消息
-func ScheduleJourneyTimeoutIfNeeded(journeyID, userID int64, expectedReturnTime time.Time) (bool, error) {
-	now := time.Now()
-	delay := expectedReturnTime.Add(10 * time.Minute).Sub(now) // 预计返回时间 + 10分钟
 
-	// 如果已经超时，立即发送（延迟0秒）
-	if delay <= 0 {
-		delay = 0
-	}
-
-	// 如果延迟时间 > 1天，不发送延迟消息，等待定时任务扫描
-	if delay > 24*time.Hour {
-		logger.Logger.Info("Journey delay exceeds 24 hours, will be handled by scheduled task",
-			zap.Int64("journey_id", journeyID),
-			zap.Int64("user_id", userID),
-			zap.Duration("delay", delay),
-			zap.Time("expected_return_time", expectedReturnTime),
-		)
-		return false, nil
-	}
-
-	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
-	if err != nil {
-		return false, fmt.Errorf("failed to generate message ID: %w", err)
-	}
-
-	// 构建超时消息
-	timeoutMsg := model.JourneyTimeoutMessage{
-		MessageID:    fmt.Sprintf("journey_timeout_%d", messageID),
-		ScheduledAt:  now.Format(time.RFC3339),
-		JourneyID:    journeyID,
-		UserID:       userID,
-		DelaySeconds: int(delay.Seconds()),
-	}
-
-	// 发布延迟消息
-	if err := PublishJourneyTimeout(timeoutMsg); err != nil {
-		return false, fmt.Errorf("failed to publish journey timeout message: %w", err)
-	}
-
-	return true, nil
-}
 
 // PublishSMSNotification 发布短信通知任务
 func PublishSMSNotification(msg model.NotificationMessage) error {

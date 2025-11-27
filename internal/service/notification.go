@@ -8,7 +8,6 @@ import (
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/storage/database"
-	"AreYouOK/utils"
 	"context"
 
 	"fmt"
@@ -37,25 +36,26 @@ func Notification() *NotificationService {
 // taskCode 是一整个事务的任务，这个 notification 的 task， 而 MessageID 只针对这条消息的是否成功
 // payload 基于 sms_Message
 // 完整流程 -> 定时扫描，发送打卡信息，新注册默认进入消息队列
+// 修改 SendSMS 方法，集成预扣减机制和状态记录
+
+// 由消费者来调用，调用成功生成的 taskid 存储，避免重复调用
 func (s *NotificationService) SendSMS(
 	ctx context.Context,
-	taskCode int64, // taskid 的生成
+	taskCode int64,
 	userID int64,
 	phoneHash string,
-	payload map[string]interface{}, // 根据不同的 payload 决定是如何去发，以及存储对应的模板, payload 需要包含对应的场景，参数
+	payload map[string]interface{},
 ) error {
-
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
-	// 根据 taskCode 生成任务，在 check_in 中统一生成的，幂等性查询
+	// 根据 taskCode 查询任务（幂等性检查）
 	task, err := q.NotificationTask.GetByTaskCode(taskCode)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
 			logger.Logger.Warn("Notification task not found, may have been processed",
 				zap.Int64("task_code", taskCode),
 			)
-			// 任务不存在，可能是重复消息，返回 SkipMessageError 跳过
 			return &errors.SkipMessageError{Reason: "task not found"}
 		}
 		return fmt.Errorf("failed to query notification task: %w", err)
@@ -64,9 +64,8 @@ func (s *NotificationService) SendSMS(
 	if task.Status == model.NotificationTaskStatusSuccess {
 		logger.Logger.Info("Notification task already processed successfully",
 			zap.Int64("task_code", taskCode),
-			zap.Int64("task_id", task.ID),
 		)
-		return nil // 已处理，返回成功
+		return nil
 	}
 
 	if task.Status == model.NotificationTaskStatusProcessing {
@@ -79,158 +78,82 @@ func (s *NotificationService) SendSMS(
 	user, err := q.User.GetByPublicID(userID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			logger.Logger.Warn("User not found",
-				zap.Int64("user_id", userID),
-			)
 			return &errors.SkipMessageError{Reason: "user not found"}
 		}
 		return fmt.Errorf("failed to query user: %w", err)
 	}
 
-	// 解密手机号
-	phone, err := utils.DecryptPhone(user.PhoneCipher)
-	if err != nil {
-		logger.Logger.Error("Failed to decrypt phone",
-			zap.Int64("user_id", userID),
-			zap.Error(err),
-		)
-		return fmt.Errorf("failed to decrypt phone: %w", err)
-	}
-
-	// 使用 balance_after 字段获取最新余额（更高效，不需要聚合所有历史记录）
-	// 查询 SMS 渠道最新的交易记录，获取 balance_after
-	smsTransactions, err := q.QuotaTransaction.
-		Where(q.QuotaTransaction.UserID.Eq(user.ID)).
-		Where(q.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
-		Order(q.QuotaTransaction.CreatedAt.Desc()).
-		Limit(1).
-		Find()
-	if err != nil {
-		logger.Logger.Error("Failed to query SMS quota balance",
-			zap.Int64("user_id", user.ID),
-			zap.Error(err),
-		)
-		return fmt.Errorf("failed to query quota balance: %w", err)
-	}
-
-	var smsBalance int
-	if len(smsTransactions) > 0 {
-		smsBalance = smsTransactions[0].BalanceAfter
-	} else {
-		// 如果没有交易记录，余额为 0
-		smsBalance = 0
-	}
 
 	smsUnitPriceCents := 5
-	if smsBalance < smsUnitPriceCents {
-		logger.Logger.Warn("Insufficient SMS quota",
-			zap.Int64("user_id", userID),
-			zap.Int("balance", smsBalance),
-			zap.Int("required", smsUnitPriceCents),
-		)
-		// 额度不足，更新任务状态为失败，但不重试（返回 SkipMessageError 避免无限重试）
-		now := time.Now()
-		_, err = q.NotificationTask.WithContext(ctx).
-			Where(q.NotificationTask.ID.Eq(task.ID)).
-			Updates(map[string]interface{}{
-				"status":       model.NotificationTaskStatusFailed,
-				"processed_at": now,
-			})
-		if err != nil {
-			logger.Logger.Error("Failed to update task status",
-				zap.Int64("task_id", task.ID),
-				zap.Error(err),
-			)
+	quotaService := Quota()
+	// 发送成功才扣减
+	if err := quotaService.PreDeduct(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents); err != nil {
+		if err == errors.QuotaInsufficient {
+			// 额度不足，更新任务状态为失败
+			now := time.Now()
+			_, updateErr := q.NotificationTask.WithContext(ctx).
+				Where(q.NotificationTask.ID.Eq(task.ID)).
+				Updates(map[string]interface{}{
+					"status":            model.NotificationTaskStatusFailed,
+					"processed_at":      now,
+					"sms_status_code":   "INSUFFICIENT_QUOTA",
+					"sms_error_message": "余额不足",
+				})
+			if updateErr != nil {
+				logger.Logger.Error("Failed to update task status", zap.Error(updateErr))
+			}
+			return &errors.SkipMessageError{Reason: fmt.Sprintf("quota insufficient: %v", err)}
 		}
-		// 返回 SkipMessageError，避免无限重试（额度不足是业务状态问题，重试不会改变结果)
-		return &errors.SkipMessageError{Reason: fmt.Sprintf("quota insufficient: balance=%d, required=%d", smsBalance, smsUnitPriceCents)}
+		return fmt.Errorf("failed to pre-deduct quota: %w", err)
 	}
 
 	// 解析 payload 为具体的 SMSMessage
 	smsMsg, err := model.ParseSMSMessage(payload)
 	if err != nil {
-		logger.Logger.Error("Failed to parse SMS message",
-			zap.Int64("task_code", taskCode),
-			zap.Any("payload", payload),
-			zap.Error(err),
-		)
-		// 解析失败，更新任务状态为失败
+		// 解析失败，退款并更新任务状态
+		refundErr := quotaService.Refund(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents)
+		if refundErr != nil {
+			logger.Logger.Error("Failed to refund quota after parse failure",
+				zap.Int64("user_id", user.ID),
+				zap.Error(refundErr),
+			)
+		}
+
 		now := time.Now()
 		_, updateErr := q.NotificationTask.WithContext(ctx).
 			Where(q.NotificationTask.ID.Eq(task.ID)).
 			Updates(map[string]interface{}{
-				"status":       model.NotificationTaskStatusFailed,
-				"processed_at": now,
+				"status":            model.NotificationTaskStatusFailed,
+				"processed_at":      now,
+				"sms_status_code":   "PARSE_ERROR",
+				"sms_error_message": err.Error(),
 			})
 		if updateErr != nil {
-			logger.Logger.Error("Failed to update task status",
-				zap.Int64("task_id", task.ID),
-				zap.Error(updateErr),
-			)
+			logger.Logger.Error("Failed to update task status", zap.Error(updateErr))
 		}
-		// 解析失败是配置或数据格式错误，不应该重试
 		return &errors.SkipMessageError{Reason: fmt.Sprintf("failed to parse SMS message: %v", err)}
 	}
 
-	// 打印解析后的消息对象内容（用于调试）
-	logFields := []zap.Field{
-		zap.Int64("task_code", taskCode),
-		zap.String("message_type", smsMsg.GetMessageType()),
-		zap.String("phone", smsMsg.GetPhone()),
-		zap.String("sign_name", smsMsg.GetSignName()),
-		zap.String("template_code", smsMsg.GetTemplateCode()),
-	}
-
-	// 根据消息类型打印具体字段值
-	switch msg := smsMsg.(type) {
-	case *model.CheckInReminder:
-		logFields = append(logFields,
-			zap.String("name", msg.Name),
-			zap.String("deadline", msg.Time),
-		)
-	case *model.CheckInReminderContactMessage:
-		logFields = append(logFields, zap.String("name", msg.Name))
-	case *model.JourneyReminderContactMessage:
-		logFields = append(logFields,
-			zap.String("name", msg.Name),
-			zap.String("trip", msg.Trip),
-			zap.String("note", msg.Note),
-			zap.Time("deadline", msg.Deadline),
-		)
-	case *model.CheckInTimeOut:
-		logFields = append(logFields,
-			zap.String("name", msg.Name),
-			zap.Time("deadline", msg.Deadline),
-		)
-	}
-
-	logger.Logger.Info("Parsed SMS message", logFields...)
-
-	if smsMsg.GetPhone() == "" {
-		smsMsg.SetPhone(phone)
-	}
-
+	// 获取模板配置
 	cfg := config.Cfg
 	if smsMsg.GetSignName() == "" || smsMsg.GetTemplateCode() == "" {
 		signName, templateCode, err := cfg.GetSMSTemplateConfig(smsMsg.GetMessageType())
 		if err != nil {
-			logger.Logger.Error("Failed to get SMS template config",
-				zap.Int64("task_code", taskCode),
-				zap.String("message_type", smsMsg.GetMessageType()),
-				zap.Error(err),
-			)
+			// 配置错误，退款
+			quotaService.Refund(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents)
+
 			now := time.Now()
 			_, updateErr := q.NotificationTask.WithContext(ctx).
 				Where(q.NotificationTask.ID.Eq(task.ID)).
 				Updates(map[string]interface{}{
-					"status":       model.NotificationTaskStatusFailed,
-					"processed_at": now,
+					"status":            model.NotificationTaskStatusFailed,
+					"processed_at":      now,
+					"sms_status_code":   "CONFIG_ERROR",
+					"sms_error_message": err.Error(),
 				})
+			// 更新失败，说明数据库出错了
 			if updateErr != nil {
-				logger.Logger.Error("Failed to update task status",
-					zap.Int64("task_id", task.ID),
-					zap.Error(updateErr),
-				)
+				return fmt.Errorf("failed to update notificationTask: %w", err)
 			}
 			return fmt.Errorf("failed to get SMS template config: %w", err)
 		}
@@ -244,40 +167,28 @@ func (s *NotificationService) SendSMS(
 
 	templateParams, err := smsMsg.GetTemplateParams()
 	if err != nil {
-		logger.Logger.Error("Failed to get template params",
-			zap.Int64("task_code", taskCode),
-			zap.String("message_type", smsMsg.GetMessageType()),
-			zap.Error(err),
-		)
+		// 参数错误，退款
+		quotaService.Refund(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents)
+
 		now := time.Now()
 		_, updateErr := q.NotificationTask.WithContext(ctx).
 			Where(q.NotificationTask.ID.Eq(task.ID)).
 			Updates(map[string]interface{}{
-				"status":       model.NotificationTaskStatusFailed,
-				"processed_at": now,
+				"status":            model.NotificationTaskStatusFailed,
+				"processed_at":      now,
+				"sms_status_code":   "PARAM_ERROR",
+				"sms_error_message": err.Error(),
 			})
+
 		if updateErr != nil {
-			logger.Logger.Error("Failed to update task status",
-				zap.Int64("task_id", task.ID),
-				zap.Error(updateErr),
-			)
+			return fmt.Errorf("failed to update notificationTask: %w", err)
 		}
+
 		return fmt.Errorf("failed to get template params: %w", err)
 	}
 
-	// 记录发送的模板参数（用于调试）
-	logger.Logger.Info("SMS message details",
-		zap.Int64("task_code", taskCode),
-		zap.String("message_type", smsMsg.GetMessageType()),
-		zap.Any("original_payload", payload),
-		zap.String("parsed_phone", smsMsg.GetPhone()),
-		zap.String("parsed_sign_name", smsMsg.GetSignName()),
-		zap.String("parsed_template_code", smsMsg.GetTemplateCode()),
-		zap.String("template_params_json", templateParams),
-		zap.String("template_params_length", fmt.Sprintf("%d bytes", len(templateParams))),
-	)
-
-	err = sms.SendSingle(
+	// 发送短信，开始投递
+	sendResp, err := sms.SendSingle(
 		ctx,
 		smsMsg.GetPhone(),
 		smsMsg.GetSignName(),
@@ -286,6 +197,38 @@ func (s *NotificationService) SendSMS(
 	)
 
 	if err != nil {
+		// 发送失败，退款
+		refundErr := quotaService.Refund(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents)
+		if refundErr != nil {
+			logger.Logger.Error("Failed to refund quota after SMS send failure",
+				zap.Int64("user_id", user.ID),
+				zap.Error(refundErr),
+			)
+		}
+
+		// 记录失败状态
+		now := time.Now()
+		updateData := map[string]interface{}{
+			"status":       model.NotificationTaskStatusFailed,
+			"processed_at": now,
+		}
+
+		// 如果有响应，记录状态码和错误消息
+		if sendResp != nil {
+			updateData["sms_status_code"] = sendResp.StatusCode
+			updateData["sms_error_message"] = sendResp.Message
+		} else {
+			updateData["sms_status_code"] = "SEND_ERROR"
+			updateData["sms_error_message"] = err.Error()
+		}
+
+		_, updateErr := q.NotificationTask.WithContext(ctx).
+			Where(q.NotificationTask.ID.Eq(task.ID)).
+			Updates(updateData)
+		if updateErr != nil {
+			logger.Logger.Error("Failed to update task status", zap.Error(updateErr))
+		}
+
 		logger.Logger.Error("Failed to send SMS",
 			zap.Int64("task_code", taskCode),
 			zap.String("message_type", smsMsg.GetMessageType()),
@@ -293,107 +236,66 @@ func (s *NotificationService) SendSMS(
 			zap.Error(err),
 		)
 
-		now := time.Now()
-		_, updateErr := q.NotificationTask.WithContext(ctx).
-			Where(q.NotificationTask.ID.Eq(task.ID)).
-			Updates(map[string]interface{}{
-				"status":       model.NotificationTaskStatusFailed,
-				"processed_at": now,
-			})
-		if updateErr != nil {
-			logger.Logger.Error("Failed to update task status",
-				zap.Int64("task_id", task.ID),
-				zap.Error(updateErr),
-			)
-		}
-
-		// 如果是不可重试的错误（如配置错误），返回 SkipMessageError 避免重试
+		// 如果是不可重试的错误，返回 SkipMessageError
 		if errors.IsNonRetryableError(err) {
-			logger.Logger.Warn("Non-retryable error detected, skipping message",
-				zap.Int64("task_code", taskCode),
-				zap.Error(err),
-			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("non-retryable error: %v", err)}
 		}
 
 		return fmt.Errorf("failed to send SMS: %w", err)
 	}
 
-	// 发送成功，使用事务处理额度扣除和任务状态更新
+	//  确认扣减，投递成功就确认扣减
+	// 发送成功，确认扣减并更新任务状态
 	err = db.Transaction(func(tx *gorm.DB) error {
 		txQ := query.Use(tx)
 
-		// 在事务中重新查询最新的余额（使用 balance_after 字段）
-		txSMSTransactions, err := txQ.QuotaTransaction.
-			Where(txQ.QuotaTransaction.UserID.Eq(user.ID)).
-			Where(txQ.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
-			Order(txQ.QuotaTransaction.CreatedAt.Desc()).
-			Limit(1).
-			Find()
-		if err != nil {
-			return fmt.Errorf("failed to query quota balance in transaction: %w", err)
+		// 确认扣减
+		if err := quotaService.ConfirmDeduction(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents); err != nil {
+			return fmt.Errorf("failed to confirm deduction: %w", err)
 		}
 
-		var currentBalance int
-		if len(txSMSTransactions) > 0 {
-			currentBalance = txSMSTransactions[0].BalanceAfter
-		} else {
-			currentBalance = 0
-		}
-
-		// 再次检查余额（防止并发扣除导致余额不足）
-		if currentBalance < smsUnitPriceCents {
-			return fmt.Errorf("insufficient SMS quota: balance=%d, required=%d", currentBalance, smsUnitPriceCents)
-		}
-
-		newBalance := currentBalance - smsUnitPriceCents
-
-		quotaTransaction := &model.QuotaTransaction{
-			UserID:          user.ID,
-			Channel:         model.QuotaChannelSMS,
-			TransactionType: model.TransactionTypeDeduct,
-			Reason:          "sms_notification", // 扣减原因：短信通知
-			Amount:          smsUnitPriceCents,
-			BalanceAfter:    newBalance,
-		}
-
-		if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
-			return fmt.Errorf("failed to create quota transaction: %w", err)
-		}
-
+		// 更新任务状态和短信状态信息
 		now := time.Now()
+		updateData := map[string]interface{}{
+			"status":       model.NotificationTaskStatusSuccess,
+			"processed_at": now,
+		}
+
+		// 记录短信发送状态
+		if sendResp != nil {
+			updateData["sms_message_id"] = sendResp.MessageID
+			updateData["sms_status_code"] = sendResp.StatusCode
+			if sendResp.Message != "" {
+				updateData["sms_error_message"] = sendResp.Message
+			}
+		}
+
 		_, err = txQ.NotificationTask.
 			Where(txQ.NotificationTask.ID.Eq(task.ID)).
-			Updates(map[string]interface{}{
-				"status":       model.NotificationTaskStatusSuccess,
-				"processed_at": now,
-			})
+			Updates(updateData)
 		if err != nil {
 			return fmt.Errorf("failed to update task status: %w", err)
 		}
 
-		logger.Logger.Info("SMS sent and quota deducted successfully",
+		logger.Logger.Info("SMS sent and quota confirmed",
 			zap.Int64("task_code", taskCode),
 			zap.String("message_type", smsMsg.GetMessageType()),
 			zap.String("phone", smsMsg.GetPhone()),
-			zap.Int("amount_deducted", smsUnitPriceCents),
-			zap.Int("balance_before", currentBalance),
-			zap.Int("balance_after", newBalance),
+			zap.String("message_id", sendResp.MessageID),
+			zap.String("status_code", sendResp.StatusCode),
 		)
 
 		return nil
 	})
 
-	// 这里还需要获取发送短信返回的状态码，根据状态码来尝试逻辑
 	if err != nil {
-		logger.Logger.Error("Failed to process quota deduction and task update",
+		// 确认扣减失败，但短信已发送成功
+		// 这种情况需要人工介入处理， 之后集成到 otel 部分，到时候报警预处理
+		logger.Logger.Error("SMS sent but failed to confirm deduction",
 			zap.Int64("task_code", taskCode),
 			zap.Error(err),
 		)
-		// 短信已发送成功，但额度扣除或状态更新失败
-		// 这种情况下需要人工介入处理，因为短信已发送但未扣费
-		// 送入日志部分
-		return fmt.Errorf("SMS sent but failed to deduct quota or update task: %w", err)
+		return fmt.Errorf("SMS sent but failed to confirm deduction: %w", err)
 	}
 
 	return nil

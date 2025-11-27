@@ -15,98 +15,124 @@ import (
 
 )
 
-// SendSingle 发送单条短信
-func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) error {
-	if signName == "" {
-		return errors.ErrSignNameRequired
-	}
-	if templateCode == "" {
-		return errors.ErrTemplateCodeRequired
-	}
-
-	params := c.createApiInfo("SendSms")
-
-	queries := map[string]interface{}{
-		"PhoneNumbers":  tea.String(phone),
-		"SignName":      tea.String(signName),
-		"TemplateCode":  tea.String(templateCode),
-		"TemplateParam": tea.String(templateParam),
-	}
-
-	// 打印实际发送给阿里云的参数（用于调试）
-	logger.Logger.Debug("Sending SMS to Aliyun",
-		zap.String("phone", phone),
-		zap.String("sign_name", signName),
-		zap.String("template_code", templateCode),
-		zap.String("template_param", templateParam),
-		zap.String("template_param_escaped", fmt.Sprintf("%q", templateParam)),
-		zap.Int("template_param_length", len(templateParam)),
-	)
-
-	runtime := &util.RuntimeOptions{}
-	request := &openapi.OpenApiRequest{
-		Query: openapiutil.Query(queries),
-	}
-
-	resp, err := c.client.CallApi(params, request, runtime)
-	if err != nil {
-		logger.Logger.Error("Failed to send SMS",
-			zap.String("phone", phone),
-			zap.String("template", templateCode),
-			zap.Error(err),
-		)
-		return fmt.Errorf("failed to send SMS: %w", err)
-	}
-
-	if resp["statusCode"] != nil {
-		statusCode, err := parseStatusCode(resp["statusCode"])
-		if err != nil {
-			return err
-		}
-		if statusCode != 200 {
-			body := resp["body"]
-			logger.Logger.Error("SMS API returned error",
-				zap.Int("statusCode", statusCode),
-				zap.Any("body", body),
-			)
-			return fmt.Errorf("SMS API error: statusCode=%d", statusCode)
-		}
-	}
-
-	if resp["body"] != nil {
-		bodyBytes, err := json.Marshal(resp["body"])
-		if err != nil {
-			return fmt.Errorf("failed to marshal response body: %w", err)
-		}
-		var bodyMap map[string]interface{}
-		if err := json.Unmarshal(bodyBytes, &bodyMap); err == nil {
-			if code, ok := bodyMap["Code"].(string); ok && code != "OK" {
-				message := ""
-				if msg, ok := bodyMap["Message"].(string); ok {
-					message = msg
-				}
-				logger.Logger.Error("SMS send failed",
-					zap.String("code", code),
-					zap.String("message", message),
-				)
-
-				// 识别不可重试的错误（配置错误、参数错误等）
-				if isNonRetryableError(code) {
-					return errors.NewNonRetryableError(code, message, "SMS template or parameter configuration error")
-				}
-
-				return fmt.Errorf("SMS send failed: %s - %s", code, message)
-			}
-		}
-	}
-
-	logger.Logger.Debug("SMS sent successfully",
-		zap.String("phone", phone),
-		zap.String("template", templateCode),
-	)
-
-	return nil
+// 据此来表明是否需要回调
+// SendResponse 短信发送响应
+type SendResponse struct {
+    MessageID  string // 阿里云返回的 MessageID（BizId）
+    StatusCode string // 阿里云返回的状态码（如 "OK", "isv.BUSINESS_LIMIT_CONTROL"）
+    Code       string // 业务状态码（与 StatusCode 相同）
+    Message    string // 错误消息（如果有）
 }
+
+// 修改 SendSingle 方法签名和实现
+func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse, error) {
+    if signName == "" {
+        return nil, errors.ErrSignNameRequired
+    }
+    if templateCode == "" {
+        return nil, errors.ErrTemplateCodeRequired
+    }
+
+    params := c.createApiInfo("SendSms")
+
+    queries := map[string]interface{}{
+        "PhoneNumbers":  tea.String(phone),
+        "SignName":      tea.String(signName),
+        "TemplateCode":  tea.String(templateCode),
+        "TemplateParam": tea.String(templateParam),
+    }
+
+    logger.Logger.Debug("Sending SMS to Aliyun",
+        zap.String("phone", phone),
+        zap.String("sign_name", signName),
+        zap.String("template_code", templateCode),
+        zap.String("template_param", templateParam),
+    )
+
+    runtime := &util.RuntimeOptions{}
+    request := &openapi.OpenApiRequest{
+        Query: openapiutil.Query(queries),
+    }
+
+    resp, err := c.client.CallApi(params, request, runtime)
+    if err != nil {
+        logger.Logger.Error("Failed to send SMS",
+            zap.String("phone", phone),
+            zap.String("template", templateCode),
+            zap.Error(err),
+        )
+        return nil, fmt.Errorf("failed to send SMS: %w", err)
+    }
+
+    // 检查 HTTP 状态码
+    if resp["statusCode"] != nil {
+        statusCode, err := parseStatusCode(resp["statusCode"])
+        if err != nil {
+            return nil, err
+        }
+        if statusCode != 200 {
+            body := resp["body"]
+            logger.Logger.Error("SMS API returned error",
+                zap.Int("statusCode", statusCode),
+                zap.Any("body", body),
+            )
+            return nil, fmt.Errorf("SMS API error: statusCode=%d", statusCode)
+        }
+    }
+
+    // 解析响应体
+    response := &SendResponse{}
+    
+    if resp["body"] != nil {
+        bodyBytes, err := json.Marshal(resp["body"])
+        if err != nil {
+            return nil, fmt.Errorf("failed to marshal response body: %w", err)
+        }
+        
+        var bodyMap map[string]interface{}
+        if err := json.Unmarshal(bodyBytes, &bodyMap); err == nil {
+            // 提取 MessageID（BizId）
+            if bizID, ok := bodyMap["BizId"].(string); ok {
+                response.MessageID = bizID
+            }
+            
+            // 提取 Code 和 Message
+            if code, ok := bodyMap["Code"].(string); ok {
+                response.Code = code
+                response.StatusCode = code
+            }
+            if msg, ok := bodyMap["Message"].(string); ok {
+                response.Message = msg
+            }
+            
+            // 检查是否成功
+            if response.Code != "OK" {
+                logger.Logger.Error("SMS send failed",
+                    zap.String("code", response.Code),
+                    zap.String("message", response.Message),
+                    zap.String("phone", phone),
+                )
+                
+                // 识别不可重试的错误
+                if isNonRetryableError(response.Code) {
+                    return nil, errors.NewNonRetryableError(response.Code, response.Message, "SMS configuration error")
+                }
+                
+                return nil, fmt.Errorf("SMS send failed: %s - %s", response.Code, response.Message)
+            }
+        }
+    }
+
+    logger.Logger.Debug("SMS sent successfully",
+        zap.String("phone", phone),
+        zap.String("template", templateCode),
+        zap.String("message_id", response.MessageID),
+        zap.String("status_code", response.StatusCode),
+    )
+
+    return response, nil
+}
+
 
 // SendBatch 批量发送短信
 // 根据阿里云 SendBatchSms API 文档：

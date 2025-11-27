@@ -19,15 +19,15 @@ type Client interface {
 	// signName: 短信签名名称
 	// templateCode: 模板代码
 	// templateParam: 模板参数（JSON 字符串）
-	SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) error
-
+	SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse,error)
+	
 	// SendBatch 批量发送短信
 	// phones: 手机号列表
 	// signName: 短信签名名称（所有手机号使用相同签名）
 	// templateCode: 模板代码
 	// templateParams: 模板参数列表（JSON 字符串数组），每个元素对应一个手机号的参数
 	// 如果所有手机号使用相同的模板参数，可以传入相同长度的数组，每个元素相同
-	SendBatch(ctx context.Context, phones []string, signName, templateCode string, templateParams []string) error
+	//SendBatch(ctx context.Context, phones []string, signName, templateCode string, templateParams []string) error
 }
 
 var (
@@ -71,10 +71,12 @@ func GetClient() Client {
 	return smsClient
 }
 
-func SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) error {
+func SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse,error) {
 	return GetClient().SendSingle(ctx, phone, signName, templateCode, templateParam)
 }
 
-func SendBatch(ctx context.Context, phones []string, signName, templateCode string, templateParams []string) error {
-	return GetClient().SendBatch(ctx, phones, signName, templateCode, templateParams)
-}
+
+
+// func SendBatch(ctx context.Context, phones []string, signName, templateCode string, templateParams []string) (*SendResponse, error) {
+// 	return GetClient().SendBatch(ctx, phones, signName, templateCode, templateParams)
+// }

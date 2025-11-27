@@ -5,7 +5,7 @@ type QuotaChannel string
 
 const (
 	QuotaChannelSMS   QuotaChannel = "sms"
-	QuotaChannelVoice QuotaChannel = "voice"
+	//QuotaChannelVoice QuotaChannel = "voice"  --废弃，不再支持
 )
 
 // TransactionType 交易类型枚举
@@ -24,7 +24,7 @@ const (
 //
 // 扣减类型（transaction_type='deduct'）:
 //   - "sms_notification": 短信通知扣减（已废弃，改为预扣减机制）
-//   - "voice_notification": 语音通知扣减
+// 
 //   - "pre_deduct": 预扣减（冻结额度）
 //   - "confirm_deduct": 确认扣减（解冻并正式扣除）
 const (

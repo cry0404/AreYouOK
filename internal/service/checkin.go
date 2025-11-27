@@ -501,6 +501,10 @@ func (s *CheckInService) CompleteCheckIn(
 	}, nil
 }
 
+
+
+
+
 // // 处理单个用户的打卡信息, 这里需要对接到具体的短信服务需要的 payload 是什么才可以知道如何去做
 
 // func (s *CheckInService) processSingleUserReminder(

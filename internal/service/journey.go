@@ -38,7 +38,7 @@ func (s *JourneyService) CreateJourney(
 	ctx context.Context,
 	userID int64,
 	req dto.CreateJourneyRequest,
-) (*dto.JourneyItem, error) {
+) (*model.Journey, *model.JourneyTimeoutMessage, error) {
 
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
@@ -46,25 +46,27 @@ func (s *JourneyService) CreateJourney(
 	user, err := q.User.GetByPublicID(userID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, pkgerrors.Definition{
+			return nil, nil, pkgerrors.Definition{
 				Code:    "USER_NOT_FOUND",
 				Message: "User not found",
 			}
 		}
-		return nil, fmt.Errorf("failed to query user: %w", err)
+		return nil, nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
 	if req.ExpectedReturnTime.Before(time.Now()) {
-		return nil, pkgerrors.Definition{
+		return nil, nil, pkgerrors.Definition{
 			Code:    "INVALID_RETURN_TIME",
 			Message: "Expected return time must be in the future",
 		}
 	}
 
+	// 这里还需要考虑要不要限定前几分钟不能修改？
+
 	journeyID, err := snowflake.NextID(snowflake.GeneratorTypeJourney)
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate journey ID: %w", err)
+		return nil, nil, fmt.Errorf("failed to generate journey ID: %w", err)
 	}
 
 	journey := &model.Journey{
@@ -80,33 +82,74 @@ func (s *JourneyService) CreateJourney(
 		AlertAttempts:     0,
 	}
 
+	// journey 的 create 和消息的投放应该是一个事务吗，应该是完整的部分才对
 	if err := q.Journey.Create(journey); err != nil {
 		logger.Logger.Error("Failed to create journey",
 			zap.Int64("user_id", user.ID),
 			zap.Error(err),
 		)
-		return nil, fmt.Errorf("failed to create journey: %w", err)
+		return nil, nil, fmt.Errorf("failed to create journey: %w", err)
 	}
 
-	// TODO: 推送 notification 队列
+	// 开始集成延迟消息的投放，这里的判断消息投递
+
 	// 1. 检查用户设置 journey_auto_notify
-	// 2. 如果开启，创建 notification_tasks
-	// 3. 发布 NotificationMessage 到 RabbitMQ
+	// 2. 如果开启，构建通知消息（但不发布，返回给调用方）
+
+	var timeoutMsg *model.JourneyTimeoutMessage
+
+	if user.JourneyAutoNotify {
+		delayTime := journey.ExpectedReturnTime.Add(10 * time.Minute)
+		now := time.Now()
+
+		if delayTime.After(now) {
+			delay := delayTime.Sub(now)
+
+			// 如果延迟时间 <= 1天，构建消息返回给调用方
+			if delay <= 24*time.Hour {
+				messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+				if err != nil {
+					logger.Logger.Error("Failed to generate message ID",
+						zap.Int64("journey_id", journeyID),
+						zap.Error(err),
+					)
+					// 不阻塞主流程，继续向下执行
+				} else {
+					timeoutMsg = &model.JourneyTimeoutMessage{
+						MessageID:    fmt.Sprintf("journey_timeout_%d", messageID),
+						ScheduledAt:  now.Format(time.RFC3339),
+						JourneyID:    journeyID,
+						UserID:       userID,
+						DelaySeconds: int(delay.Seconds()),
+					}
+					logger.Logger.Info("Journey timeout message prepared",
+						zap.Int64("journey_id", journeyID),
+						zap.Int64("user_id", userID),
+						zap.Time("expected_return_time", journey.ExpectedReturnTime),
+					)
+				}
+			} else {
+				logger.Logger.Info("Journey delay exceeds 24 hours, will be handled by scheduled task",
+					zap.Int64("journey_id", journeyID),
+					zap.Int64("user_id", userID),
+					zap.Duration("delay", delay),
+					zap.Time("expected_return_time", journey.ExpectedReturnTime),
+				)
+			}
+		} else {
+			logger.Logger.Warn("Journey expected return time is in the past",
+				zap.Int64("journey_id", journeyID),
+				zap.Time("expected_return_time", journey.ExpectedReturnTime),
+			)
+		}
+	}
 
 	logger.Logger.Info("Journey created",
 		zap.Int64("journey_id", journeyID),
 		zap.Int64("user_id", user.ID),
 	)
 
-	return &dto.JourneyItem{
-		ID:                 strconv.FormatInt(journey.ID, 10),
-		Title:              journey.Title,
-		Note:               journey.Note,
-		Status:             string(journey.Status),
-		ExpectedReturnTime: journey.ExpectedReturnTime,
-		ActualReturnTime:   journey.ActualReturnTime,
-		CreatedAt:          journey.CreatedAt,
-	}, nil
+	return journey, timeoutMsg, nil
 }
 
 func (s *JourneyService) UpdateJourney(
@@ -114,28 +157,31 @@ func (s *JourneyService) UpdateJourney(
 	userID int64,
 	journeyID int64,
 	req dto.UpdateJourneyRequest,
-) (*dto.JourneyItem, error) {
+) (*model.Journey, *model.JourneyTimeoutMessage, error) {
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
 	journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, pkgerrors.Definition{
+			return nil, nil, pkgerrors.Definition{
 				Code:    "JOURNEY_NOT_FOUND",
 				Message: "Journey not found",
 			}
 		}
-		return nil, fmt.Errorf("failed to query journey: %w", err)
+		return nil, nil, fmt.Errorf("failed to query journey: %w", err)
 	}
 
 		// 检查行程状态：已结束或超时的行程不可修改
 	if journey.Status == model.JourneyStatusEnded || journey.Status == model.JourneyStatusTimeout {
-		return nil, pkgerrors.Definition{
+		return nil, nil, pkgerrors.Definition{
 			Code:    "JOURNEY_NOT_MODIFIABLE",
 			Message: "Journey cannot be modified after it has ended or timed out",
 		}
 	}
+
+	var needReschedule bool
+	var oldExpectedReturnTime time.Time
 
 	// 更新字段
 	updates := make(map[string]interface{})
@@ -148,24 +194,18 @@ func (s *JourneyService) UpdateJourney(
 	if req.ExpectedReturnTime != nil {
 		// 验证预计返回时间必须晚于当前时间
 		if req.ExpectedReturnTime.Before(time.Now()) {
-			return nil, pkgerrors.Definition{
+			return nil, nil, pkgerrors.Definition{
 				Code:    "INVALID_RETURN_TIME",
 				Message: "Expected return time must be in the future",
 			}
 		}
+		oldExpectedReturnTime = journey.ExpectedReturnTime
 		updates["expected_return_time"] = *req.ExpectedReturnTime
+		needReschedule = true // 标记需要重新调度
 	}
 
 		if len(updates) == 0 {
-		return &dto.JourneyItem{
-			ID:                 strconv.FormatInt(journey.ID, 10),
-			Title:              journey.Title,
-			Note:               journey.Note,
-			Status:             string(journey.Status),
-			ExpectedReturnTime: journey.ExpectedReturnTime,
-			ActualReturnTime:   journey.ActualReturnTime,
-			CreatedAt:          journey.CreatedAt,
-		}, nil
+		return journey, nil, nil
 	}
 
 	// 执行更新
@@ -178,35 +218,69 @@ func (s *JourneyService) UpdateJourney(
 			zap.Int64("journey_id", journeyID),
 			zap.Error(err),
 		)
-		return nil, fmt.Errorf("failed to update journey: %w", err)
+		return nil, nil, fmt.Errorf("failed to update journey: %w", err)
 	}
 
 	// 重新查询更新后的数据
 	updatedJourney, err := q.Journey.GetByID(journey.ID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query updated journey: %w", err)
+		return nil, nil, fmt.Errorf("failed to query updated journey: %w", err)
 	}
 
-	// TODO: 如果 expected_return_time 更新了，需要重新推送 notification 队列
-	// 1. 检查用户设置 journey_auto_notify
-	// 2. 如果开启，更新或重新创建 notification_tasks
-	// 3. 发布 NotificationMessage 到 RabbitMQ
+	// 如果 expected_return_time 更新了，重新构建消息对象
+	var timeoutMsg *model.JourneyTimeoutMessage
+	if needReschedule && req.ExpectedReturnTime != nil {
+		// 查询用户设置
+		user, err := q.User.GetByID(updatedJourney.UserID)
+		if err == nil && user.JourneyAutoNotify {
+			// 计算新的延迟时间
+			delayTime := updatedJourney.ExpectedReturnTime.Add(10 * time.Minute)
+			now := time.Now()
+
+			if delayTime.After(now) {
+				delay := delayTime.Sub(now)
+
+				if delay <= 24*time.Hour {
+					// 构建新的消息对象（但不发布）
+					messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+					if err != nil {
+						logger.Logger.Error("Failed to generate message ID for reschedule",
+							zap.Int64("journey_id", journeyID),
+							zap.Error(err),
+						)
+					} else {
+						timeoutMsg = &model.JourneyTimeoutMessage{
+							MessageID:    fmt.Sprintf("journey_timeout_%d", messageID),
+							ScheduledAt:  now.Format(time.RFC3339),
+							JourneyID:    journeyID,
+							UserID:       userID,
+							DelaySeconds: int(delay.Seconds()),
+							// 可以添加旧时间用于日志
+							// OldExpectedReturnTime: oldExpectedReturnTime,
+						}
+						logger.Logger.Info("Journey timeout message prepared for reschedule",
+							zap.Int64("journey_id", journeyID),
+							zap.Time("old_time", oldExpectedReturnTime),
+							zap.Time("new_time", updatedJourney.ExpectedReturnTime),
+						)
+					}
+				} else {
+					logger.Logger.Info("Journey reschedule delay exceeds 24 hours, will be handled by scheduled task",
+						zap.Int64("journey_id", journeyID),
+						zap.Duration("delay", delay),
+						zap.Time("expected_return_time", updatedJourney.ExpectedReturnTime),
+					)
+				}
+			}
+		}
+	}
 
 	logger.Logger.Info("Journey updated",
 		zap.Int64("journey_id", journeyID),
 		zap.Int64("user_id", userID),
 	)
 
-
-	return &dto.JourneyItem{
-		ID:                 strconv.FormatInt(updatedJourney.ID, 10),
-		Title:              updatedJourney.Title,
-		Note:               updatedJourney.Note,
-		Status:             string(updatedJourney.Status),
-		ExpectedReturnTime: updatedJourney.ExpectedReturnTime,
-		ActualReturnTime:   updatedJourney.ActualReturnTime,
-		CreatedAt:          updatedJourney.CreatedAt,
-	}, nil
+	return updatedJourney, timeoutMsg, nil
 }
 
 
@@ -365,7 +439,7 @@ func (s *JourneyService) CompleteJourney(
 		return nil, fmt.Errorf("failed to query completed journey: %w", err)
 	}
 
-	// TODO: 取消或标记相关的 notification_tasks 为已取消
+	// consumer 会检查行程的状态，如果已经完成了就跳过超时处理
 
 	logger.Logger.Info("Journey completed",
 		zap.Int64("journey_id", journeyID),
@@ -443,3 +517,4 @@ func (s *JourneyService) GetJourneyAlerts(
 		AlertLastAttemptAt: journey.AlertLastAttemptAt,
 	}, nil
 }
+

@@ -12,7 +12,7 @@ import (
 // phone: 手机号
 // code: 验证码
 
-func SendCaptchaSMS(ctx context.Context, phone, code string) error {
+func SendCaptchaSMS(ctx context.Context, phone, code string) (*SendResponse, error) {
 	cfg := config.Cfg
 
 	//不再区分对应模板了，统一发送验证码
@@ -25,7 +25,7 @@ func SendCaptchaSMS(ctx context.Context, phone, code string) error {
 	}
 	paramJSON, err := json.Marshal(templateParam)
 	if err != nil {
-		return fmt.Errorf("failed to marshal template param: %w", err)
+		return nil, fmt.Errorf("failed to marshal template param: %w", err)
 	}
 
 	return SendSingle(ctx, phone, signName, templateCode, string(paramJSON))

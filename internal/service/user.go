@@ -269,23 +269,23 @@ func (s *UserService) GetUserQuotas(
 	}
 
 	// 查询 Voice 渠道最新余额
-	voiceTransactions, err := query.QuotaTransaction.
-		Where(query.QuotaTransaction.UserID.Eq(user.ID)).
-		Where(query.QuotaTransaction.Channel.Eq(string(model.QuotaChannelVoice))).
-		Order(query.QuotaTransaction.CreatedAt.Desc()).
-		Limit(1).
-		Find()
-	if err != nil {
-		return nil, fmt.Errorf("failed to query voice quota: %w", err)
-	}
+	// voiceTransactions, err := query.QuotaTransaction.
+	// 	Where(query.QuotaTransaction.UserID.Eq(user.ID)).
+	// 	Where(query.QuotaTransaction.Channel.Eq(string(model.QuotaChannelVoice))).
+	// 	Order(query.QuotaTransaction.CreatedAt.Desc()).
+	// 	Limit(1).
+	// 	Find()
+	// if err != nil {
+	// 	return nil, fmt.Errorf("failed to query voice quota: %w", err)
+	// }
 
 	var smsBalance, voiceBalance int
 	if len(smsTransactions) > 0 {
 		smsBalance = smsTransactions[0].BalanceAfter
 	}
-	if len(voiceTransactions) > 0 {
-		voiceBalance = voiceTransactions[0].BalanceAfter
-	}
+	// if len(voiceTransactions) > 0 {
+	// 	voiceBalance = voiceTransactions[0].BalanceAfter
+	// }
 
 	result := &dto.QuotaBalance{
 		SMSBalance:     smsBalance,

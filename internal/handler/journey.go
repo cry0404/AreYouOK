@@ -3,14 +3,17 @@ package handler
 import (
 	"AreYouOK/internal/middleware"
 	"AreYouOK/internal/model/dto"
+	"AreYouOK/internal/queue"
 	"AreYouOK/internal/service"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/response"
 	"context"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"go.uber.org/zap"
 )
 
 // 通用的设计模式，解析发送的 param，然后将其作为参数传到 service，由 service 处理即可
@@ -103,10 +106,38 @@ func CreateJourney(ctx context.Context, c *app.RequestContext) {
 
 	journeyService := service.Journey()
 
-	result, err := journeyService.CreateJourney(ctx, userID, req)
+	journey, timeoutMsg, err := journeyService.CreateJourney(ctx, userID, req)
 	if err != nil {
 		response.Error(ctx, c, err)
 		return
+	}
+
+	// 如果返回了超时消息，在 Handler 层负责发布到队列
+	if timeoutMsg != nil {
+		if err := queue.PublishJourneyTimeout(*timeoutMsg); err != nil {
+			// 记录错误但不影响主流程
+			zap.L().Error("Failed to publish journey timeout message",
+				zap.Int64("journey_id", journey.ID),
+				zap.Int64("user_id", userID),
+				zap.Error(err),
+			)
+		} else {
+			zap.L().Info("Journey timeout message published",
+				zap.Int64("journey_id", journey.ID),
+				zap.Duration("delay", time.Duration(timeoutMsg.DelaySeconds)*time.Second),
+			)
+		}
+	}
+
+	// 转换为 DTO 返回
+	result := &dto.JourneyItem{
+		ID:                 strconv.FormatInt(journey.ID, 10),
+		Title:              journey.Title,
+		Note:               journey.Note,
+		Status:             string(journey.Status),
+		ExpectedReturnTime: journey.ExpectedReturnTime,
+		ActualReturnTime:   journey.ActualReturnTime,
+		CreatedAt:          journey.CreatedAt,
 	}
 
 	c.JSON(201, response.SuccessResponse{
@@ -190,10 +221,38 @@ func UpdateJourney(ctx context.Context, c *app.RequestContext) {
 	}
 
 	journeyService := service.Journey()
-	result, err := journeyService.UpdateJourney(ctx, userID, journeyID, req)
+	journey, timeoutMsg, err := journeyService.UpdateJourney(ctx, userID, journeyID, req)
 	if err != nil {
 		response.Error(ctx, c, err)
 		return
+	}
+
+	// 如果返回了超时消息（改期），在 Handler 层负责重新发布到队列
+	if timeoutMsg != nil {
+		if err := queue.PublishJourneyTimeout(*timeoutMsg); err != nil {
+			// 记录错误但不影响主流程
+			zap.L().Error("Failed to publish rescheduled journey timeout message",
+				zap.Int64("journey_id", journey.ID),
+				zap.Int64("user_id", userID),
+				zap.Error(err),
+			)
+		} else {
+			zap.L().Info("Journey timeout message republished after reschedule",
+				zap.Int64("journey_id", journey.ID),
+				zap.Duration("delay", time.Duration(timeoutMsg.DelaySeconds)*time.Second),
+			)
+		}
+	}
+
+	// 转换为 DTO 返回
+	result := &dto.JourneyItem{
+		ID:                 strconv.FormatInt(journey.ID, 10),
+		Title:              journey.Title,
+		Note:               journey.Note,
+		Status:             string(journey.Status),
+		ExpectedReturnTime: journey.ExpectedReturnTime,
+		ActualReturnTime:   journey.ActualReturnTime,
+		CreatedAt:          journey.CreatedAt,
 	}
 
 	response.Success(ctx, c, result)

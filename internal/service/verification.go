@@ -92,8 +92,8 @@ func (s *VerificationService) SendCaptcha(
 
 	// 发送短信验证码
 	// 短信发送失败，验证码也已经存储，用户仍可以通过其他方式获取, 考虑提供一个服务层的服务发送失败时删除验证码，然后返回给前端错误
-
-	if err := sms.SendCaptchaSMS(ctx, phone, code); err != nil {
+	// 验证码不需要管 response
+	if _, err := sms.SendCaptchaSMS(ctx, phone, code); err != nil {
 		cache.DeleteCaptcha(ctx, phoneHash)
 		logger.Logger.Error("Failed to send captcha SMS",
 			zap.String("phone", phone),
