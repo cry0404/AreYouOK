@@ -6,13 +6,16 @@ package redis
 import (
 	"context"
 	// "fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
 
 	"AreYouOK/config"
+	pkredis "AreYouOK/pkg/redis"
 )
 
 var (
@@ -44,10 +47,21 @@ func Init() error {
 			return
 		}
 
-		// 可选：集成 OpenTelemetry（后续）
-		// if err := redisotel.InstrumentTracing(client); err != nil {
-		//     logger.Logger.Warn("Failed to instrument Redis tracing", zap.Error(err))
-		// }
+		// 集成 OpenTelemetry Redis 追踪
+		serviceName := "areyouok-api"
+
+		// 处理对应来自不同服务的 name
+		if os.Getenv("SERVICE_NAME") == "worker" {
+			serviceName = "areyouok-worker"
+		}
+		pkredis.InstrumentRedisClient(client, serviceName, cfg.RedisDB)
+
+		// 初始化 Redis 指标
+		meter := otel.Meter(serviceName)
+		if err := pkredis.InitRedisMetrics(meter); err != nil {
+			// 使用 logger 记录警告，需要导入 logger 包
+			// logger.Logger.Warn("Failed to initialize Redis metrics", zap.Error(err))
+		}
 	})
 
 	return err

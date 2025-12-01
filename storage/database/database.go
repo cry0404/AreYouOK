@@ -4,15 +4,18 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
 	"AreYouOK/config"
 	"AreYouOK/internal/repository/query"
+	pkdatabase "AreYouOK/pkg/database"
 	"AreYouOK/pkg/logger"
 )
 
@@ -55,6 +58,22 @@ func Init() error {
 		}
 
 		db = gormDB
+
+		// 添加 OpenTelemetry 插件
+		serviceName := "areyouok-api"
+		if os.Getenv("SERVICE_NAME") == "worker" {
+			serviceName = "areyouok-worker"
+		}
+		if err := pkdatabase.WithDefaultOTELPlugin(gormDB, serviceName); err != nil {
+			logger.Logger.Warn("Failed to add OpenTelemetry plugin to GORM", zap.Error(err))
+		}
+
+		// 初始化数据库指标
+		meter := otel.Meter(serviceName)
+		if err := pkdatabase.InitDatabaseMetrics(meter); err != nil {
+			logger.Logger.Warn("Failed to initialize database metrics", zap.Error(err))
+		}
+
 		if err := Migrate(); err != nil {
 			logger.Logger.Fatal("failed to run database migration: %w", zap.Error(err))
 		}
