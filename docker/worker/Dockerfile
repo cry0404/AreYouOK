@@ -1,5 +1,7 @@
 # Worker 服务 Dockerfile
 
+# docker file 的构建总流程， cli 客户端会将 dockerfile 和上下文文件，通常是当前目录发送给 docker 的守护进程 daemon
+
 # 构建阶段
 FROM golang:1.25-alpine AS builder
 
@@ -47,6 +49,6 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD pgrep -f /app/worker || exit 1
 
-# 启动服务
-CMD ["/app/worker"]
+# 启动服务， CMD 是容器启动的入口程序，是 docker run 的默认部分，与之相对的是 entrypoint 标志，它可以设置环境变量
+CMD ["/app/worker"] 
 

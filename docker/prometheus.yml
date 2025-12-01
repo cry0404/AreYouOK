@@ -1,13 +1,70 @@
 global:
   scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'areyouok-development'
+    replica: 'prometheus-1'
+
+rule_files:
+  - "alerts.yml"
 
 scrape_configs:
-  - job_name: areyouok-api
+  # Prometheus self monitoring
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ["areyouok-api:9464"]
+      - targets: ['localhost:9090']
+    scrape_interval: 30s
 
-  - job_name: areyouok-worker
+  # OpenTelemetry Collector metrics
+  - job_name: 'otel-collector'
     static_configs:
-      - targets: ["areyouok-worker:9464"]
+      - targets: ['otel-collector:8889']
+    metrics_path: /metrics
+    scrape_interval: 15s
+    honor_labels: true
+
+  # API Service metrics (via OpenTelemetry Collector)
+  - job_name: 'areyouok-api'
+    static_configs:
+      - targets: ['otel-collector:8889']
+    metrics_path: /
+    honor_labels: true
+    params:
+      'name[]':
+        - 'http.server.requests.total'
+        - 'http.server.duration'
+        - 'db.queries.total'
+        - 'db.query.duration'
+        - 'redis.commands.total'
+        - 'redis.command.duration'
+        - 'sms.sent.total'
+        - 'sms.send.duration'
+
+  # Worker Service metrics (via OpenTelemetry Collector)
+  - job_name: 'areyouok-worker'
+    static_configs:
+      - targets: ['otel-collector:8889']
+    metrics_path: /
+    honor_labels: true
+    params:
+      'name[]':
+        - 'mq.messages.total'
+        - 'mq.message.duration'
+        - 'db.queries.total'
+        - 'db.query.duration'
+        - 'redis.commands.total'
+        - 'redis.command.duration'
+
+  # Node Exporter for system metrics (if available)
+  - job_name: 'node-exporter'
+    static_configs:
+      - targets: ['node-exporter:9100']
+    scrape_interval: 30s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+          - alertmanager:9093
 
 

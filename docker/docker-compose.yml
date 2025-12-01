@@ -165,7 +165,7 @@ services:
       - ../.env.worker:/app/.env:ro
     networks:
       - areyouok-network
-    # Worker 服务可以启动多个实例
+    # Worker 服务可以启动多个实例, 这里需要注意 worker 中对于 machine id 的配置
     deploy:
       replicas: 1
 
@@ -176,8 +176,39 @@ services:
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
+      - "4317:4317"   # OTLP gRPC receiver
+      - "4318:4318"   # OTLP HTTP receiver
+      - "8888:8888"   # Prometheus metrics endpoint
+      - "8889:8889"   # Collector internal metrics
+      - "13133:13133" # Health check
+    depends_on:
+      - jaeger
+      - prometheus
+      - loki
+    networks:
+      - areyouok-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.52
+    container_name: areyouok-jaeger
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686" # UI
+      - "14268:14268" # HTTP collector
+      - "14250:14250" # gRPC collector
+    networks:
+      - areyouok-network
+
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: areyouok-loki
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yaml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
     networks:
       - areyouok-network
 
@@ -220,6 +251,8 @@ volumes:
   prometheus_data:
     driver: local
   grafana_data:
+    driver: local
+  loki_data:
     driver: local
 
 networks:

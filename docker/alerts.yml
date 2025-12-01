@@ -1,0 +1,262 @@
+groups: # 按照告警规则分组
+  - name: areyouok.rules
+    interval: 30s # interval 越短，告警越及时，但资源消耗越大
+    rules: 
+        # 服务是否可用警告，也就是服务器宕机警告
+      - alert: ServiceDown
+        expr: up{job=~"areyouok-api|areyouok-worker|otel-collector"} == 0 # 触发条件，正则表达式中的标签匹配
+        for: 1m                                                           #异常持续 1m 才触发
+        labels:
+          severity: critical # crtical（严重）/ warning（警告）/info（提示）
+        annotations:
+          summary: "服务不可用"
+          description: "{{ $labels.job }} 在 {{ $labels.instance }} 上已停止运行超过 1 分钟"
+
+      # HTTP 错误率太高的警告
+      - alert: HighErrorRate
+        expr: | # statusCode 为 5xx 的错误请求率，如果 rate 计算出来超过百分之 5
+          (
+            rate(http_server_requests_total{status_code=~"5.."}[5m]) /
+            rate(http_server_requests_total[5m])
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP 错误率过高"
+          description: "{{ $labels.method }} {{ $labels.route }} 的错误率为 {{ $value | humanizePercentage }}"
+
+      # HTTP 延迟太高的警告
+      - alert: HighLatency
+        expr: |
+          histogram_quantile(0.95,
+            rate(http_server_duration_seconds_bucket[5m])
+          ) > 1.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "请求延迟过高"
+          description: "{{ $labels.method }} {{ $labels.route }} 的 P95 延迟为 {{ $value }}s"
+
+      # 数据库表现的警告
+      - alert: DatabaseConnectionPoolExhausted
+        expr: |
+          (db_connections_active / db_connections_limit) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库连接池使用率过高"
+          description: "数据库连接池使用率达到 {{ $value | humanizePercentage }}"
+
+      - alert: DatabaseSlowQueries
+        expr: |
+          histogram_quantile(0.95,
+            rate(db_query_duration_seconds_bucket[5m])
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "数据库查询缓慢"
+          description: "数据库查询 P95 耗时为 {{ $value }}s"
+
+      # Redis 表现的警告
+      - alert: RedisConnectionPoolExhausted
+        expr: |
+          (redis_connections_active / redis_connections_limit) > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 连接池使用率过高"
+          description: "Redis 连接池使用率达到 {{ $value | humanizePercentage }}"
+
+      - alert: RedisSlowCommands
+        expr: |
+          histogram_quantile(0.95,
+            rate(redis_command_duration_seconds_bucket[5m])
+          ) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis 命令缓慢"
+          description: "Redis 命令 P95 耗时为 {{ $value }}s"
+
+      - alert: LowCacheHitRate
+        expr: |
+          (
+            rate(redis_cache_hits_total[5m]) /
+            (rate(redis_cache_hits_total[5m]) + rate(redis_cache_misses_total[5m]))
+          ) < 0.8
+        for: 10m
+        labels:
+          severity: info
+        annotations:
+          summary: "Redis 缓存命中率过低"
+          description: "当前缓存命中率为 {{ $value | humanizePercentage }}"
+
+      # Message queue alerts
+      - alert: QueueBacklogHigh
+        expr: |
+          mq_queue_size > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "消息队列积压过高"
+          description: "队列 {{ $labels.queue }} 中有 {{ $value }} 条未处理消息"
+
+      - alert: MessageProcessingErrors
+        expr: |
+          rate(mq_publish_errors_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "消息发布错误率过高"
+          description: "5分钟内消息发布错误率为 {{ $value }} 次/秒"
+
+      - alert: MessageProcessingSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(mq_message_duration_seconds_bucket[5m])
+          ) > 5.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "消息处理缓慢"
+          description: "消息处理 P95 耗时为 {{ $value }}s"
+
+      # Business metrics alerts
+      - alert: SMSSendFailureRate
+        expr: |
+          (
+            rate(sms_sent_total{status="failed"}[5m]) /
+            rate(sms_sent_total[5m])
+          ) > 0.1
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "短信发送失败率过高"
+          description: "短信发送失败率为 {{ $value | humanizePercentage }}"
+
+      - alert: SMSSendSlow
+        expr: |
+          histogram_quantile(0.95,
+            rate(sms_send_duration_seconds_bucket[5m])
+          ) > 3.0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "短信发送缓慢"
+          description: "短信发送 P95 耗时为 {{ $value }}s"
+
+      - alert: QuotaInsufficient
+        expr: |
+          rate(quota_insufficient_total[5m]) > 5
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "用户额度不足频率过高"
+          description: "5分钟内额度不足事件为 {{ $value }} 次/秒"
+
+      - alert: CheckInResponseRate
+        expr: |
+          (
+            rate(checkin_success_total[5m]) /
+            (rate(checkin_success_total[5m]) + rate(checkin_failure_total[5m]))
+          ) < 0.9
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "打卡响应率过低"
+          description: "最近 5 分钟的打卡响应率为 {{ $value | humanizePercentage }}"
+
+      - alert: JourneyTimeoutRate
+        expr: |
+          rate(journey_timeout_total[5m]) > 10
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "行程超时频率过高"
+          description: "5分钟内行程超时事件为 {{ $value }} 次/秒"
+
+      # Infrastructure alerts
+      - alert: OpenTelemetryCollectorDown
+        expr: up{job="otel-collector"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "OpenTelemetry Collector 不可用"
+          description: "OpenTelemetry Collector 已停止运行，监控数据无法收集"
+
+      - alert: PrometheusDown
+        expr: up{job="prometheus"} == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus 不可用"
+          description: "Prometheus 已停止运行，指标收集中断"
+
+      - alert: HighMemoryUsage
+        expr: |
+          (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) /
+          node_memory_MemTotal_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "内存使用率过高"
+          description: "节点 {{ $labels.instance }} 内存使用率为 {{ $value | humanizePercentage }}"
+
+      - alert: HighCPUUsage
+        expr: |
+          100 - (avg by(instance) (rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU 使用率过高"
+          description: "节点 {{ $labels.instance }} CPU 使用率为 {{ $value }}%"
+
+      - alert: DiskSpaceLow
+        expr: |
+          (node_filesystem_avail_bytes{fstype!="tmpfs"} / node_filesystem_size_bytes{fstype!="tmpfs"}) < 0.1
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "磁盘空间不足"
+          description: "节点 {{ $labels.instance }} 挂载点 {{ $labels.mountpoint }} 磁盘剩余空间为 {{ $value | humanizePercentage }}"
+
+      # OpenTelemetry specific alerts
+      - alert: OpenTelemetryTraceSpansDropped
+        expr: |
+          rate(otelcol_processor_dropped_spans_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenTelemetry Trace Spans 丢弃率过高"
+          description: "Trace Spans 丢弃率为 {{ $value }} spans/秒"
+
+      - alert: OpenTelemetryMetricsDropped
+        expr: |
+          rate(otelcol_processor_dropped_metric_points_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "OpenTelemetry Metrics 丢弃率过高"
+          description: "Metrics 丢弃率为 {{ $value }} points/秒"
