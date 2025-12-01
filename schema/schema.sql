@@ -1,10 +1,4 @@
 
--- ============================================
--- AreYouOK 数据库 Schema
--- 版本: 2.0
--- 更新日期: 2025-01-25
--- 说明: 支持 P0.3-P0.7 业务逻辑实现
--- ============================================
 
 -- 用户主表：记录账号基础信息与状态。
 -- status 枚举值：
@@ -103,6 +97,25 @@ CREATE INDEX idx_journeys_user_status ON journeys(user_id, status);
 CREATE INDEX idx_journeys_expected ON journeys(expected_return_time);
 CREATE INDEX idx_journeys_timeout_message_id ON journeys(timeout_message_id);
 
+-- 额度钱包：跟踪用户每个渠道的额度状态
+-- 提供高效的状态查询和冻结额度管理
+CREATE TABLE quota_wallets (
+  id BIGSERIAL PRIMARY KEY,
+  user_id BIGINT NOT NULL REFERENCES users(id),
+  channel VARCHAR(16) NOT NULL,
+  available_amount INTEGER NOT NULL DEFAULT 0,       -- 可用额度
+  frozen_amount INTEGER NOT NULL DEFAULT 0,          -- 冻结额度
+  used_amount INTEGER NOT NULL DEFAULT 0,            -- 已使用额度
+  total_granted INTEGER NOT NULL DEFAULT 0,          -- 总充值额度
+
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+  UNIQUE (user_id, channel)
+);
+CREATE INDEX idx_quota_user_channel_frozen ON quota_wallets(user_id, channel, frozen_amount);
+CREATE INDEX idx_quota_wallets_available ON quota_wallets(available_amount);
+
 -- 额度流水：记录充值与扣减，类似于提供支付记录之类的
 -- 余额计算：查询最新一条交易的 balance_after 字段
 -- 预扣减机制：通过 reason 字段区分（pre_deduct, confirm_deduct, refund）
@@ -113,9 +126,9 @@ CREATE TABLE quota_transactions (
   transaction_type VARCHAR(16) NOT NULL, -- grant(充值), deduct(扣减)
   reason VARCHAR(32) NOT NULL, -- 交易原因：
                                 --   充值: "grant_default", "grant_recharge", "grant_refund"
-                                --   扣减: "sms_notification", "voice_notification", 
+                                --   扣减: "sms_notification", "voice_notification",
                                 --        "pre_deduct" (预扣减), "confirm_deduct" (确认扣减)
-  amount INTEGER NOT NULL,              -- 本次的金额变动 
+  amount INTEGER NOT NULL,              -- 本次的金额变动
   balance_after INTEGER NOT NULL,       -- 操作后余额，对账部分
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

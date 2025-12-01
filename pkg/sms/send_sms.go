@@ -18,10 +18,13 @@ import (
 // 据此来表明是否需要回调
 // SendResponse 短信发送响应
 type SendResponse struct {
-    MessageID  string // 阿里云返回的 MessageID（BizId）
-    StatusCode string // 阿里云返回的状态码（如 "OK", "isv.BUSINESS_LIMIT_CONTROL"）
-    Code       string // 业务状态码（与 StatusCode 相同）
-    Message    string // 错误消息（如果有）
+    MessageID   string // 阿里云返回的 MessageID（BizId）
+    StatusCode  string // 阿里云返回的状态码（如 "OK", "isv.BUSINESS_LIMIT_CONTROL"）
+    Code        string // 业务状态码（与 StatusCode 相同）
+    Message     string // 错误消息（如果有）
+    RequestID   string // 请求ID（阿里云返回）
+    Provider    string // 服务提供商（"aliyun"）
+    Template    string // 模板代码（用于监控）
 }
 
 // 修改 SendSingle 方法签名和实现
@@ -81,21 +84,24 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
     }
 
     // 解析响应体
-    response := &SendResponse{}
-    
+    response := &SendResponse{
+        Provider: "aliyun",
+        Template: templateCode,
+    }
+
     if resp["body"] != nil {
         bodyBytes, err := json.Marshal(resp["body"])
         if err != nil {
             return nil, fmt.Errorf("failed to marshal response body: %w", err)
         }
-        
+
         var bodyMap map[string]interface{}
         if err := json.Unmarshal(bodyBytes, &bodyMap); err == nil {
             // 提取 MessageID（BizId）
             if bizID, ok := bodyMap["BizId"].(string); ok {
                 response.MessageID = bizID
             }
-            
+
             // 提取 Code 和 Message
             if code, ok := bodyMap["Code"].(string); ok {
                 response.Code = code
@@ -104,20 +110,26 @@ func (c *AliyunClient) SendSingle(ctx context.Context, phone, signName, template
             if msg, ok := bodyMap["Message"].(string); ok {
                 response.Message = msg
             }
-            
+
+            // 提取 RequestID
+            if requestID, ok := bodyMap["RequestId"].(string); ok {
+                response.RequestID = requestID
+            }
+
             // 检查是否成功
             if response.Code != "OK" {
                 logger.Logger.Error("SMS send failed",
                     zap.String("code", response.Code),
                     zap.String("message", response.Message),
                     zap.String("phone", phone),
+                    zap.String("request_id", response.RequestID),
                 )
-                
+
                 // 识别不可重试的错误
                 if isNonRetryableError(response.Code) {
                     return nil, errors.NewNonRetryableError(response.Code, response.Message, "SMS configuration error")
                 }
-                
+
                 return nil, fmt.Errorf("SMS send failed: %s - %s", response.Code, response.Message)
             }
         }

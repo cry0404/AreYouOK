@@ -16,6 +16,7 @@ import (
 	//"AreYouOK/internal/queue"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/pkg/metrics"
 	"AreYouOK/pkg/slider"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/pkg/snowflake"
@@ -27,6 +28,9 @@ func main() {
 	// 日志部分
 	logger.Init()
 	defer logger.Sync()
+
+	// 注册监控指标
+	metrics.RegisterSMSMetrics()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

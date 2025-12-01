@@ -48,7 +48,7 @@ var DefaultRateLimitConfig = RateLimitConfig{
 
 // UserSettingsRateLimitConfig 用户设置修改限流配置
 var UserSettingsRateLimitConfig = RateLimitConfig{
-	Window:        600,  // 1小时
+	Window:        600,  // 10 min
 	MaxRequests:   1,     // 5次修改
 	KeyPrefix:     "user:settings:rate",
 	ByUserID:      true,
@@ -58,7 +58,7 @@ var UserSettingsRateLimitConfig = RateLimitConfig{
 }
 
 var JourneySettingRateLimitConfig = RateLimitConfig{
-	Window:        600,  // 1小时
+	Window:        600,  // 10 min
 	MaxRequests:   1,     // 5次修改
 	KeyPrefix:     "user:settings:rate",
 	ByUserID:      true,
@@ -72,7 +72,6 @@ type RateLimiter struct {
 	config RateLimitConfig
 }
 
-// NewRateLimiter 创建限流器
 func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 	return &RateLimiter{
 		config: config,
@@ -98,17 +97,19 @@ func (rl *RateLimiter) getKey(ctx context.Context, c *app.RequestContext) string
 	return redis.Key(rl.config.KeyPrefix, identifier)
 }
 
+
+
 // Allow 检查是否允许请求，使用滑动窗口算法
 func (rl *RateLimiter) Allow(ctx context.Context, c *app.RequestContext) (bool, int, error) {
 	key := rl.getKey(ctx, c)
 	now := time.Now()
-	windowStart := now.Add(-time.Duration(rl.config.Window) * time.Second)
+	windowStart := now.Add(-time.Duration(rl.config.Window) * time.Second) // 基于配置的限流器时长，来测算有关的滑动窗口部分
 
 	// 使用 Redis 的 sorted set 实现滑动窗口
 	client := redis.Client()
 	pipe := client.Pipeline()
 
-	// 移除窗口开始时间之前的所有请求记录
+	// 移除窗口开始时间之前的所有请求记录，每次请求会先移除
 	pipe.ZRemRangeByScore(ctx, key, "0", fmt.Sprintf("%d", windowStart.UnixNano()))
 
 	// 添加当前请求（使用时间戳作为 score 和 member）

@@ -6,6 +6,7 @@ import (
 	"AreYouOK/internal/repository/query"
 	"AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/pkg/metrics"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/storage/database"
 	"context"
@@ -187,6 +188,7 @@ func (s *NotificationService) SendSMS(
 	}
 
 	// 发送短信，开始投递
+	smsStart := time.Now()
 	sendResp, err := sms.SendSingle(
 		ctx,
 		smsMsg.GetPhone(),
@@ -194,8 +196,22 @@ func (s *NotificationService) SendSMS(
 		smsMsg.GetTemplateCode(),
 		templateParams,
 	)
+	smsDuration := time.Since(smsStart).Seconds()
 
 	if err != nil {
+		// 记录短信发送失败的监控指标
+		templateCode := smsMsg.GetTemplateCode()
+		provider := "aliyun"
+		statusCode := "SEND_ERROR"
+
+		if sendResp != nil {
+			statusCode = sendResp.StatusCode
+			provider = sendResp.Provider
+			templateCode = sendResp.Template
+		}
+
+		metrics.RecordSMSFailed(templateCode, provider, statusCode, smsDuration)
+
 		// 发送失败，退款
 		refundErr := quotaService.Refund(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents)
 		if refundErr != nil {
@@ -276,12 +292,24 @@ func (s *NotificationService) SendSMS(
 			return fmt.Errorf("failed to update task status: %w", err)
 		}
 
+		// 记录短信发送成功的监控指标
+		if sendResp != nil {
+			metrics.RecordSMSSent(
+				sendResp.Template,
+				sendResp.Provider,
+				smsDuration,
+				smsUnitPriceCents,
+			)
+		}
+
 		logger.Logger.Info("SMS sent and quota confirmed",
 			zap.Int64("task_code", taskCode),
 			zap.String("message_type", smsMsg.GetMessageType()),
 			zap.String("phone", smsMsg.GetPhone()),
 			zap.String("message_id", sendResp.MessageID),
 			zap.String("status_code", sendResp.StatusCode),
+			zap.Float64("duration_seconds", smsDuration),
+			zap.Int("cost_cents", smsUnitPriceCents),
 		)
 
 		return nil

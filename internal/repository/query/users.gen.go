@@ -359,26 +359,24 @@ func (u userDo) CountByStatus() (result []map[string]interface{}, err error) {
 	return
 }
 
-// GetWithQuotas 获取用户及额度信息（JOIN quota_transactions 计算余额）
+// GetWithQuotas 获取用户及额度信息（JOIN quota_wallets 查询余额）
 //
 // SELECT u.*,
 //
-//	COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-//	         SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance,
-//	COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-//	         SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance
+//	COALESCE(qw_sms.available_amount, 0) as sms_balance,
+//	COALESCE(qw_voice.available_amount, 0) as voice_balance
 //
 // FROM @@table u
-// LEFT JOIN quota_transactions qt ON qt.user_id = u.id
+// LEFT JOIN quota_wallets qw_sms ON qw_sms.user_id = u.id AND qw_sms.channel = 'sms'
+// LEFT JOIN quota_wallets qw_voice ON qw_voice.user_id = u.id AND qw_voice.channel = 'voice'
 // WHERE u.id = @userID
-// GROUP BY u.id
 // LIMIT 1
 func (u userDo) GetWithQuotas(userID int64) (result map[string]interface{}, err error) {
 	var params []interface{}
 
 	var generateSQL strings.Builder
 	params = append(params, userID)
-	generateSQL.WriteString("SELECT u.*, COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance, COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance FROM users u LEFT JOIN quota_transactions qt ON qt.user_id = u.id WHERE u.id = ? GROUP BY u.id LIMIT 1 ")
+	generateSQL.WriteString("SELECT u.*, COALESCE(qw_sms.available_amount, 0) as sms_balance, COALESCE(qw_voice.available_amount, 0) as voice_balance FROM users u LEFT JOIN quota_wallets qw_sms ON qw_sms.user_id = u.id AND qw_sms.channel = 'sms' LEFT JOIN quota_wallets qw_voice ON qw_voice.user_id = u.id AND qw_voice.channel = 'voice' WHERE u.id = ? LIMIT 1 ")
 
 	result = make(map[string]interface{})
 	var executeSQL *gorm.DB
@@ -392,22 +390,20 @@ func (u userDo) GetWithQuotas(userID int64) (result map[string]interface{}, err 
 //
 // SELECT u.*,
 //
-//	COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-//	         SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance,
-//	COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-//	         SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance
+//	COALESCE(qw_sms.available_amount, 0) as sms_balance,
+//	COALESCE(qw_voice.available_amount, 0) as voice_balance
 //
 // FROM @@table u
-// LEFT JOIN quota_transactions qt ON qt.user_id = u.id
+// LEFT JOIN quota_wallets qw_sms ON qw_sms.user_id = u.id AND qw_sms.channel = 'sms'
+// LEFT JOIN quota_wallets qw_voice ON qw_voice.user_id = u.id AND qw_voice.channel = 'voice'
 // WHERE u.public_id = @publicID
-// GROUP BY u.id
 // LIMIT 1
 func (u userDo) GetByPublicIDWithQuotas(publicID int64) (result map[string]interface{}, err error) {
 	var params []interface{}
 
 	var generateSQL strings.Builder
 	params = append(params, publicID)
-	generateSQL.WriteString("SELECT u.*, COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance, COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) - SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance FROM users u LEFT JOIN quota_transactions qt ON qt.user_id = u.id WHERE u.public_id = ? GROUP BY u.id LIMIT 1 ")
+	generateSQL.WriteString("SELECT u.*, COALESCE(qw_sms.available_amount, 0) as sms_balance, COALESCE(qw_voice.available_amount, 0) as voice_balance FROM users u LEFT JOIN quota_wallets qw_sms ON qw_sms.user_id = u.id AND qw_sms.channel = 'sms' LEFT JOIN quota_wallets qw_voice ON qw_voice.user_id = u.id AND qw_voice.channel = 'voice' WHERE u.public_id = ? LIMIT 1 ")
 
 	result = make(map[string]interface{})
 	var executeSQL *gorm.DB

@@ -127,7 +127,7 @@ func (s *UserService) GetUserProfile(
 		phoneVerified = ok && phoneHash != nil && *phoneHash != ""
 	}
 
-	var smsBalance, voiceBalance int
+	var smsBalance int
 	if smsVal, ok := resultMap["sms_balance"]; ok && smsVal != nil {
 		switch v := smsVal.(type) {
 		case int:
@@ -138,16 +138,7 @@ func (s *UserService) GetUserProfile(
 			smsBalance = int(v)
 		}
 	}
-	if voiceVal, ok := resultMap["voice_balance"]; ok && voiceVal != nil {
-		switch v := voiceVal.(type) {
-		case int:
-			voiceBalance = v
-		case int64:
-			voiceBalance = int(v)
-		case float64:
-			voiceBalance = int(v)
-		}
-	}
+	
 
 	result := &dto.UserProfileData{
 		ID:       strconv.FormatInt(publicID, 10),
@@ -167,7 +158,7 @@ func (s *UserService) GetUserProfile(
 		},
 		Quotas: dto.QuotaBalance{
 			SMSBalance:   smsBalance,
-			VoiceBalance: voiceBalance,
+			//VoiceBalance: voiceBalance,
 		},
 	}
 
@@ -179,6 +170,8 @@ func (s *UserService) GetUserProfile(
 // 这里最好还得做一个限流的部分
 // 考虑是否重新投递消息
 // 通过幂等性来过滤
+
+// put 方法要考虑返回值吗
 func (s *UserService) UpdateUserSettings(
 	ctx context.Context,
 	userID string,
@@ -199,6 +192,9 @@ func (s *UserService) UpdateUserSettings(
 
 	updates := make(map[string]interface{})
 
+	if req.NickName != nil {
+		updates["nick_name"] = *req.NickName
+	}
 	if req.DailyCheckInEnabled != nil {
 		updates["daily_check_in_enabled"] = *req.DailyCheckInEnabled
 	}
@@ -227,10 +223,12 @@ func (s *UserService) UpdateUserSettings(
 		zap.String("user_id", userID),
 		zap.Any("updates", updates),
 	)
+	//用户更新这里应该立即投递，放到消费者那边重新投递的话会无法做到新注册账号的投递
 
 	// 更新今日的用户缓存，如果 redis 中没有缓存的话，消息队列就可以直接发送，减少数据库回查, 更新而非失效
 	user, _ := query.User.GetByPublicID(userIDInt)
 	cache.SetUserSettings(ctx, userIDInt, &cache.UserSettingsCache{
+
 		DailyCheckInEnabled:    user.DailyCheckInEnabled,
 		DailyCheckInRemindAt:   user.DailyCheckInRemindAt,
 		DailyCheckInDeadline:   user.DailyCheckInDeadline,
@@ -257,41 +255,38 @@ func (s *UserService) GetUserQuotas(
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
-	// 查询 SMS 渠道最新余额
-	smsTransactions, err := query.QuotaTransaction.
-		Where(query.QuotaTransaction.UserID.Eq(user.ID)).
-		Where(query.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
-		Order(query.QuotaTransaction.CreatedAt.Desc()).
-		Limit(1).
-		Find()
-	if err != nil {
-		return nil, fmt.Errorf("failed to query SMS quota: %w", err)
+	// 使用新的 QuotaWallet 系统查询额度
+	smsWallet, err := query.QuotaWallet.
+		Where(query.QuotaWallet.UserID.Eq(user.ID)).
+		Where(query.QuotaWallet.Channel.Eq(string(model.QuotaChannelSMS))).
+		First()
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to query SMS quota wallet: %w", err)
 	}
 
-	// 查询 Voice 渠道最新余额
-	// voiceTransactions, err := query.QuotaTransaction.
-	// 	Where(query.QuotaTransaction.UserID.Eq(user.ID)).
-	// 	Where(query.QuotaTransaction.Channel.Eq(string(model.QuotaChannelVoice))).
-	// 	Order(query.QuotaTransaction.CreatedAt.Desc()).
-	// 	Limit(1).
-	// 	Find()
-	// if err != nil {
-	// 	return nil, fmt.Errorf("failed to query voice quota: %w", err)
+	// 查询 Voice 渠道额度
+	// voiceWallet, err := query.QuotaWallet.
+	// 	Where(query.QuotaWallet.UserID.Eq(user.ID)).
+	// 	Where(query.QuotaWallet.Channel.Eq(string(model.QuotaChannelVoice))).
+	// 	First()
+	// if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+	// 	return nil, fmt.Errorf("failed to query voice quota wallet: %w", err)
 	// }
 
-	var smsBalance, voiceBalance int
-	if len(smsTransactions) > 0 {
-		smsBalance = smsTransactions[0].BalanceAfter
+	var smsBalance int
+	if smsWallet != nil {
+		smsBalance = smsWallet.AvailableAmount
 	}
-	// if len(voiceTransactions) > 0 {
-	// 	voiceBalance = voiceTransactions[0].BalanceAfter
+	// var voiceBalance int
+	// if voiceWallet != nil {
+	// 	voiceBalance = voiceWallet.AvailableAmount
 	// }
 
 	result := &dto.QuotaBalance{
 		SMSBalance:     smsBalance,
-		VoiceBalance:   voiceBalance,
+		//VoiceBalance:   voiceBalance,
 		SMSUnitPrice:   0.05,
-		VoiceUnitPrice: 0.1,
+		//VoiceUnitPrice: 0.1,
 	}
 
 	return result, nil

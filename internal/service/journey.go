@@ -358,6 +358,7 @@ func (s *JourneyService) GetJourneyDetail(
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
+	// 使用优化查询，避免多次查询
 	journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -368,7 +369,6 @@ func (s *JourneyService) GetJourneyDetail(
 		}
 		return nil, fmt.Errorf("failed to query journey: %w", err)
 	}
-
 
 	return &dto.JourneyDetail{
 		JourneyItem: dto.JourneyItem{
@@ -522,21 +522,14 @@ func (s *JourneyService) ProcessTimeout(
         return fmt.Errorf("failed to query user: %w", err)
     }
 
-    // 检查用户额度
-    smsTransactions, err := q.QuotaTransaction.
-        Where(q.QuotaTransaction.UserID.Eq(user.ID)).
-        Where(q.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
-        Order(q.QuotaTransaction.CreatedAt.Desc()).
-        Limit(1).
-        Find()
+    // 检查用户额度 - 使用新的 QuotaService
+    quotaService := Quota()
+    wallet, err := quotaService.GetWallet(ctx, user.ID, model.QuotaChannelSMS)
     if err != nil {
-        return fmt.Errorf("failed to query SMS quota: %w", err)
+        return fmt.Errorf("failed to query SMS quota wallet: %w", err)
     }
 
-    var smsBalance int
-    if len(smsTransactions) > 0 {
-        smsBalance = smsTransactions[0].BalanceAfter
-    }
+    smsBalance := wallet.AvailableAmount
 
     contactCount := len(user.EmergencyContacts)
     smsUnitPriceCents := 5

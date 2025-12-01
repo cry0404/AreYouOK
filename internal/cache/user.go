@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	ri "github.com/redis/go-redis/v9"
 	"strconv"
 	"time"
 )
@@ -22,11 +21,12 @@ type TimeRange struct {
 	End   string `json:"end"`
 }
 
+// UserSettingsCache 用户设置缓存结构
 type UserSettingsCache struct {
-	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
-	DailyCheckInRemindAt   string `json:"daily_check_in_remind_at"`
-	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
-	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
+	DailyCheckInEnabled    bool      `json:"daily_check_in_enabled"`
+	DailyCheckInRemindAt   string    `json:"daily_check_in_remind_at"`
+	DailyCheckInDeadline   string    `json:"daily_check_in_deadline"`
+	DailyCheckInGraceUntil string    `json:"daily_check_in_grace_until"`
 
 	// Status                 string `json:"status"`   用户状态用户无法改变
 	DailyCheckInTimeRange *TimeRange `json:"daily_check_in_time_range,omitempty"` // {"start": "08:00:00", "end": "20:00:00"}
@@ -37,70 +37,74 @@ type UserSettingsCache struct {
 //如果更新了，在缓存中就能获取，如果没更新，直接就可以发送，所以发送前只需要检查缓存
 
 func SetUserSettings(ctx context.Context, userID int64, settings *UserSettingsCache) error {
-	key := redis.Key(userSettingsPrefix, strconv.FormatInt(userID, 10))
-	data, _ := json.Marshal(settings)
+	key := strconv.FormatInt(userID, 10)
+	cache := UserSettingsProtectedCache
 
-	return redis.Client().Set(ctx, key, data, userSettingsTTL).Err()
+	return cache.Set(ctx, key, settings)
 }
 
-// 获取用户缓存设置, 去除 userSettingCache
+// 获取用户缓存设置, 去除 userSettingCache（带空值保护）
 
 func GetUserSettings(ctx context.Context, userID int64) (*UserSettingsCache, error) {
-	key := redis.Key(userSettingsPrefix, strconv.FormatInt(userID, 10))
+	key := strconv.FormatInt(userID, 10)
+	var settings UserSettingsCache
 
-	data, err := redis.Client().Get(ctx, key).Result()
+	cache := UserSettingsProtectedCache
+	hit, err := cache.Get(ctx, key, &settings)
 	if err != nil {
 		return nil, err
 	}
 
-	var settings UserSettingsCache
-	if err := json.Unmarshal([]byte(data), &settings); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal user settings: %w", err)
+	if hit {
+		if IsEmptyValue(&settings) {
+			return nil, nil // 空值命中
+		}
+		return &settings, nil
 	}
 
-	return &settings, nil
+	return nil, nil // 缓存未命中
 }
 
-// BatchGetUserSettings 批量获取用户设置缓存 （使用 pipeline ）
+// BatchGetUserSettings 批量获取用户设置缓存（带空值保护和防雪崩）
 
 func BatchGetUserSettings(ctx context.Context, userIDs []int64) (map[int64]*UserSettingsCache, error) {
 	if len(userIDs) == 0 {
 		return make(map[int64]*UserSettingsCache), nil
 	}
 
-	pipe := redis.Client().Pipeline()
-	// 开启一个 pipeline ，通过 pipeline 快速获取 redis 中的内容
-	cmds := make(map[int64]*ri.StringCmd)
-
-	for _, userID := range userIDs {
-		key := redis.Key(userSettingsPrefix, strconv.FormatInt(userID, 10))
-		cmds[userID] = pipe.Get(ctx, key)
+	// 转换为字符串键
+	keys := make([]string, len(userIDs))
+	for i, userID := range userIDs {
+		keys[i] = strconv.FormatInt(userID, 10)
 	}
 
-	_, err := pipe.Exec(ctx)
+	cache := UserSettingsProtectedCache
 
-	if err != nil && err != ri.Nil {
+	// 批量获取缓存（自带防雪崩随机延迟）
+	result, err := cache.BatchGet(ctx, keys, func(key string) interface{} {
+		return &UserSettingsCache{}
+	})
+
+	if err != nil {
 		return nil, fmt.Errorf("failed to batch get user settings: %w", err)
 	}
 
-	result := make(map[int64]*UserSettingsCache)
-	for userID, cmd := range cmds {
-		data, err := cmd.Result()
-		if err != nil {
-			// 缓存未命中，跳过
+	// 转换结果为正确的类型
+	settingsMap := make(map[int64]*UserSettingsCache)
+	for keyStr, value := range result {
+		if IsEmptyValue(value) {
+			// 空值，跳过
 			continue
 		}
 
-		var settings UserSettingsCache
-		if err := json.Unmarshal([]byte(data), &settings); err != nil {
-			// 反序列化失败，跳过
-			continue
+		if settings, ok := value.(*UserSettingsCache); ok {
+			if userID, err := strconv.ParseInt(keyStr, 10, 64); err == nil {
+				settingsMap[userID] = settings
+			}
 		}
-
-		result[userID] = &settings
 	}
 
-	return result, nil
+	return settingsMap, nil
 } //批量获取用户缓存，没有获取到的，就说明没有改变，可以直接发送
 
 func BatchSetUserSettings(ctx context.Context, settingsMap map[int64]*UserSettingsCache) error {

@@ -556,6 +556,31 @@ func (s *CheckInService) ProcessTimeoutBatch(
 	return db.Transaction(func(tx *gorm.DB) error {
 		txQ := query.Use(tx)
 
+		// 提取所有需要检查额度的用户ID，进行批量查询
+		var userIDsForQuota []int64
+		for _, publicID := range userIDs {
+			if user, ok := userMap[publicID]; ok {
+				if checkIn, exists := checkInMap[user.ID]; exists && checkIn.AlertTriggeredAt == nil {
+					userIDsForQuota = append(userIDsForQuota, user.ID)
+				}
+			}
+		}
+
+		// 批量查询额度钱包，避免 N+1 查询
+		quotaService := Quota()
+		walletMap := make(map[int64]*model.QuotaWallet)
+		for _, userID := range userIDsForQuota {
+			wallet, err := quotaService.GetWallet(ctx, userID, model.QuotaChannelSMS)
+			if err != nil {
+				logger.Logger.Error("Failed to query SMS quota wallet",
+					zap.Int64("user_id", userID),
+					zap.Error(err),
+				)
+				continue // 跳过这个用户
+			}
+			walletMap[userID] = wallet
+		}
+
 		for _, publicID := range userIDs {
 			user, ok := userMap[publicID]
 			if !ok {
@@ -583,24 +608,16 @@ func (s *CheckInService) ProcessTimeoutBatch(
 				continue
 			}
 
-			smsTransactions, err := txQ.QuotaTransaction.
-				Where(txQ.QuotaTransaction.UserID.Eq(user.ID)).
-				Where(txQ.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
-				Order(txQ.QuotaTransaction.CreatedAt.Desc()).
-				Limit(1).
-				Find()
-			if err != nil {
-				logger.Logger.Error("Failed to query SMS quota",
+			// 使用批量查询的额度信息
+			wallet, ok := walletMap[user.ID]
+			if !ok {
+				logger.Logger.Warn("No quota wallet found for user",
 					zap.Int64("user_id", user.ID),
-					zap.Error(err),
 				)
-				continue // 跳过这个用户
+				continue
 			}
 
-			var smsBalance int
-			if len(smsTransactions) > 0 {
-				smsBalance = smsTransactions[0].BalanceAfter
-			}
+			smsBalance := wallet.AvailableAmount
 
 			smsUnitPriceCents := 5
 			contactCount := len(user.EmergencyContacts)

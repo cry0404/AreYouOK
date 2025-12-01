@@ -1,5 +1,9 @@
 package model
 
+import (
+	"time"
+)
+
 // QuotaChannel 额度渠道枚举
 type QuotaChannel string
 
@@ -7,6 +11,24 @@ const (
 	QuotaChannelSMS   QuotaChannel = "sms"
 	//QuotaChannelVoice QuotaChannel = "voice"  --废弃，不再支持
 )
+
+// QuotaWallet 额度钱包模型
+type QuotaWallet struct {
+	ID             int64         `gorm:"primaryKey" json:"id"`
+	UserID         int64         `gorm:"not null;index:idx_quota_user_channel_frozen" json:"user_id"`
+	Channel        QuotaChannel  `gorm:"type:varchar(16);not null;index:idx_quota_user_channel_frozen" json:"channel"`
+	AvailableAmount int          `gorm:"not null;default:0" json:"available_amount"`
+	FrozenAmount   int          `gorm:"not null;default:0" json:"frozen_amount"`
+	UsedAmount     int          `gorm:"not null;default:0" json:"used_amount"`
+	TotalGranted   int          `gorm:"not null;default:0" json:"total_granted"`
+	CreatedAt      time.Time    `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time    `gorm:"not null" json:"updated_at"`
+}
+
+// TableName 指定表名
+func (QuotaWallet) TableName() string {
+	return "quota_wallets"
+}
 
 // TransactionType 交易类型枚举
 type TransactionType string

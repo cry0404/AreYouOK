@@ -1,6 +1,6 @@
-.PHONY: gen help format fmt run-api run-worker build-api build-worker
+.PHONY: gen help format fmt run-api run-worker build-api build-worker test test-producer test-consumer test-v test-cover
 
-help: 
+help:
 	@echo "Available commands:"
 	@echo "  make gen         - 生成 GORM Gen 代码"
 	@echo "  make run-api     - 启动 API 服务"
@@ -70,3 +70,4 @@ lint:
 
 lint-fix:
 	@golangci-lint run --fix
+

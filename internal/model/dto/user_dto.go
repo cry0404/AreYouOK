@@ -32,6 +32,7 @@ type UserSettingsDTO struct {
 
 // UpdateUserSettingsRequest 更新用户设置请求
 type UpdateUserSettingsRequest struct {
+	NickName			   *string `json:"nick_name"`
 	DailyCheckInEnabled    *bool   `json:"daily_check_in_enabled"`
 	DailyCheckInDeadline   *string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil *string `json:"daily_check_in_grace_until"`
@@ -50,9 +51,9 @@ type UserStatusData struct {
 // QuotaBalance 额度余额
 type QuotaBalance struct {
 	SMSBalance     int     `json:"sms_balance"`
-	VoiceBalance   int     `json:"voice_balance"`
+	//VoiceBalance   int     `json:"voice_balance"`
 	SMSUnitPrice   float32 `json:"sms_unit_price,omitempty"`
-	VoiceUnitPrice float32 `json:"voice_unit_price,omitempty"`
+	//VoiceUnitPrice float32 `json:"voice_unit_price,omitempty"`
 }
 
 type WaitlistStatusData struct {

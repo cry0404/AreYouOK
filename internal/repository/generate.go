@@ -61,31 +61,27 @@ type UserQuerier interface {
 	// GROUP BY status
 	CountByStatus() ([]gen.M, error)
 
-	// GetWithQuotas 获取用户及额度信息（JOIN quota_transactions 计算余额）
+	// GetWithQuotas 获取用户及额度信息（JOIN quota_wallets 查询余额）
 	//
 	// SELECT u.*,
-	//   COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-	//            SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance,
-	//   COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-	//            SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance
+	//   COALESCE(qw_sms.available_amount, 0) as sms_balance,
+	//   COALESCE(qw_voice.available_amount, 0) as voice_balance
 	// FROM @@table u
-	// LEFT JOIN quota_transactions qt ON qt.user_id = u.id
+	// LEFT JOIN quota_wallets qw_sms ON qw_sms.user_id = u.id AND qw_sms.channel = 'sms'
+	// LEFT JOIN quota_wallets qw_voice ON qw_voice.user_id = u.id AND qw_voice.channel = 'voice'
 	// WHERE u.id = @userID
-	// GROUP BY u.id
 	// LIMIT 1
 	GetWithQuotas(userID int64) (gen.M, error)
 
 	// GetByPublicIDWithQuotas 根据 PublicID 获取用户及额度信息（API 常用）
 	//
 	// SELECT u.*,
-	//   COALESCE(SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-	//            SUM(CASE WHEN qt.channel = 'sms' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as sms_balance,
-	//   COALESCE(SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'grant' THEN qt.amount ELSE 0 END) -
-	//            SUM(CASE WHEN qt.channel = 'voice' AND qt.transaction_type = 'deduct' THEN qt.amount ELSE 0 END), 0) as voice_balance
+	//   COALESCE(qw_sms.available_amount, 0) as sms_balance,
+	//   COALESCE(qw_voice.available_amount, 0) as voice_balance
 	// FROM @@table u
-	// LEFT JOIN quota_transactions qt ON qt.user_id = u.id
+	// LEFT JOIN quota_wallets qw_sms ON qw_sms.user_id = u.id AND qw_sms.channel = 'sms'
+	// LEFT JOIN quota_wallets qw_voice ON qw_voice.user_id = u.id AND qw_voice.channel = 'voice'
 	// WHERE u.public_id = @publicID
-	// GROUP BY u.id
 	// LIMIT 1
 	GetByPublicIDWithQuotas(publicID int64) (gen.M, error)
 }
@@ -523,6 +519,7 @@ func Generate() error {
 		&model.DailyCheckIn{},
 		&model.Journey{},
 		&model.NotificationTask{},
+		&model.QuotaWallet{},    // 添加 QuotaWallet model
 		&model.QuotaTransaction{},
 		&model.ContactAttempt{}, // 添加 ContactAttempt model
 	)

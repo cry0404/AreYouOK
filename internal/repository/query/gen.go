@@ -22,6 +22,7 @@ var (
 	Journey          *journey
 	NotificationTask *notificationTask
 	QuotaTransaction *quotaTransaction
+	QuotaWallet      *quotaWallet
 	User             *user
 )
 
@@ -32,6 +33,7 @@ func SetDefault(db *gorm.DB, opts ...gen.DOOption) {
 	Journey = &Q.Journey
 	NotificationTask = &Q.NotificationTask
 	QuotaTransaction = &Q.QuotaTransaction
+	QuotaWallet = &Q.QuotaWallet
 	User = &Q.User
 }
 
@@ -43,6 +45,7 @@ func Use(db *gorm.DB, opts ...gen.DOOption) *Query {
 		Journey:          newJourney(db, opts...),
 		NotificationTask: newNotificationTask(db, opts...),
 		QuotaTransaction: newQuotaTransaction(db, opts...),
+		QuotaWallet:      newQuotaWallet(db, opts...),
 		User:             newUser(db, opts...),
 	}
 }
@@ -55,6 +58,7 @@ type Query struct {
 	Journey          journey
 	NotificationTask notificationTask
 	QuotaTransaction quotaTransaction
+	QuotaWallet      quotaWallet
 	User             user
 }
 
@@ -68,6 +72,7 @@ func (q *Query) clone(db *gorm.DB) *Query {
 		Journey:          q.Journey.clone(db),
 		NotificationTask: q.NotificationTask.clone(db),
 		QuotaTransaction: q.QuotaTransaction.clone(db),
+		QuotaWallet:      q.QuotaWallet.clone(db),
 		User:             q.User.clone(db),
 	}
 }
@@ -88,6 +93,7 @@ func (q *Query) ReplaceDB(db *gorm.DB) *Query {
 		Journey:          q.Journey.replaceDB(db),
 		NotificationTask: q.NotificationTask.replaceDB(db),
 		QuotaTransaction: q.QuotaTransaction.replaceDB(db),
+		QuotaWallet:      q.QuotaWallet.replaceDB(db),
 		User:             q.User.replaceDB(db),
 	}
 }
@@ -98,6 +104,7 @@ type queryCtx struct {
 	Journey          IJourneyDo
 	NotificationTask INotificationTaskDo
 	QuotaTransaction IQuotaTransactionDo
+	QuotaWallet      IQuotaWalletDo
 	User             IUserDo
 }
 
@@ -108,6 +115,7 @@ func (q *Query) WithContext(ctx context.Context) *queryCtx {
 		Journey:          q.Journey.WithContext(ctx),
 		NotificationTask: q.NotificationTask.WithContext(ctx),
 		QuotaTransaction: q.QuotaTransaction.WithContext(ctx),
+		QuotaWallet:      q.QuotaWallet.WithContext(ctx),
 		User:             q.User.WithContext(ctx),
 	}
 }

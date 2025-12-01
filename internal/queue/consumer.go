@@ -290,9 +290,44 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 		checkInService := service.CheckIn()
 		err = checkInService.ProcessTimeoutBatch(ctx, msg.UserIDs, msg.CheckInDate)
 		if err != nil {
-			// 处理失败，取消标记，允许重试
+			// 1. 可跳过的错误：标记为已处理，不重试
+			if errors.IsSkipMessageError(err) {
+				logger.Logger.Info("Skipping check-in timeout batch processing",
+					zap.String("message_id", msg.MessageID),
+					zap.String("reason", err.(*errors.SkipMessageError).Reason),
+					zap.Error(err),
+				)
+				// 标记为已处理，避免重复处理
+				if markErr := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); markErr != nil {
+					logger.Logger.Warn("Failed to mark skipped message as processed",
+						zap.String("message_id", msg.MessageID),
+						zap.Error(markErr),
+					)
+				}
+				return nil // 返回 nil 表示成功处理（跳过）
+			}
+
+			// 2. 不可重试错误：记录日志并发送到死信队列
+			if errors.IsNonRetryableError(err) {
+				logger.Logger.Error("Non-retryable error in check-in timeout batch, message will be sent to DLQ",
+					zap.String("message_id", msg.MessageID),
+					zap.String("error_code", err.(*errors.NonRetryableError).Code),
+					zap.String("reason", err.(*errors.NonRetryableError).Reason),
+					zap.Error(err),
+				)
+				// 取消处理标记，让 RabbitMQ 发送到死信队列
+				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				return fmt.Errorf("non-retryable error in check-in timeout: %w", err)
+			}
+
+			// 3. 其他可重试错误：取消标记，允许重试
+			logger.Logger.Warn("Retryable error in check-in timeout batch processing, will retry",
+				zap.String("message_id", msg.MessageID),
+				zap.Int("user_count", len(msg.UserIDs)),
+				zap.Error(err),
+			)
 			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-			return fmt.Errorf("failed to process timeout batch: %w", err)
+			return fmt.Errorf("failed to process timeout batch (will retry): %w", err)
 		}
 
 		db := database.DB().WithContext(ctx)
@@ -395,13 +430,45 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 		journeyService := service.Journey()
 		err = journeyService.ProcessTimeout(ctx, msg.JourneyID, msg.UserID)
 		if err != nil {
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-			logger.Logger.Error("Failed to process journey timeout",
+			// 1. 可跳过的错误：标记为已处理，不重试
+			if errors.IsSkipMessageError(err) {
+				logger.Logger.Info("Skipping journey timeout processing",
+					zap.String("message_id", msg.MessageID),
+					zap.String("reason", err.(*errors.SkipMessageError).Reason),
+					zap.Error(err),
+				)
+				// 标记为已处理，避免重复处理
+				if markErr := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); markErr != nil {
+					logger.Logger.Warn("Failed to mark skipped message as processed",
+						zap.String("message_id", msg.MessageID),
+						zap.Error(markErr),
+					)
+				}
+				return nil // 返回 nil 表示成功处理（跳过）
+			}
+
+			// 2. 不可重试错误：记录日志并发送到死信队列
+			if errors.IsNonRetryableError(err) {
+				logger.Logger.Error("Non-retryable error in journey timeout, message will be sent to DLQ",
+					zap.String("message_id", msg.MessageID),
+					zap.String("error_code", err.(*errors.NonRetryableError).Code),
+					zap.String("reason", err.(*errors.NonRetryableError).Reason),
+					zap.Error(err),
+				)
+				// 取消处理标记，让 RabbitMQ 发送到死信队列
+				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				return fmt.Errorf("non-retryable error in journey timeout: %w", err)
+			}
+
+			// 3. 其他可重试错误：取消标记，允许重试
+			logger.Logger.Warn("Retryable error in journey timeout processing, will retry",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("journey_id", msg.JourneyID),
+				zap.Int64("user_id", msg.UserID),
 				zap.Error(err),
 			)
-			return fmt.Errorf("failed to process journey timeout: %w", err)
+			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			return fmt.Errorf("failed to process journey timeout (will retry): %w", err)
 		}
 
 		// 发布通知消息到队列（类似打卡超时的逻辑）
@@ -532,10 +599,15 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			msg.Payload,
 		)
 
-		//这里的逻辑存在问题，应该允许充值，不应该直接上锁从而不再处理
+		// 改进的错误处理逻辑
 		if err != nil {
-			// 如果是 SkipMessageError，标记为已处理并跳过（不重试）
+			// 1. 可跳过的错误：标记为已处理，不重试
 			if errors.IsSkipMessageError(err) {
+				logger.Logger.Info("Skipping message processing",
+					zap.String("message_id", msg.MessageID),
+					zap.String("reason", err.(*errors.SkipMessageError).Reason),
+					zap.Error(err),
+				)
 				// 标记为已处理，避免重复处理
 				if markErr := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); markErr != nil {
 					logger.Logger.Warn("Failed to mark skipped message as processed",
@@ -543,12 +615,49 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 						zap.Error(markErr),
 					)
 				}
-				return err
+				return nil // 返回 nil 表示成功处理（跳过）
 			}
 
-			// 其他错误：取消标记，允许重试
+			// 2. 不可重试错误：记录日志并发送到死信队列（通过返回错误让 RabbitMQ 处理）
+			if errors.IsNonRetryableError(err) {
+				logger.Logger.Error("Non-retryable error occurred, message will be sent to DLQ",
+					zap.String("message_id", msg.MessageID),
+					zap.String("error_code", err.(*errors.NonRetryableError).Code),
+					zap.String("reason", err.(*errors.NonRetryableError).Reason),
+					zap.Error(err),
+				)
+				// 取消处理标记，让 RabbitMQ 发送到死信队列
+				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				return fmt.Errorf("non-retryable error: %w", err)
+			}
+
+			// 3. 额度不足错误：特殊处理，发布额度耗尽事件
+			if err == errors.QuotaInsufficient {
+				logger.Logger.Warn("Quota insufficient for user",
+					zap.String("message_id", msg.MessageID),
+					zap.Int64("user_id", msg.UserID),
+					zap.String("channel", "sms"),
+					zap.Error(err),
+				)
+				// TODO: 发布额度耗尽事件到事件队列，提醒用户充值
+				// 目前先标记为跳过，避免无限重试
+				if markErr := cache.MarkMessageProcessed(ctx, msg.MessageID, 24*time.Hour); markErr != nil {
+					logger.Logger.Warn("Failed to mark quota insufficient message as processed",
+						zap.String("message_id", msg.MessageID),
+						zap.Error(markErr),
+					)
+				}
+				return nil
+			}
+
+			// 4. 其他可重试错误：取消标记，允许重试
+			logger.Logger.Warn("Retryable error occurred, will retry",
+				zap.String("message_id", msg.MessageID),
+				zap.Int64("user_id", msg.UserID),
+				zap.Error(err),
+			)
 			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
-			return fmt.Errorf("failed to send SMS: %w", err)
+			return fmt.Errorf("failed to send SMS (will retry): %w", err)
 		}
 
 		// 处理成功，标记为已完成
