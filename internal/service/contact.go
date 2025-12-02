@@ -12,6 +12,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"AreYouOK/config"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/model/dto"
 	"AreYouOK/internal/repository/query"
@@ -39,6 +40,8 @@ type ContactService struct{}
 
 // 应该是一个一个添加的
 // CreateContact 创建一个新的联系人，但不超过三，需要更新优先级，以及注册的 status
+
+// 生产环境中紧急联系人还不应该是自己
 func (s *ContactService) CreateContact(
 	ctx context.Context,
 	userID string,
@@ -88,6 +91,13 @@ func (s *ContactService) CreateContact(
 
 	phoneHash := utils.HashPhone(req.Phone)
 
+	// 防止将自己设为紧急联系人
+	if config.Cfg.Environment == "production" {
+		if phoneHash == *user.PhoneHash {
+			return nil, fmt.Errorf("emergencyContact can not be yourself")
+		}
+	}
+	
 	newContact := model.EmergencyContact{
 		DisplayName:       req.DisplayName,
 		Relationship:      req.Relationship,
@@ -180,7 +190,7 @@ func (s *ContactService) ListContacts(
 			continue
 		}
 
-		phoneMasked := utils.MaskPhone(phone)
+		phoneMasked := phone //直接返回不保密的部分
 
 		createdAt, _ := time.Parse(time.RFC3339, contact.CreatedAt)
 

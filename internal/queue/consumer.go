@@ -104,125 +104,15 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			}
 		}
 
-		// 3. 处理 Republish 用户（设置已变更）
-		// 需要重新查询用户设置并按提醒时间分组投放消息
+		// 3. 对于 Republish 用户（设置已变更），不再在消费者侧重新投递
+		//    现在由用户设置更新接口在写路径上同步构建并发布新的提醒消息，
+		//    这里仅记录日志，原消息视为处理完成。
 		if len(validationResult.Republish) > 0 {
-			logger.Logger.Debug("Republishing messages for users with changed settings",
+			logger.Logger.Info("Users with changed settings will rely on write-path rescheduling, skipping republish in consumer",
 				zap.String("message_id", msg.MessageID),
 				zap.Int("republish_count", len(validationResult.Republish)),
 				zap.String("check_in_date", msg.CheckInDate),
 			)
-
-			// 查询这些用户的最新设置（重新投递需要最新的设置快照）
-			users, err := query.User.WithContext(ctx).
-				Where(query.User.PublicID.In(validationResult.Republish...)).
-				Find()
-			if err != nil {
-				logger.Logger.Error("Failed to query user settings for republish",
-					zap.String("message_id", msg.MessageID),
-					zap.Error(err),
-				)
-				// 即使查询失败，也继续处理，记录错误但不阻塞主流程
-			} else {
-				// 按提醒时间分组用户（不同的提醒时间需要不同的延迟）
-				// key: remindAt, value: 该时间的用户列表
-				userGroups := make(map[string][]*model.User)
-
-				for _, user := range users {
-					if !user.DailyCheckInEnabled || user.Status != model.UserStatusActive {
-						// 用户关闭了打卡或状态不是active，跳过
-						continue
-					}
-
-					remindAt := user.DailyCheckInRemindAt
-					if remindAt == "" {
-						remindAt = "20:00:00" // 默认提醒时间
-					}
-
-					userGroups[remindAt] = append(userGroups[remindAt], user)
-				}
-
-				// 为每个提醒时间组生成独立的消息
-				currentTime := time.Now()
-				for remindAt, usersInGroup := range userGroups {
-					// 构建该组的 userSettings
-					userSettings := make(map[string]model.UserSettingSnapshot)
-					for _, user := range usersInGroup {
-						userIDStr := fmt.Sprintf("%d", user.PublicID)
-						userSettings[userIDStr] = model.UserSettingSnapshot{
-							RemindAt:   user.DailyCheckInRemindAt,
-							Deadline:   user.DailyCheckInDeadline,
-							GraceUntil: user.DailyCheckInGraceUntil,
-							Timezone:   user.Timezone,
-						}
-					}
-
-					// 计算延迟时间：从当前时间到提醒时间的秒数
-					// 解析提醒时间
-					remindTime, err := time.Parse("15:04:05", remindAt)
-					if err != nil {
-						logger.Logger.Error("Failed to parse remindAt time",
-							zap.String("remindAt", remindAt),
-							zap.String("message_id", msg.MessageID),
-							zap.Error(err),
-						)
-						continue // 跳过这个组
-					}
-
-					// 在今天的日期基础上设置提醒时间
-					today := currentTime.Truncate(24 * time.Hour)
-					remindDateTime := time.Date(
-						today.Year(), today.Month(), today.Day(),
-						remindTime.Hour(), remindTime.Minute(), remindTime.Second(),
-						0, currentTime.Location(),
-					)
-
-					// 如果提醒时间已过，应该直接丢弃，甚至不会到这一层，因为在上一层的 service 中对应的修改消息就会被丢弃
-					if remindDateTime.Before(currentTime) {
-						remindDateTime = remindDateTime.Add(24 * time.Hour)
-					}
-
-					// 计算延迟秒数
-					delaySeconds := int(remindDateTime.Sub(currentTime).Seconds())
-					if delaySeconds < 0 {
-						delaySeconds = 0 // 最小延迟为0（立即发送）
-					}
-
-					// 生成新的 batch ID
-					newBatchID := fmt.Sprintf("republish_%s_%s_%d",
-						msg.BatchID, remindAt, time.Now().Unix())
-
-					// 构建新的消息
-					republishMsg := model.CheckInReminderMessage{
-						MessageID:    fmt.Sprintf("ci_reminder_rep_%s_%d", remindAt, time.Now().UnixNano()),
-						BatchID:      newBatchID,
-						CheckInDate:  msg.CheckInDate,
-						ScheduledAt:  currentTime.Format(time.RFC3339),
-						UserSettings: userSettings,
-						DelaySeconds: delaySeconds,
-					}
-
-					// 发布到队列（重新投递）
-					if err := PublishCheckInReminder(republishMsg); err != nil {
-						logger.Logger.Error("Failed to publish republish message",
-							zap.String("original_message_id", msg.MessageID),
-							zap.String("new_batch_id", newBatchID),
-							zap.String("remind_at", remindAt),
-							zap.Int("user_count", len(usersInGroup)),
-							zap.Int("delay_seconds", delaySeconds),
-							zap.Error(err),
-						)
-					} else {
-						logger.Logger.Debug("Successfully published republish message",
-							zap.String("original_message_id", msg.MessageID),
-							zap.String("new_batch_id", newBatchID),
-							zap.String("remind_at", remindAt),
-							zap.Int("user_count", len(usersInGroup)),
-							zap.Int("delay_seconds", delaySeconds),
-						)
-					}
-				}
-			}
 		}
 
 		logger.Logger.Debug("Successfully processed check-in reminder batch",

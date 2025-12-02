@@ -11,6 +11,7 @@ func Register(h *server.Hertz) {
 
 	h.Use(middleware.RecoverMiddleware())
 	h.Use(middleware.CORSMiddleware())
+	h.Use(middleware.OpenTelemetryMiddleware())
 	//h.Use(middleware.CSRFMiddleware()) csrf 中间件，支付宝小程序似乎不需要
 	v1 := h.Group("/v1")
 
@@ -38,7 +39,7 @@ func Register(h *server.Hertz) {
 	{
 		users.GET("/me/status", handler.GetUserStatus)
 		users.GET("/me", handler.GetUserProfile)
-		users.PUT("/me/settings", middleware.UserSettingsRateLimitMiddleware(), handler.UpdateUserSettings) // 用户设置修改限流
+		users.PUT("/me/settings", /*middleware.UserSettingsRateLimitMiddleware(),*/ handler.UpdateUserSettings) // 用户设置修改限流
 		users.GET("/me/quotas", handler.GetUserQuotas)
 	}
 

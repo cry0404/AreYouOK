@@ -44,7 +44,7 @@ func (s *QuotaService) PreDeduct(ctx context.Context, userID int64, channel mode
 		if err := tx.Where("user_id = ? AND channel = ?", userID, channel).
 			First(&wallet).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
-				// 钱包不存在，创建新钱包, 理论上来讲，用户创建的时候钱包j
+				// 钱包不存在，创建新钱包, 理论上来讲，用户创建的时候钱包就已经创建好了
 				wallet = model.QuotaWallet{
 					UserID:          userID,
 					Channel:         channel,

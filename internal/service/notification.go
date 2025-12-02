@@ -1,6 +1,15 @@
 package service
 
 import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"sync"
+	"time"
+
+	"go.uber.org/zap"
+	"gorm.io/gorm"
+
 	"AreYouOK/config"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/repository/query"
@@ -9,18 +18,20 @@ import (
 	"AreYouOK/pkg/metrics"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/storage/database"
-	"context"
-
-	"fmt"
-	"sync"
-	"time"
-
-	"go.uber.org/zap"
-	"gorm.io/gorm"
+	"AreYouOK/utils"
 )
 
 // 基于 task_id 来实现幂等性， message_id 来实现幂等性？或者统一为 message_id
 type NotificationService struct{}
+
+// truncateErrorMessage 截断错误消息以适应数据库字段长度限制
+func truncateErrorMessage(message string) string {
+	if len(message) <= 250 {
+		return message
+	}
+	// 保留前247个字符，添加 "..." 表示截断
+	return message[:247] + "..."
+}
 
 var (
 	notificationService *NotificationService
@@ -126,13 +137,40 @@ func (s *NotificationService) SendSMS(
 				"status":            model.NotificationTaskStatusFailed,
 				"processed_at":      now,
 				"sms_status_code":   "PARSE_ERROR",
-				"sms_error_message": err.Error(),
+				"sms_error_message": truncateErrorMessage(err.Error()),
 			})
 		if updateErr != nil {
 			logger.Logger.Error("Failed to update task status", zap.Error(updateErr))
 		}
 		return &errors.SkipMessageError{Reason: fmt.Sprintf("failed to parse SMS message: %v", err)}
 	}
+
+	phone, err := resolveNotificationPhone(user, task, phoneHash)
+	if err != nil {
+		refundErr := quotaService.Refund(ctx, user.ID, model.QuotaChannelSMS, smsUnitPriceCents)
+		if refundErr != nil {
+			logger.Logger.Error("Failed to refund quota after phone resolution failure",
+				zap.Int64("user_id", user.ID),
+				zap.Error(refundErr),
+			)
+		}
+
+		now := time.Now()
+		_, updateErr := q.NotificationTask.WithContext(ctx).
+			Where(q.NotificationTask.ID.Eq(task.ID)).
+			Updates(map[string]interface{}{
+				"status":            model.NotificationTaskStatusFailed,
+				"processed_at":      now,
+				"sms_status_code":   "PHONE_NOT_FOUND",
+				"sms_error_message": truncateErrorMessage(err.Error()),
+			})
+		if updateErr != nil {
+			logger.Logger.Error("Failed to update task status after phone resolution failure", zap.Error(updateErr))
+		}
+
+		return &errors.SkipMessageError{Reason: fmt.Sprintf("failed to resolve phone: %v", err)}
+	}
+	smsMsg.SetPhone(phone)
 
 	// 获取模板配置
 	cfg := config.Cfg
@@ -149,7 +187,7 @@ func (s *NotificationService) SendSMS(
 					"status":            model.NotificationTaskStatusFailed,
 					"processed_at":      now,
 					"sms_status_code":   "CONFIG_ERROR",
-					"sms_error_message": err.Error(),
+					"sms_error_message": truncateErrorMessage(err.Error()),
 				})
 			// 更新失败，说明数据库出错了
 			if updateErr != nil {
@@ -177,7 +215,7 @@ func (s *NotificationService) SendSMS(
 				"status":            model.NotificationTaskStatusFailed,
 				"processed_at":      now,
 				"sms_status_code":   "PARAM_ERROR",
-				"sms_error_message": err.Error(),
+				"sms_error_message": truncateErrorMessage(err.Error()),
 			})
 
 		if updateErr != nil {
@@ -231,10 +269,10 @@ func (s *NotificationService) SendSMS(
 		// 如果有响应，记录状态码和错误消息
 		if sendResp != nil {
 			updateData["sms_status_code"] = sendResp.StatusCode
-			updateData["sms_error_message"] = sendResp.Message
+			updateData["sms_error_message"] = truncateErrorMessage(sendResp.Message)
 		} else {
 			updateData["sms_status_code"] = "SEND_ERROR"
-			updateData["sms_error_message"] = err.Error()
+			updateData["sms_error_message"] = truncateErrorMessage(err.Error())
 		}
 
 		_, updateErr := q.NotificationTask.WithContext(ctx).
@@ -281,7 +319,7 @@ func (s *NotificationService) SendSMS(
 			updateData["sms_message_id"] = sendResp.MessageID
 			updateData["sms_status_code"] = sendResp.StatusCode
 			if sendResp.Message != "" {
-				updateData["sms_error_message"] = sendResp.Message
+				updateData["sms_error_message"] = truncateErrorMessage(sendResp.Message)
 			}
 		}
 
@@ -332,3 +370,66 @@ func (s *NotificationService) SendSMS(
 // func (s *NotificationService) SendVoice(ctx context.Context, taskID int64, userID int64, phoneHash string, payload map[string]interface{}) error {
 // 	return nil
 // }
+
+func resolveNotificationPhone(user *model.User, task *model.NotificationTask, messagePhoneHash string) (string, error) {
+	hash := firstNonEmpty(messagePhoneHash, derefString(task.ContactPhoneHash))
+	if hash != "" {
+		phone, err := findContactPhoneByHash(user.EmergencyContacts, hash)
+		if err != nil {
+			return "", err
+		}
+		return phone, nil
+	}
+
+	if len(user.PhoneCipher) > 0 {
+		phone, err := utils.DecryptPhone(user.PhoneCipher)
+		if err != nil {
+			return "", fmt.Errorf("failed to decrypt user phone: %w", err)
+		}
+		return phone, nil
+	}
+
+	return "", fmt.Errorf("user phone not available")
+}
+
+func findContactPhoneByHash(contacts model.EmergencyContacts, hash string) (string, error) {
+	for _, contact := range contacts {
+		if contact.PhoneHash != hash {
+			continue
+		}
+
+		if contact.PhoneCipherBase64 == "" {
+			return "", fmt.Errorf("contact phone cipher is empty for hash %s", hash)
+		}
+
+		cipherBytes, err := base64.StdEncoding.DecodeString(contact.PhoneCipherBase64)
+		if err != nil {
+			return "", fmt.Errorf("failed to decode phone cipher: %w", err)
+		}
+
+		phone, err := utils.DecryptPhone(cipherBytes)
+		if err != nil {
+			return "", fmt.Errorf("failed to decrypt contact phone: %w", err)
+		}
+
+		return phone, nil
+	}
+
+	return "", fmt.Errorf("contact phone hash %s not found", hash)
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func derefString(ptr *string) string {
+	if ptr == nil {
+		return ""
+	}
+	return *ptr
+}

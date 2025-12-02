@@ -91,8 +91,8 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			user = &model.User{
 				PublicID:     publicID,
 				AlipayOpenID: alipayOpenID,
-				Nickname:     "",                      // 默认空昵称
-				Status:       model.UserStatusContact, // 已绑定手机号，进入填写紧急联系人阶段
+				Nickname:     fmt.Sprintf("用户%d", userCount), // 默认用户第多少号
+				Status:       model.UserStatusContact,        // 已绑定手机号，进入填写紧急联系人阶段
 				Timezone:     "Asia/Shanghai",
 				PhoneHash:    &phoneHash,
 			}
@@ -113,6 +113,20 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				defaultQuotaCents := config.Cfg.DefaultSMSQuota
 				if defaultQuotaCents <= 0 {
 					defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
+				}
+
+				// 初始化额度钱包（quota_wallets），保证新用户一定有钱包
+				wallet := &model.QuotaWallet{
+					UserID:          user.ID,
+					Channel:         model.QuotaChannelSMS,
+					AvailableAmount: defaultQuotaCents,
+					FrozenAmount:    0,
+					UsedAmount:      0,
+					TotalGranted:    defaultQuotaCents,
+				}
+
+				if err := txQ.QuotaWallet.Create(wallet); err != nil {
+					return fmt.Errorf("failed to create quota wallet: %w", err)
 				}
 
 				quotaTransaction := &model.QuotaTransaction{
@@ -363,6 +377,20 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				defaultQuotaCents := config.Cfg.DefaultSMSQuota
 				if defaultQuotaCents <= 0 {
 					defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
+				}
+
+				// 初始化额度钱包（quota_wallets），保证新用户一定有钱包
+				wallet := &model.QuotaWallet{
+					UserID:          user.ID,
+					Channel:         model.QuotaChannelSMS,
+					AvailableAmount: defaultQuotaCents,
+					FrozenAmount:    0,
+					UsedAmount:      0,
+					TotalGranted:    defaultQuotaCents,
+				}
+
+				if err := txQ.QuotaWallet.Create(wallet); err != nil {
+					return fmt.Errorf("failed to create quota wallet: %w", err)
 				}
 
 				quotaTransaction := &model.QuotaTransaction{

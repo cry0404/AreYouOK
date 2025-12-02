@@ -5,9 +5,11 @@ import (
 	"fmt"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"go.uber.org/zap"
 
 	"AreYouOK/internal/middleware"
 	"AreYouOK/internal/model/dto"
+	"AreYouOK/internal/queue"
 	"AreYouOK/internal/service"
 	"AreYouOK/pkg/response"
 )
@@ -69,9 +71,29 @@ func UpdateUserSettings(ctx context.Context, c *app.RequestContext) {
 	}
 
 	userService := service.User()
-	if err := userService.UpdateUserSettings(ctx, userID, req); err != nil {
+	reminderMsg, err := userService.UpdateUserSettings(ctx, userID, req)
+	if err != nil {
 		response.Error(ctx, c, err)
 		return
+	}
+
+	// 如果返回了提醒消息，在 Handler 层负责发布到队列
+	if reminderMsg != nil {
+		if err := queue.PublishCheckInReminder(*reminderMsg); err != nil {
+			// 记录错误但不影响主流程
+			zap.L().Error("Failed to publish check-in reminder message after settings update",
+				zap.String("user_id", userID),
+				zap.String("message_id", reminderMsg.MessageID),
+				zap.Int("delay_seconds", reminderMsg.DelaySeconds),
+				zap.Error(err),
+			)
+		} else {
+			zap.L().Info("Check-in reminder message published after settings update",
+				zap.String("user_id", userID),
+				zap.String("message_id", reminderMsg.MessageID),
+				zap.Int("delay_seconds", reminderMsg.DelaySeconds),
+			)
+		}
 	}
 
 	response.Success(ctx, c, nil)

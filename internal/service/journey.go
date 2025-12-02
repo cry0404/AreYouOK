@@ -10,10 +10,11 @@ import (
 	"AreYouOK/storage/database"
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
-	"sort"
+
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 )
@@ -73,13 +74,13 @@ func (s *JourneyService) CreateJourney(
 		BaseModel: model.BaseModel{
 			ID: journeyID,
 		},
-		UserID:            user.ID,
-		Title:             req.Title,
-		Note:              req.Note,
+		UserID:             user.ID,
+		Title:              req.Title,
+		Note:               req.Note,
 		ExpectedReturnTime: req.ExpectedReturnTime,
-		Status:            model.JourneyStatusOngoing,
-		AlertStatus:       model.AlertStatusPending,
-		AlertAttempts:     0,
+		Status:             model.JourneyStatusOngoing,
+		AlertStatus:        model.AlertStatusPending,
+		AlertAttempts:      0,
 	}
 
 	// journey 的 create 和消息的投放应该是一个事务吗，应该是完整的部分才对
@@ -172,7 +173,7 @@ func (s *JourneyService) UpdateJourney(
 		return nil, nil, fmt.Errorf("failed to query journey: %w", err)
 	}
 
-		// 检查行程状态：已结束或超时的行程不可修改
+	// 检查行程状态：已结束或超时的行程不可修改
 	if journey.Status == model.JourneyStatusEnded || journey.Status == model.JourneyStatusTimeout {
 		return nil, nil, pkgerrors.Definition{
 			Code:    "JOURNEY_NOT_MODIFIABLE",
@@ -204,7 +205,7 @@ func (s *JourneyService) UpdateJourney(
 		needReschedule = true // 标记需要重新调度
 	}
 
-		if len(updates) == 0 {
+	if len(updates) == 0 {
 		return journey, nil, nil
 	}
 
@@ -282,7 +283,6 @@ func (s *JourneyService) UpdateJourney(
 
 	return updatedJourney, timeoutMsg, nil
 }
-
 
 func (s *JourneyService) ListJourneys(ctx context.Context,
 	userID int64,
@@ -409,7 +409,6 @@ func (s *JourneyService) CompleteJourney(
 		return nil, fmt.Errorf("failed to query journey: %w", err)
 	}
 
-
 	if journey.Status == model.JourneyStatusEnded {
 		return nil, pkgerrors.Definition{
 			Code:    "JOURNEY_ALREADY_ENDED",
@@ -485,166 +484,175 @@ func (s *JourneyService) GetJourneyAlerts(
 	}, nil
 }
 
-
 // ProcessTimeout 处理行程超时
 func (s *JourneyService) ProcessTimeout(
-    ctx context.Context,
-    journeyID int64,
-    userID int64,
+	ctx context.Context,
+	journeyID int64,
+	userID int64,
 ) error {
-    db := database.DB().WithContext(ctx)
-    q := query.Use(db)
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
 
-    // 查询行程
-    journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
-    if err != nil {
-        if err == gorm.ErrRecordNotFound {
-            return pkgerrors.Definition{
-                Code:    "JOURNEY_NOT_FOUND",
-                Message: "Journey not found",
-            }
-        }
-        return fmt.Errorf("failed to query journey: %w", err)
-    }
+	// 查询行程
+	journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkgerrors.Definition{
+				Code:    "JOURNEY_NOT_FOUND",
+				Message: "Journey not found",
+			}
+		}
+		return fmt.Errorf("failed to query journey: %w", err)
+	}
 
-    // 检查行程状态
-    if journey.Status != model.JourneyStatusOngoing {
-        logger.Logger.Debug("Journey is not ongoing, skipping timeout processing",
-            zap.Int64("journey_id", journeyID),
-            zap.String("status", string(journey.Status)),
-        )
-        return nil // 已处理或已结束，跳过
-    }
+	// 检查行程状态
+	if journey.Status != model.JourneyStatusOngoing {
+		logger.Logger.Debug("Journey is not ongoing, skipping timeout processing",
+			zap.Int64("journey_id", journeyID),
+			zap.String("status", string(journey.Status)),
+		)
+		return nil // 已处理或已结束，跳过
+	}
 
-    // 查询用户
-    user, err := q.User.GetByID(journey.UserID)
-    if err != nil {
-        return fmt.Errorf("failed to query user: %w", err)
-    }
+	// 安全校验：只有在当前时间晚于「预计返回时间 + 10 分钟」时才允许执行超时处理
+	now := time.Now()
+	timeoutThreshold := journey.ExpectedReturnTime.Add(10 * time.Minute)
+	if now.Before(timeoutThreshold) {
+		logger.Logger.Info("Journey has not reached timeout threshold, skipping timeout processing",
+			zap.Int64("journey_id", journeyID),
+			zap.Time("expected_return_time", journey.ExpectedReturnTime),
+			zap.Time("timeout_threshold", timeoutThreshold),
+			zap.Time("now", now),
+		)
+		return nil
+	}
 
-    // 检查用户额度 - 使用新的 QuotaService
-    quotaService := Quota()
-    wallet, err := quotaService.GetWallet(ctx, user.ID, model.QuotaChannelSMS)
-    if err != nil {
-        return fmt.Errorf("failed to query SMS quota wallet: %w", err)
-    }
+	// 查询用户
+	user, err := q.User.GetByID(journey.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to query user: %w", err)
+	}
 
-    smsBalance := wallet.AvailableAmount
+	// 检查用户额度 - 使用新的 QuotaService
+	quotaService := Quota()
+	wallet, err := quotaService.GetWallet(ctx, user.ID, model.QuotaChannelSMS)
+	if err != nil {
+		return fmt.Errorf("failed to query SMS quota wallet: %w", err)
+	}
 
-    contactCount := len(user.EmergencyContacts)
-    smsUnitPriceCents := 5
-    totalCost := smsUnitPriceCents * contactCount
+	smsBalance := wallet.AvailableAmount
 
-    if smsBalance < totalCost {
-        logger.Logger.Warn("Insufficient quota for journey timeout alert",
-            zap.Int64("user_id", user.ID),
-            zap.Int64("journey_id", journeyID),
-            zap.Int("balance", smsBalance),
-            zap.Int("required", totalCost),
-        )
-        // 额度不足，更新行程状态但不发送通知
-        now := time.Now()
-        _, err = q.Journey.
-            Where(q.Journey.ID.Eq(journey.ID)).
-            Updates(map[string]interface{}{
-                "status":             model.JourneyStatusTimeout,
-                "alert_status":       model.AlertStatusFailed,
-                "alert_triggered_at": now,
-                "updated_at":         now,
-            })
-        return err
-    }
+	contactCount := len(user.EmergencyContacts)
+	smsUnitPriceCents := 5
+	totalCost := smsUnitPriceCents * contactCount
 
-    now := time.Now()
+	if smsBalance < totalCost {
+		logger.Logger.Warn("Insufficient quota for journey timeout alert",
+			zap.Int64("user_id", user.ID),
+			zap.Int64("journey_id", journeyID),
+			zap.Int("balance", smsBalance),
+			zap.Int("required", totalCost),
+		)
+		// 额度不足，更新行程状态但不发送通知
+		now := time.Now()
+		_, err = q.Journey.
+			Where(q.Journey.ID.Eq(journey.ID)).
+			Updates(map[string]interface{}{
+				"status":             model.JourneyStatusTimeout,
+				"alert_status":       model.AlertStatusFailed,
+				"alert_triggered_at": now,
+				"updated_at":         now,
+			})
+		return err
+	}
 
-    // 使用事务处理
-    return db.Transaction(func(tx *gorm.DB) error {
-        txQ := query.Use(tx)
+	// 使用事务处理
+	return db.Transaction(func(tx *gorm.DB) error {
+		txQ := query.Use(tx)
 
-        // 更新行程状态
-        _, err = txQ.Journey.
-            Where(txQ.Journey.ID.Eq(journey.ID)).
-            Updates(map[string]interface{}{
-                "status":                model.JourneyStatusTimeout,
-                "alert_status":          model.AlertStatusTriggered,
-                "alert_triggered_at":    now,
-                "alert_last_attempt_at": now,
-                "alert_attempts":        gorm.Expr("alert_attempts + ?", 1),
-                "updated_at":            now,
-            })
-        if err != nil {
-            return fmt.Errorf("failed to update journey: %w", err)
-        }
+		// 更新行程状态
+		_, err = txQ.Journey.
+			Where(txQ.Journey.ID.Eq(journey.ID)).
+			Updates(map[string]interface{}{
+				"status":                model.JourneyStatusTimeout,
+				"alert_status":          model.AlertStatusTriggered,
+				"alert_triggered_at":    now,
+				"alert_last_attempt_at": now,
+				"alert_attempts":        gorm.Expr("alert_attempts + ?", 1),
+				"updated_at":            now,
+			})
+		if err != nil {
+			return fmt.Errorf("failed to update journey: %w", err)
+		}
 
-        // 按优先级排序紧急联系人
-        contacts := user.EmergencyContacts
-        sort.Slice(contacts, func(i, j int) bool {
-            return contacts[i].Priority < contacts[j].Priority
-        })
+		// 按优先级排序紧急联系人
+		contacts := user.EmergencyContacts
+		sort.Slice(contacts, func(i, j int) bool {
+			return contacts[i].Priority < contacts[j].Priority
+		})
 
-        // 最多通知3位
-        maxContacts := 3
-        if len(contacts) > maxContacts {
-            contacts = contacts[:maxContacts]
-        }
+		// 最多通知3位
+		maxContacts := 3
+		if len(contacts) > maxContacts {
+			contacts = contacts[:maxContacts]
+		}
 
-        // 获取用户昵称
-        userName := user.Nickname
-        if userName == "" {
-            userName = fmt.Sprintf("%d", userID)
-        }
+		// 获取用户昵称
+		userName := user.Nickname
+		if userName == "" {
+			userName = fmt.Sprintf("%d", userID)
+		}
 
-        // 为每个紧急联系人创建通知任务
-        for _, contact := range contacts {
-            taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
-            if err != nil {
-                logger.Logger.Error("Failed to generate task code",
-                    zap.Int64("journey_id", journeyID),
-                    zap.Error(err),
-                )
-                continue
-            }
+		// 为每个紧急联系人创建通知任务
+		for _, contact := range contacts {
+			taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
+			if err != nil {
+				logger.Logger.Error("Failed to generate task code",
+					zap.Int64("journey_id", journeyID),
+					zap.Error(err),
+				)
+				continue
+			}
 
-            // 构建 payload（包含行程信息）
-            payload := model.JSONB{
-                "type":    "journey_timeout",
-                "name":    userName,
-                "trip":    journey.Title,
-                "note":    journey.Note,
-                "deadline": journey.ExpectedReturnTime.Format("15:04:05"),
-            }
+			// 构建 payload（包含行程信息）
+			payload := model.JSONB{
+				"type":     "journey_timeout",
+				"name":     userName,
+				"trip":     journey.Title,
+				"note":     journey.Note,
+				"deadline": journey.ExpectedReturnTime.Format("15:04:05"),
+			}
 
-            notificationTask := &model.NotificationTask{
-                TaskCode:        taskCode,
-                UserID:          user.ID,
-                Category:        model.NotificationCategoryJourneyTimeout,
-                Channel:         model.NotificationChannelSMS,
-                Status:          model.NotificationTaskStatusPending,
-                Payload:         payload,
-                ContactPriority: &contact.Priority,
-                ContactPhoneHash: &contact.PhoneHash,
-                ScheduledAt:     now,
-            }
+			notificationTask := &model.NotificationTask{
+				TaskCode:         taskCode,
+				UserID:           user.ID,
+				Category:         model.NotificationCategoryJourneyTimeout,
+				Channel:          model.NotificationChannelSMS,
+				Status:           model.NotificationTaskStatusPending,
+				Payload:          payload,
+				ContactPriority:  &contact.Priority,
+				ContactPhoneHash: &contact.PhoneHash,
+				ScheduledAt:      now,
+			}
 
-            if err := txQ.NotificationTask.Create(notificationTask); err != nil {
-                logger.Logger.Error("Failed to create notification task",
-                    zap.Int64("journey_id", journeyID),
-                    zap.Error(err),
-                )
-                return fmt.Errorf("failed to create notification task: %w", err)
-            }
-        }
+			if err := txQ.NotificationTask.Create(notificationTask); err != nil {
+				logger.Logger.Error("Failed to create notification task",
+					zap.Int64("journey_id", journeyID),
+					zap.Error(err),
+				)
+				return fmt.Errorf("failed to create notification task: %w", err)
+			}
+		}
 
-        logger.Logger.Info("Journey timeout processed",
-            zap.Int64("journey_id", journeyID),
-            zap.Int64("user_id", user.ID),
-            zap.Int("contact_count", len(contacts)),
-        )
+		logger.Logger.Info("Journey timeout processed",
+			zap.Int64("journey_id", journeyID),
+			zap.Int64("user_id", user.ID),
+			zap.Int("contact_count", len(contacts)),
+		)
 
-        return nil
-    })
+		return nil
+	})
 }
-
 
 // // AckJourneyAlert 确认已知晓行程超时提醒
 // func (s *JourneyService) AckJourneyAlert(

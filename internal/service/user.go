@@ -17,6 +17,7 @@ import (
 	"AreYouOK/internal/repository/query"
 	pkgerrors "AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/pkg/snowflake"
 
 	"AreYouOK/utils"
 )
@@ -171,23 +172,23 @@ func (s *UserService) GetUserProfile(
 // 考虑是否重新投递消息
 // 通过幂等性来过滤
 
-// put 方法要考虑返回值吗
+// 返回需要重新投递的消息，由 Handler 层决定是否发布
 func (s *UserService) UpdateUserSettings(
 	ctx context.Context,
 	userID string,
 	req dto.UpdateUserSettingsRequest,
-) error {
+) (*model.CheckInReminderMessage, error) {
 	var userIDInt int64
 	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
-		return pkgerrors.InvalidUserID
+		return nil, pkgerrors.InvalidUserID
 	}
 
 	_, err := query.User.GetByPublicID(userIDInt)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return pkgerrors.ErrUserNotFound
+			return nil, pkgerrors.ErrUserNotFound
 		}
-		return fmt.Errorf("failed to query user: %w", err)
+		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
 	updates := make(map[string]interface{})
@@ -197,6 +198,9 @@ func (s *UserService) UpdateUserSettings(
 	}
 	if req.DailyCheckInEnabled != nil {
 		updates["daily_check_in_enabled"] = *req.DailyCheckInEnabled
+	}
+	if req.DailyCheckInRemindAt != nil {
+		updates["daily_check_in_remind_at"] = *req.DailyCheckInRemindAt
 	}
 	if req.DailyCheckInDeadline != nil {
 		updates["daily_check_in_deadline"] = *req.DailyCheckInDeadline
@@ -212,32 +216,55 @@ func (s *UserService) UpdateUserSettings(
 	}
 
 	if len(updates) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	if _, err := query.User.Where(query.User.PublicID.Eq(userIDInt)).Updates(updates); err != nil {
-		return fmt.Errorf("failed to update user settings: %w", err)
+		return nil, fmt.Errorf("failed to update user settings: %w", err)
 	}
 
 	logger.Logger.Info("User settings updated",
 		zap.String("user_id", userID),
 		zap.Any("updates", updates),
 	)
-	//用户更新这里应该立即投递，放到消费者那边重新投递的话会无法做到新注册账号的投递
+	// 重新查询更新后的用户信息
+	updatedUser, err := query.User.GetByPublicID(userIDInt)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query updated user: %w", err)
+	}
 
 	// 更新今日的用户缓存，如果 redis 中没有缓存的话，消息队列就可以直接发送，减少数据库回查, 更新而非失效
-	user, _ := query.User.GetByPublicID(userIDInt)
 	cache.SetUserSettings(ctx, userIDInt, &cache.UserSettingsCache{
-
-		DailyCheckInEnabled:    user.DailyCheckInEnabled,
-		DailyCheckInRemindAt:   user.DailyCheckInRemindAt,
-		DailyCheckInDeadline:   user.DailyCheckInDeadline,
-		DailyCheckInGraceUntil: user.DailyCheckInGraceUntil,
-		//Status:                 string(user.Status),
+		DailyCheckInEnabled:    updatedUser.DailyCheckInEnabled,
+		DailyCheckInRemindAt:   updatedUser.DailyCheckInRemindAt,
+		DailyCheckInDeadline:   updatedUser.DailyCheckInDeadline,
+		DailyCheckInGraceUntil: updatedUser.DailyCheckInGraceUntil,
 		UpdatedAt: time.Now().Unix(),
 	})
 
-	return nil
+	// 检查是否需要重新投递今日的打卡提醒消息
+	// 只有用户状态为 active 且开启了打卡功能才需要重新投递
+	var reminderMsg *model.CheckInReminderMessage
+	if updatedUser.Status == model.UserStatusActive && updatedUser.DailyCheckInEnabled {
+		// 检查设置变更是否影响今日提醒
+		affectsReminder := false
+
+		if req.DailyCheckInEnabled != nil {
+			affectsReminder = true // 开关变更影响提醒
+		}
+		if req.DailyCheckInRemindAt != nil {
+			affectsReminder = true // 提醒时间变更影响提醒
+		}
+		if req.Timezone != nil {
+			affectsReminder = true // 时区变更影响本地时间计算
+		}
+
+		if affectsReminder {
+			reminderMsg = s.buildReminderMessage(ctx, updatedUser, userIDInt)
+		}
+	}
+
+	return reminderMsg, nil
 }
 
 // GetUserQuotas 获取用户额度详情
@@ -363,3 +390,96 @@ func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatu
 
 // 	return nil
 // }
+
+// buildReminderMessage 构建今日打卡提醒消息
+func (s *UserService) buildReminderMessage(ctx context.Context, user *model.User, userIDInt int64) *model.CheckInReminderMessage {
+	now := time.Now()
+	today := now.Format("2006-01-02")
+
+	// 解析提醒时间
+	remindAt := user.DailyCheckInRemindAt
+	if remindAt == "" {
+		remindAt = "20:00:00" // 默认提醒时间
+	}
+
+	remindTime, err := time.Parse("15:04:05", remindAt)
+	if err != nil {
+		logger.Logger.Error("Failed to parse remindAt time",
+			zap.String("remindAt", remindAt),
+			zap.Int64("user_id", userIDInt),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 在今天的日期基础上设置提醒时间
+	todayTime := now.Truncate(24 * time.Hour)
+	remindDateTime := time.Date(
+		todayTime.Year(), todayTime.Month(), todayTime.Day(),
+		remindTime.Hour(), remindTime.Minute(), remindTime.Second(),
+		0, now.Location(),
+	)
+
+	// 如果提醒时间已过，设置为明天
+	if remindDateTime.Before(now) {
+		remindDateTime = remindDateTime.Add(24 * time.Hour)
+	}
+
+	// 计算延迟秒数
+	delaySeconds := int(remindDateTime.Sub(now).Seconds())
+	if delaySeconds < 0 {
+		delaySeconds = 0 // 最小延迟为0（立即发送）
+	}
+
+	// 检查是否超过24小时限制
+	if delaySeconds > 24*3600 {
+		logger.Logger.Info("Reminder delay exceeds 24 hours, skipping message publish",
+			zap.Int64("user_id", userIDInt),
+			zap.String("remind_at", remindAt),
+			zap.Int("delay_seconds", delaySeconds),
+		)
+		return nil
+	}
+
+	// 生成消息ID
+	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+	if err != nil {
+		logger.Logger.Error("Failed to generate message ID for reminder",
+			zap.Int64("user_id", userIDInt),
+			zap.Error(err),
+		)
+		return nil
+	}
+
+	// 构建用户设置快照
+	userIDStr := fmt.Sprintf("%d", userIDInt)
+	userSettings := map[string]model.UserSettingSnapshot{
+		userIDStr: {
+			RemindAt:   user.DailyCheckInRemindAt,
+			Deadline:   user.DailyCheckInDeadline,
+			GraceUntil: user.DailyCheckInGraceUntil,
+			Timezone:   user.Timezone,
+		},
+	}
+
+	// 构建消息
+	reminderMsg := &model.CheckInReminderMessage{
+		MessageID:    fmt.Sprintf("ci_reminder_update_%d", messageID),
+		BatchID:      fmt.Sprintf("update_%d_%d", userIDInt, time.Now().Unix()),
+		CheckInDate:  today,
+		ScheduledAt:  now.Format(time.RFC3339),
+		UserIDs:      []int64{userIDInt},
+		UserSettings: userSettings,
+		DelaySeconds: delaySeconds,
+	}
+
+	logger.Logger.Info("Built reminder message for user settings update",
+		zap.String("message_id", reminderMsg.MessageID),
+		zap.Int64("user_id", userIDInt),
+		zap.String("remind_at", remindAt),
+		zap.Int("delay_seconds", delaySeconds),
+		zap.Time("remind_time", remindDateTime),
+	)
+
+	return reminderMsg
+}

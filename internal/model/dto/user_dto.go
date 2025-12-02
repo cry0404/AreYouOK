@@ -23,6 +23,7 @@ type PhoneInfo struct {
 
 // UserSettingsDTO 用户设置
 type UserSettingsDTO struct {
+	DailyCheckInRemindAt   string `json:"daily_check_in_remind_at"`
 	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
 	Timezone               string `json:"timezone"`
@@ -34,6 +35,7 @@ type UserSettingsDTO struct {
 type UpdateUserSettingsRequest struct {
 	NickName			   *string `json:"nick_name"`
 	DailyCheckInEnabled    *bool   `json:"daily_check_in_enabled"`
+	DailyCheckInRemindAt   *string `json:"daily_check_in_remind_at"`
 	DailyCheckInDeadline   *string `json:"daily_check_in_deadline"`
 	DailyCheckInGraceUntil *string `json:"daily_check_in_grace_until"`
 	JourneyAutoNotify      *bool   `json:"journey_auto_notify"`
