@@ -48,7 +48,7 @@ var DefaultRateLimitConfig = RateLimitConfig{
 
 // UserSettingsRateLimitConfig 用户设置修改限流配置
 var UserSettingsRateLimitConfig = RateLimitConfig{
-	Window:        600,  // 10 min
+	Window:        10,  // 10 min
 	MaxRequests:   1,     // 5次修改
 	KeyPrefix:     "user:settings:rate",
 	ByUserID:      true,
