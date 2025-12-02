@@ -654,6 +654,57 @@ func (s *JourneyService) ProcessTimeout(
 	})
 }
 
+// 软删除，避免排查起来痛苦
+func (s *JourneyService) DeleteJourney(
+	ctx context.Context,
+	userPublicID,
+	journeyID int64,
+) error {
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	// 根据用户和行程锁定唯一一个部分
+	journey, err := q.Journey.GetByPublicIDAndJourneyID(userPublicID, journeyID)
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return pkgerrors.Definition{
+				Code:    "JOURNEY_NOT_FOUND",
+				Message: "Journey not found",
+			}
+		}
+		return fmt.Errorf("failed to query journey: %w", err)
+	}
+
+	if journey.Status != model.JourneyStatusOngoing {
+		return pkgerrors.Definition{
+			Code:    "JOURNEY_NOT_DELETABLE",
+			Message: "Only ongoing journeys can be deleted",
+		}
+	}
+
+	now := time.Now()
+	updates := map[string]interface{}{
+		"status":     model.JourneyStatusCancelled,
+		"updated_at": now,
+	}
+
+	updates["deleted_at"] = now
+
+	if _, err := q.Journey.
+		Where(q.Journey.ID.Eq(journey.ID)).
+		Updates(updates); err != nil {
+		return fmt.Errorf("failed to cancel journey: %w", err)
+	}
+
+	logger.Logger.Info("Journey cancelled by user",
+		zap.Int64("journey_id", journeyID),
+		zap.Int64("user_public_id", userPublicID),
+	)
+
+	return nil
+}
+
 // // AckJourneyAlert 确认已知晓行程超时提醒
 // func (s *JourneyService) AckJourneyAlert(
 // 	ctx context.Context,

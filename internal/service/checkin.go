@@ -408,7 +408,7 @@ func (s *CheckInService) GetTodayCheckIn(
 		return nil, fmt.Errorf("invalid grace_until format: %w", err)
 	}
 
-	if checkIn == nil {
+	if checkIn == nil || checkIn.CheckInDate.IsZero() {
 		return &dto.CheckInStatusData{
 			Date:             today.Format("2006-01-02"),
 			Status:           string(model.CheckInStatusPending),
@@ -419,9 +419,14 @@ func (s *CheckInService) GetTodayCheckIn(
 		}, nil
 	}
 
+	status := string(checkIn.Status)
+	if status == "" {
+		status = string(model.CheckInStatusPending)
+	}
+
 	return &dto.CheckInStatusData{
 		Date:             checkIn.CheckInDate.Format("2006-01-02"),
-		Status:           string(checkIn.Status),
+		Status:           status,
 		Deadline:         deadline,
 		GraceUntil:       graceUntil,
 		ReminderSentAt:   checkIn.ReminderSentAt,

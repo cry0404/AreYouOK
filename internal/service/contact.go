@@ -18,6 +18,7 @@ import (
 	"AreYouOK/internal/repository/query"
 	pkgerrors "AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
+	"AreYouOK/storage/database"
 	"AreYouOK/utils"
 )
 
@@ -280,4 +281,110 @@ func (s *ContactService) DeleteContact(
 	)
 
 	return nil
+}
+
+
+func (s *ContactService) UpdateContact(
+	ctx context.Context,
+	userID string,
+	req *dto.UpdateContactRequest,
+) (*dto.UpdateContactResponse, error) {
+	var userIDInt int64
+	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
+		return nil, pkgerrors.InvalidUserID
+	}
+
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	user, err := q.User.GetByPublicID(userIDInt)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to query user: %w", err)
+	}
+
+	contacts := user.EmergencyContacts
+	if len(contacts) == 0 {
+		return nil, pkgerrors.Definition{
+			Code:    "CONTACT_NOT_FOUND",
+			Message: "No contacts to update",
+		}
+	}
+
+	// 按 priority 找到要更新的联系人
+	targetIdx := -1
+	for i, c := range contacts {
+		if c.Priority == req.Priority {
+			targetIdx = i
+			break
+		}
+	}
+	if targetIdx == -1 {
+		return nil, pkgerrors.ContactPriorityConflict // 或者自定义 CONTACT_NOT_FOUND
+	}
+
+
+	updatedContacts := make(model.EmergencyContacts, len(contacts))
+	copy(updatedContacts, contacts)
+
+	target := &updatedContacts[targetIdx]
+
+	// 按需更新字段
+	if req.DisplayName != "" {
+		target.DisplayName = req.DisplayName
+	}
+	if req.Relationship != "" {
+		target.Relationship = req.Relationship
+	}
+
+	phoneForResponse := ""
+	if req.Phone != "" {
+		// 加密手机号
+		phoneCipherBase64, err := utils.EncryptPhone(req.Phone)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+		}
+		phoneHash := utils.HashPhone(req.Phone)
+
+		// 防止将自己设为紧急联系人（仅生产环境）
+		if config.Cfg.Environment == "production" && user.PhoneHash != nil {
+			if phoneHash == *user.PhoneHash {
+				return nil, fmt.Errorf("emergencyContact can not be yourself")
+			}
+		}
+
+		target.PhoneCipherBase64 = phoneCipherBase64
+		target.PhoneHash = phoneHash
+		phoneForResponse = req.Phone
+	} else {
+		// 没改手机号，从已有数据解密，用于响应
+		if target.PhoneCipherBase64 != "" {
+			if cipherBytes, err := base64.StdEncoding.DecodeString(target.PhoneCipherBase64); err == nil {
+				if phone, err := utils.DecryptPhone(cipherBytes); err == nil {
+					phoneForResponse = phone
+				}
+			}
+		}
+	}
+
+	// 写回 contacts
+	if _, err := q.User.
+		Where(q.User.PublicID.Eq(userIDInt)).
+		Updates(map[string]interface{}{"emergency_contacts": updatedContacts}); err != nil {
+		return nil, fmt.Errorf("failed to update user contacts: %w", err)
+	}
+
+	logger.Logger.Info("Contact updated",
+		zap.String("user_id", userID),
+		zap.Int("priority", req.Priority),
+	)
+
+	return &dto.UpdateContactResponse{
+		DisplayName:  target.DisplayName,
+		Relationship: target.Relationship,
+		PhoneMasked:  phoneForResponse,
+		Priority:     target.Priority,
+	}, nil
 }

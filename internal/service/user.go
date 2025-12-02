@@ -105,6 +105,7 @@ func (s *UserService) GetUserProfile(
 	journeyAutoNotify, _ := resultMap["journey_auto_notify"].(bool)
 	dailyCheckInDeadline, _ := resultMap["daily_check_in_deadline"].(string)
 	dailyCheckInGraceUntil, _ := resultMap["daily_check_in_grace_until"].(string)
+	dailyCheckInRemindAt, _ := resultMap["daily_check_in_remind_at"].(string)
 
 	phoneCipher, ok := resultMap["phone_cipher"].([]byte)
 	var phoneMasked string
@@ -151,6 +152,7 @@ func (s *UserService) GetUserProfile(
 		},
 		Status: statusStr,
 		Settings: dto.UserSettingsDTO{
+			DailyCheckInRemindAt:	dailyCheckInRemindAt,
 			DailyCheckInEnabled:    dailyCheckInEnabled,
 			DailyCheckInDeadline:   dailyCheckInDeadline,
 			DailyCheckInGraceUntil: dailyCheckInGraceUntil,
@@ -392,7 +394,7 @@ func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatu
 // }
 
 // buildReminderMessage 构建今日打卡提醒消息
-func (s *UserService) buildReminderMessage(ctx context.Context, user *model.User, userIDInt int64) *model.CheckInReminderMessage {
+func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, userIDInt int64) *model.CheckInReminderMessage {
 	now := time.Now()
 	today := now.Format("2006-01-02")
 
