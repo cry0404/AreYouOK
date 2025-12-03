@@ -111,14 +111,10 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 		go func(j *model.Journey) {
 			defer wg.Done()
 
-			// 计算提醒延迟时间：预计返回时间 - 当前时间（第一阶段：提醒用户打卡）
-			reminderDelay := j.ExpectedReturnTime.Sub(now)
-
 			// 计算超时延迟时间：预计返回时间 + 10分钟 - 当前时间（第二阶段：通知紧急联系人）
 			timeoutDelay := j.ExpectedReturnTime.Add(10 * time.Minute).Sub(now)
-
-			// 如果超时延迟时间 > 1天，跳过（等待下次扫描）
 			if timeoutDelay > 24*time.Hour {
+				// 极端情况保护，正常不会出现
 				s.logger.Warn("Journey delay exceeds 24 hours, skipping",
 					zap.Int64("journey_id", j.ID),
 					zap.Duration("timeout_delay", timeoutDelay),
@@ -142,8 +138,16 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 				return
 			}
 
-			// 第一阶段：发送提醒消息给用户本人（如果还没到预计返回时间）
-			if reminderDelay > 0 && j.ReminderSentAt == nil {
+			// 第一阶段：发送提醒消息给用户本人
+			// 规则：
+			// - 只要还没到 expected_return_time + 10 分钟，并且 ReminderSentAt 为空，就一定要发一次
+			// - 如果已经过了预计返回时间，就立刻发（delay=0）
+			if j.ReminderSentAt == nil && now.Before(j.ExpectedReturnTime.Add(10*time.Minute)) {
+				reminderDelay := j.ExpectedReturnTime.Sub(now)
+				if reminderDelay < 0 {
+					reminderDelay = 0
+				}
+
 				reminderMsgID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 				if err != nil {
 					s.logger.Error("Failed to generate reminder message ID",
@@ -170,6 +174,7 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 							zap.Int64("journey_id", j.ID),
 							zap.Int64("user_id", user.PublicID),
 							zap.Duration("delay", reminderDelay),
+							zap.Time("expected_return_time", j.ExpectedReturnTime),
 						)
 					}
 				}

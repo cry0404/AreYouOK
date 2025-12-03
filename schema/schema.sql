@@ -31,9 +31,9 @@ CREATE TABLE users (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   deleted_at TIMESTAMPTZ,
-  UNIQUE (public_id), 
-  UNIQUE (alipay_open_id),
-  UNIQUE (phone_hash) 
+  CONSTRAINT users_public_id_key UNIQUE (public_id),
+  CONSTRAINT users_alipay_open_id_key UNIQUE (alipay_open_id),
+  CONSTRAINT users_phone_hash_key UNIQUE (phone_hash)
 );
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_users_emergency_contacts ON users USING GIN (emergency_contacts);
@@ -58,7 +58,7 @@ CREATE TABLE daily_check_ins (
   check_in_date DATE NOT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'pending', -- 尚未打卡，根据每天预约来创建
   check_in_at TIMESTAMPTZ,                       
-  reminder_sent_at TIMESTAMPTZ,
+  reminder_sent_at TIMESTAMPTZ,                  -- 提醒打卡部分
   alert_triggered_at TIMESTAMPTZ,                -- 在什么时候开始打卡
   
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -91,7 +91,7 @@ CREATE TABLE journeys (
   
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ
+  deleted_at TIMESTAMPTZ    -- 基于 gorm 创建的？
 );
 CREATE INDEX idx_journeys_user_status ON journeys(user_id, status);
 CREATE INDEX idx_journeys_expected ON journeys(expected_return_time);
@@ -130,8 +130,11 @@ CREATE TABLE quota_transactions (
                                 --        "pre_deduct" (预扣减), "confirm_deduct" (确认扣减)
   amount INTEGER NOT NULL,              -- 本次的金额变动
   balance_after INTEGER NOT NULL,       -- 操作后余额，对账部分
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
 );
+CREATE INDEX idx_quota_transactions_deleted_at ON quota_transactions(deleted_at);
 CREATE INDEX idx_quota_transactions_user ON quota_transactions(user_id, created_at);
 CREATE INDEX idx_quota_transactions_user_channel_created ON quota_transactions(user_id, channel, created_at DESC);
 

@@ -428,8 +428,7 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 			zap.Int64("journey_id", msg.JourneyID),
 			zap.Int64("user_id", msg.UserID),
 		)
-
-		// 调用 service 层处理行程提醒逻辑
+		// 调用 service 层处理行程提醒逻辑（创建 NotificationTask 记录）
 		journeyService := service.Journey()
 		err = journeyService.ProcessReminder(ctx, msg.JourneyID, msg.UserID)
 		if err != nil {
@@ -438,6 +437,7 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 					zap.String("message_id", msg.MessageID),
 					zap.String("reason", err.(*errors.SkipMessageError).Reason),
 				)
+				// 跳过型错误：标记已处理，避免重复消费
 				cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour)
 				return nil
 			}
@@ -449,6 +449,50 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 			)
 			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 			return fmt.Errorf("failed to process journey reminder (will retry): %w", err)
+		}
+
+		// 第二步：将今天创建的 journey_reminder 任务发布到短信队列（发送给用户本人）
+		db := database.DB().WithContext(ctx)
+		q := query.Use(db)
+
+		today := time.Now().Truncate(24 * time.Hour)
+		reminderTasks, err := q.NotificationTask.
+			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryJourneyReminder))).
+			Where(q.NotificationTask.CreatedAt.Gte(today)).
+			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+			Find()
+
+		if err == nil {
+			for _, task := range reminderTasks {
+				// 查询用户 public_id
+				user, err := q.User.GetByID(task.UserID)
+				if err != nil {
+					logger.Logger.Warn("Failed to query user for journey reminder notification",
+						zap.Int64("task_id", task.ID),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				// 构建通知消息（发送给用户本人，不设置 PhoneHash）
+				notificationMsg := model.NotificationMessage{
+					MessageID: fmt.Sprintf("notification_%d", task.TaskCode),
+					TaskCode:  task.TaskCode,
+					UserID:    user.PublicID,
+					Category:  string(task.Category),
+					Channel:   string(task.Channel),
+					PhoneHash: "",
+					Payload:   task.Payload,
+				}
+
+				// 发布到队列
+				if err := PublishSMSNotification(notificationMsg); err != nil {
+					logger.Logger.Error("Failed to publish journey reminder notification message",
+						zap.Int64("task_code", task.TaskCode),
+						zap.Error(err),
+					)
+				}
+			}
 		}
 
 		// 标记消息已处理

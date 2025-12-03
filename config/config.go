@@ -11,43 +11,48 @@ import (
 var Cfg Config
 
 type Config struct {
-	SessionSecret			string `env:"SESSION_SECRET_KEY"`
-	CSRFSecret				string `env:"CSRF_SECRET_KEY"`
-	AliPayAESKey            string `env:"ALIPAY_AES_KEY"`
-	AlipayAppSecret         string `env:"ALIPAY_APP_SECRET"`
-	CaptchaSceneId          string `env:"CAPTCHA_SCENE_ID"`
-	PostgreSQLPassword      string `env:"POSTGRESQL_PASSWORD" envDefault:"postgres"`
-	Environment             string `env:"ENVIRONMENT" envDefault:"development"`
-	ServiceName             string `env:"SERVICE_NAME" envDefault:"areyouok"`
-	PostgreSQLHost          string `env:"POSTGRESQL_HOST" envDefault:"localhost"`
-	PostgreSQLPort          string `env:"POSTGRESQL_PORT" envDefault:"5432"`
-	PostgreSQLUser          string `env:"POSTGRESQL_USER" envDefault:"postgres"`
-	AlipayPrivateKey        string `env:"ALIPAY_PRIVATE_KEY"`
-	PostgreSQLDatabase      string `env:"POSTGRESQL_DATABASE" envDefault:"areyouok"`
-	PostgreSQLSchema        string `env:"POSTGRESQL_SCHEMA" envDefault:"public"`
-	PostgreSQLSSLMode       string `env:"POSTGRESQL_SSLMODE" envDefault:"disable"`
-	CaptchaProvider         string `env:"CAPTCHA_PROVIDER" envDefault:"aliyun"`
-	AlipayPublicKey         string `env:"ALIPAY_PUBLIC_KEY"`
-	RedisAddr               string `env:"REDIS_ADDR" envDefault:"localhost:6379"`
-	RedisPassword           string `env:"REDIS_PASSWORD" envDefault:""`
-	LoggerOutputPath        string `env:"LOGGER_OUTPUT_PATH" envDefault:"stdout"`
-	RedisPrefix             string `env:"REDIS_PREFIX" envDefault:"ayok"`
-	RabbitMQAddr            string `env:"RABBITMQ_ADDR" envDefault:"localhost"`
-	RabbitMQPort            string `env:"RABBITMQ_PORT" envDefault:"5672"`
-	RabbitMQUsername        string `env:"RABBITMQ_USERNAME" envDefault:"guest"`
-	RabbitMQPassword        string `env:"RABBITMQ_PASSWORD" envDefault:"guest"`
-	RabbitMQVhost           string `env:"RABBITMQ_VHOST" envDefault:"/"`
-	JWTSecret               string `env:"JWT_SECRET"`
-	LoggerFormat            string `env:"LOGGER_FORMAT" envDefault:"text"`
-	LoggerLevel             string `env:"LOGGER_LEVEL" envDefault:"INFO"`
-	AlipayAppID             string `env:"ALIPAY_APP_ID"`
+	SessionSecret string `env:"SESSION_SECRET_KEY"`
+	CSRFSecret    string `env:"CSRF_SECRET_KEY"`
+
+	CaptchaSceneId     string `env:"CAPTCHA_SCENE_ID"`
+	PostgreSQLPassword string `env:"POSTGRESQL_PASSWORD" envDefault:"postgres"`
+	Environment        string `env:"ENVIRONMENT" envDefault:"development"`
+	ServiceName        string `env:"SERVICE_NAME" envDefault:"areyouok"`
+	PostgreSQLHost     string `env:"POSTGRESQL_HOST" envDefault:"localhost"`
+	PostgreSQLPort     string `env:"POSTGRESQL_PORT" envDefault:"5432"`
+	PostgreSQLUser     string `env:"POSTGRESQL_USER" envDefault:"postgres"`
+	AlipayPrivateKey   string `env:"ALIPAY_PRIVATE_KEY"`
+	PostgreSQLDatabase string `env:"POSTGRESQL_DATABASE" envDefault:"areyouok"`
+	PostgreSQLSchema   string `env:"POSTGRESQL_SCHEMA" envDefault:"public"`
+	PostgreSQLSSLMode  string `env:"POSTGRESQL_SSLMODE" envDefault:"disable"`
+	CaptchaProvider    string `env:"CAPTCHA_PROVIDER" envDefault:"aliyun"`
+	AlipayPublicKey    string `env:"ALIPAY_PUBLIC_KEY"`
+	RedisAddr          string `env:"REDIS_ADDR" envDefault:"localhost:6379"`
+	RedisPassword      string `env:"REDIS_PASSWORD" envDefault:""`
+	LoggerOutputPath   string `env:"LOGGER_OUTPUT_PATH" envDefault:"stdout"`
+	RedisPrefix        string `env:"REDIS_PREFIX" envDefault:"ayok"`
+
+	RabbitMQAddr     string `env:"RABBITMQ_ADDR" envDefault:"localhost"`
+	RabbitMQPort     string `env:"RABBITMQ_PORT" envDefault:"5672"`
+	RabbitMQUsername string `env:"RABBITMQ_USERNAME" envDefault:"guest"`
+	RabbitMQPassword string `env:"RABBITMQ_PASSWORD" envDefault:"guest"`
+	RabbitMQVhost    string `env:"RABBITMQ_VHOST" envDefault:"/"`
+
+	JWTSecret    string `env:"JWT_SECRET"`
+	LoggerFormat string `env:"LOGGER_FORMAT" envDefault:"text"`
+	LoggerLevel  string `env:"LOGGER_LEVEL" envDefault:"INFO"`
+	//AlipayAppID             string `env:"ALIPAY_APP_ID"`
 	ServerHost              string `env:"SERVER_HOST" envDefault:"0.0.0.0"`
 	PhoneHashSalt           string `env:"PHONEHASH_SALT"`
 	ServerPort              string `env:"SERVER_PORT" envDefault:"8888"`
 	AlipayGateway           string `env:"ALIPAY_GATEWAY" envDefault:"https://openapi.alipay.com/gateway.do"`
 	AliCloudAccessKeyID     string `env:"ALIBABA_CLOUD_ACCESS_KEY_ID"`
 	AliCloudAccessKeySecret string `env:"ALIBABA_CLOUD_ACCESS_KEY_SECRET"`
-	SMSProvider             string `env:"SMS_PROVIDER" envDefault:"aliyun"`
+
+	AliPayAESKey    string `env:"ALIPAY_AES_KEY"`
+	AlipayAppSecret string `env:"ALIPAY_APP_SECRET"`
+
+	SMSProvider string `env:"SMS_PROVIDER" envDefault:"aliyun"`
 	// 短信验证码配置
 	SMSSignName     string `env:"SMS_SIGN_NAME"`
 	SMSTemplateCode string `env:"SMS_TEMPLATE_CODE"`
@@ -66,22 +71,27 @@ type Config struct {
 	// 打卡超时提醒配置
 	SMSCheckInTimeoutSignName string `env:"SMS_CHECKIN_TIMEOUT_SIGN_NAME"`
 	SMSCheckInTimeoutTemplate string `env:"SMS_CHECKIN_TIMEOUT_TEMPLATE"`
+	// 额度耗尽提醒配置
+	SMSQuotaDepletedSignName string `env:"SMS_QUOTA_DEPLETED_SIGN_NAME"`
+	SMSQuotaDepletedTemplate string `env:"SMS_QUOTA_DEPLETED_TEMPLATE"`
+	EncryptionKey            string `env:"ENCRYPTION_KEY"`
 
-	EncryptionKey          string `env:"ENCRYPTION_KEY"`
-	CaptchaExpireSeconds   int    `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
-	CaptchaSliderThreshold int    `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
-	SnowflakeDataCenter    int64  `env:"SNOWFLAKE_DATACENTER_ID" envDefault:"1"`
-	JWTRefreshDays         int    `env:"JWT_REFRESH_DAYS" envDefault:"7"`
-	JWTExpireMinutes       int    `env:"JWT_EXPIRE_MINUTES" envDefault:"30"`
-	WaitlistMaxUsers       int    `env:"WAITLIST_MAX_USERS" envDefault:"1000"`
-	SnowflakeMachineID     int64  `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
-	PostgreSQLMaxOpen      int    `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
-	RedisDB                int    `env:"REDIS_DB" envDefault:"0"`
-	CaptchaMaxDaily        int    `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
-	RateLimitRPS           int    `env:"RATE_LIMIT_RPS" envDefault:"100"`
-	PostgreSQLMaxIdle      int    `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
-	DefaultSMSQuota        int    `env:"DEFAULT_SMS_QUOTA" envDefault:"100"` // 默认 SMS 额度（cents），100 cents = 20 次短信（每次 5 cents）
-	RateLimitEnabled       bool   `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
+	CaptchaExpireSeconds   int   `env:"CAPTCHA_EXPIRE_SECONDS" envDefault:"120"`
+	CaptchaSliderThreshold int   `env:"CAPTCHA_SLIDER_THRESHOLD" envDefault:"2"`
+	SnowflakeDataCenter    int64 `env:"SNOWFLAKE_DATACENTER_ID" envDefault:"1"`
+	JWTRefreshDays         int   `env:"JWT_REFRESH_DAYS" envDefault:"7"`
+	JWTExpireMinutes       int   `env:"JWT_EXPIRE_MINUTES" envDefault:"30"`
+	WaitlistMaxUsers       int   `env:"WAITLIST_MAX_USERS" envDefault:"1000"`
+	SnowflakeMachineID     int64 `env:"SNOWFLAKE_MACHINE_ID" envDefault:"1"`
+	PostgreSQLMaxOpen      int   `env:"POSTGRESQL_MAX_OPEN" envDefault:"200"`
+	RedisDB                int   `env:"REDIS_DB" envDefault:"0"`
+	CaptchaMaxDaily        int   `env:"CAPTCHA_MAX_DAILY" envDefault:"10"`
+	RateLimitRPS           int   `env:"RATE_LIMIT_RPS" envDefault:"100"`
+	PostgreSQLMaxIdle      int   `env:"POSTGRESQL_MAX_IDLE" envDefault:"30"`
+	DefaultSMSQuota        int   `env:"DEFAULT_SMS_QUOTA" envDefault:"100"` // 默认 SMS 额度（cents），100 cents = 20 次短信（每次 5 cents）
+	RateLimitEnabled       bool  `env:"RATE_LIMIT_ENABLED" envDefault:"true"`
+
+	OTELEXPORTERENDPOINT string `env:"OTEL_EXPORTER_OTLP_ENDPOINT" envDefault:"localhost:4317"`
 }
 
 func init() {
@@ -110,9 +120,9 @@ func validateConfig() {
 		log.Fatal("ENCRYPTION_KEY must be exactly 32 bytes for AES-256")
 	}
 
-	if Cfg.AlipayAppID == "" {
-		log.Printf("WARN: ALIPAY_APP_ID is not set, Alipay integration will not work")
-	}
+	// if Cfg.AlipayAppID == "" {
+	// 	log.Printf("WARN: ALIPAY_APP_ID is not set, Alipay integration will not work")
+	// }
 
 	// 验证 SMS 配置
 	validateSMSConfig()
@@ -202,45 +212,25 @@ func (c *Config) GetSMSTemplateConfig(messageType string) (signName, templateCod
 		signName = c.SMSCheckInReminderSignName
 		templateCode = c.SMSCheckInReminderTemplate
 		// signName 在 validateConfig 中已验证，不会为空
-		if templateCode == "" {
-			templateCode = c.SMSTemplateCode
-		}
 	case "checkin_reminder_contact":
 		signName = c.SMSCheckInReminderContactSignName
 		templateCode = c.SMSCheckInReminderContactTemplate
-		if signName == "" {
-			signName = c.SMSSignName
-		}
-		if templateCode == "" {
-			templateCode = c.SMSTemplateCode
-		}
+		
 	case "journey_reminder_contact":
 		signName = c.SMSJourneyReminderContactSignName
 		templateCode = c.SMSJourneyReminderContactTemplate
-		if signName == "" {
-			signName = c.SMSSignName
-		}
-		if templateCode == "" {
-			templateCode = c.SMSTemplateCode
-		}
+		
 	case "journey_timeout":
 		signName = c.SMSJourneyTimeoutSignName
 		templateCode = c.SMSJourneyTimeoutTemplate
-		if signName == "" {
-			signName = c.SMSSignName
-		}
-		if templateCode == "" {
-			templateCode = c.SMSTemplateCode
-		}
+		
 	case "checkin_timeout":
 		signName = c.SMSCheckInTimeoutSignName
 		templateCode = c.SMSCheckInTimeoutTemplate
-		if signName == "" {
-			signName = c.SMSSignName
-		}
-		if templateCode == "" {
-			templateCode = c.SMSTemplateCode
-		}
+		
+	case "quota_depleted":
+		signName = c.SMSQuotaDepletedSignName
+		templateCode = c.SMSQuotaDepletedTemplate
 	default:
 
 		signName = c.SMSSignName

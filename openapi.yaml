@@ -1,0 +1,821 @@
+openapi: 3.0.0
+info:
+  title: AreYouOK API
+  version: "1.0.0"
+  description: >
+    AreYouOK 小程序后台 API。该文件基于 `docs/api.md` 整理，用于在 Apifox 等工具中进行联调与文档管理。
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /v1/auth/miniapp/alipay/exchange:
+    post:
+      summary: 支付宝 auth_code 换取访问令牌
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AlipayExchangeRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AuthTokenResponse"
+
+  /v1/auth/token/refresh:
+    post:
+      summary: 刷新访问令牌
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AuthTokenResponse"
+
+  /v1/auth/phone/send-captcha:
+    post:
+      summary: 发送短信验证码
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendCaptchaRequest"
+      responses:
+        "200":
+          description: Captcha sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      message:
+                        type: string
+
+  /v1/auth/phone/verify-slider:
+    post:
+      summary: 滑块验证
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifySliderRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/VerifySliderResponse"
+
+  /v1/auth/phone/verify:
+    post:
+      summary: 验证码登录 / 绑定手机号
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyCaptchaRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AuthTokenResponse"
+
+  /v1/users/me:
+    get:
+      summary: 获取当前用户资料
+      tags: [User]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UserProfileData"
+
+  /v1/users/me/settings:
+    put:
+      summary: 更新当前用户设置
+      tags: [User]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateUserSettingsRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    nullable: true
+
+  /v1/users/me/quotas:
+    get:
+      summary: 获取当前用户额度信息
+      tags: [User]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UserQuotaData"
+
+  /v1/contacts:
+    get:
+      summary: 列表紧急联系人
+      tags: [Contact]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ContactItem"
+    post:
+      summary: 新增紧急联系人
+      tags: [Contact]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/ContactItem"
+
+  /v1/contacts/{priority}:
+    delete:
+      summary: 删除指定优先级的紧急联系人
+      tags: [Contact]
+      parameters:
+        - in: path
+          name: priority
+          required: true
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    nullable: true
+
+  /v1/check-ins/today:
+    get:
+      summary: 查询当天打卡状态
+      tags: [CheckIn]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CheckInStatusData"
+
+  /v1/check-ins/today/complete:
+    post:
+      summary: 完成当天打卡
+      tags: [CheckIn]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/CompleteCheckInResponse"
+
+  /v1/check-ins/history:
+    get:
+      summary: 分页查询打卡历史
+      tags: [CheckIn]
+      parameters:
+        - in: query
+          name: from
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: to
+          schema:
+            type: string
+            format: date
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [pending, done, timeout]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/CheckInStatusData"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+
+  /v1/journeys:
+    get:
+      summary: 查询行程列表
+      tags: [Journey]
+      parameters:
+        - in: query
+          name: status
+          schema:
+            type: string
+            enum: [ongoing, ended, timeout]
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/JourneyItem"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+    post:
+      summary: 创建行程报备
+      tags: [Journey]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJourneyRequest"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/JourneyItem"
+
+  /v1/journeys/{journey_id}:
+    get:
+      summary: 获取行程详情
+      tags: [Journey]
+      parameters:
+        - in: path
+          name: journey_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/JourneyDetail"
+    patch:
+      summary: 更新行程
+      tags: [Journey]
+      parameters:
+        - in: path
+          name: journey_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateJourneyRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/JourneyItem"
+
+  /v1/journeys/{journey_id}/complete:
+    post:
+      summary: 归来打卡，结束行程
+      tags: [Journey]
+      parameters:
+        - in: path
+          name: journey_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/JourneyItem"
+
+  /v1/journeys/{journey_id}/alerts:
+    get:
+      summary: 查询行程提醒执行状态
+      tags: [Journey]
+      parameters:
+        - in: path
+          name: journey_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/JourneyAlertData"
+
+  /v1/notifications/tasks:
+    get:
+      summary: 查询通知任务列表
+      tags: [Notification]
+      parameters:
+        - in: query
+          name: category
+          schema:
+            type: string
+        - in: query
+          name: channel
+          schema:
+            type: string
+        - in: query
+          name: status
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            default: 30
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/NotificationTaskItem"
+                  meta:
+                    $ref: "#/components/schemas/PaginationMeta"
+
+components:
+  schemas:
+    PaginationMeta:
+      type: object
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+
+    UserSettings:
+      type: object
+      properties:
+        daily_check_in_enabled:
+          type: boolean
+        daily_check_in_deadline:
+          type: string
+          description: "HH:MM:SS"
+        daily_check_in_grace_until:
+          type: string
+          description: "HH:MM:SS"
+        daily_check_in_remind_at:
+          type: string
+          description: "HH:MM:SS"
+        timezone:
+          type: string
+          example: Asia/Shanghai
+        journey_auto_notify:
+          type: boolean
+
+    UserProfileData:
+      type: object
+      properties:
+        id:
+          type: string
+        public_id:
+          type: string
+        nickname:
+          type: string
+        phone:
+          type: object
+          properties:
+            number_masked:
+              type: string
+            verified:
+              type: boolean
+        status:
+          type: string
+        quotas:
+          type: object
+          properties:
+            sms_balance:
+              type: integer
+            voice_balance:
+              type: integer
+        settings:
+          $ref: "#/components/schemas/UserSettings"
+
+    UpdateUserSettingsRequest:
+      allOf:
+        - $ref: "#/components/schemas/UserSettings"
+
+    UserQuotaData:
+      type: object
+      properties:
+        sms_balance:
+          type: integer
+        voice_balance:
+          type: integer
+        sms_unit_price:
+          type: integer
+        voice_unit_price:
+          type: integer
+
+    ContactItem:
+      type: object
+      properties:
+        display_name:
+          type: string
+        relationship:
+          type: string
+        phone_masked:
+          type: string
+        priority:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    CreateContactRequest:
+      type: object
+      required: [display_name, relationship, phone, priority]
+      properties:
+        display_name:
+          type: string
+        relationship:
+          type: string
+        phone:
+          type: string
+        priority:
+          type: integer
+
+    CheckInStatusData:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [pending, done, timeout]
+        deadline:
+          type: string
+          format: date-time
+        grace_until:
+          type: string
+          format: date-time
+        reminder_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+        alert_triggered_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    CompleteCheckInResponse:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        status:
+          type: string
+          enum: [done]
+        completed_at:
+          type: string
+          format: date-time
+        streak_days:
+          type: integer
+        reward_points:
+          type: integer
+
+    JourneyItem:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        note:
+          type: string
+        status:
+          type: string
+          enum: [ongoing, ended, timeout]
+        expected_return_time:
+          type: string
+          format: date-time
+        actual_return_time:
+          type: string
+          format: date-time
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    CreateJourneyRequest:
+      type: object
+      required: [title, expected_return_time]
+      properties:
+        title:
+          type: string
+        expected_return_time:
+          type: string
+          format: date-time
+        note:
+          type: string
+
+    UpdateJourneyRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        expected_return_time:
+          type: string
+          format: date-time
+        note:
+          type: string
+
+    JourneyDetail:
+      allOf:
+        - $ref: "#/components/schemas/JourneyItem"
+        - type: object
+          properties:
+            reminder_sent_at:
+              type: string
+              format: date-time
+              nullable: true
+            alert_triggered_at:
+              type: string
+              format: date-time
+              nullable: true
+            alert_status:
+              type: string
+            alert_attempts:
+              type: integer
+            alert_last_attempt_at:
+              type: string
+              format: date-time
+              nullable: true
+
+    JourneyAlertData:
+      type: object
+      properties:
+        alert_status:
+          type: string
+        alert_attempts:
+          type: integer
+        alert_last_attempt_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    NotificationTaskItem:
+      type: object
+      properties:
+        id:
+          type: string
+        task_code:
+          type: string
+        category:
+          type: string
+        channel:
+          type: string
+        status:
+          type: string
+        cost_cents:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    AlipayExchangeRequest:
+      type: object
+      required: [auth_code]
+      properties:
+        auth_code:
+          type: string
+        device:
+          type: object
+          properties:
+            platform:
+              type: string
+            model:
+              type: string
+            app_version:
+              type: string
+
+    AuthUserSummary:
+      type: object
+      properties:
+        id:
+          type: string
+        nickname:
+          type: string
+        status:
+          type: string
+        phone_verified:
+          type: boolean
+        is_new_user:
+          type: boolean
+
+    AuthTokenResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+        user:
+          $ref: "#/components/schemas/AuthUserSummary"
+
+    RefreshTokenRequest:
+      type: object
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+
+    SendCaptchaRequest:
+      type: object
+      required: [phone, scene_id]
+      properties:
+        phone:
+          type: string
+        scene_id:
+          type: string
+        captcha_verify_param:
+          type: string
+
+    VerifySliderRequest:
+      type: object
+      required: [phone, captcha_verify_param, scene_id]
+      properties:
+        phone:
+          type: string
+        captcha_verify_param:
+          type: string
+        scene_id:
+          type: string
+
+    VerifySliderResponse:
+      type: object
+      properties:
+        slider_verification_token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
+
+    VerifyCaptchaRequest:
+      type: object
+      required: [phone, verify_code]
+      properties:
+        phone:
+          type: string
+        verify_code:
+          type: string
+
+

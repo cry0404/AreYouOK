@@ -167,6 +167,7 @@ func declareQueues(ch *amqp.Channel) error {
 		// 定时任务队列
 		{"scheduler.check_in.reminder", true, false, false, nil},
 		{"scheduler.check_in.timeout", true, false, false, nil},
+		{"scheduler.journey.reminder", true, false, false, nil},
 		{"scheduler.journey.timeout", true, false, false, nil},
 
 		// 事件队列
@@ -210,6 +211,7 @@ func bindQueues(ch *amqp.Channel) error {
 		// 定时任务队列绑定（延迟消息）
 		{"scheduler.check_in.reminder", "scheduler.check_in.reminder", "scheduler.delayed"},
 		{"scheduler.check_in.timeout", "scheduler.check_in.timeout", "scheduler.delayed"},
+		{"scheduler.journey.reminder", "scheduler.journey.reminder", "scheduler.delayed"},
 		{"scheduler.journey.timeout", "scheduler.journey.timeout", "scheduler.delayed"},
 
 		// 事件队列绑定

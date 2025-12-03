@@ -18,8 +18,7 @@ prometheus
 src/
 frontendTest/
 CLAUDE.md
-
+practice/
 docker/*.md
 .claude/
 
-scripts/

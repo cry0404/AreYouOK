@@ -87,6 +87,17 @@ func PublishDelayedMessage(exchange, routingKey string,
 		return fmt.Errorf("failed to marshal message: %w", err)
 	}
 
+	// 确保延迟不为负数，负数会被当作 0（立即投递）, 处理重新投递部分的错误逻辑
+	delayMs := delay.Milliseconds()
+	if delayMs < 0 {
+		logger.Logger.Warn("Negative delay detected, setting to 0 for immediate delivery",
+			zap.String("exchange", exchange),
+			zap.String("routing_key", routingKey),
+			zap.Duration("original_delay", delay),
+		)
+		delayMs = 0
+	}
+
 	err = ch.Publish(
 		exchange,
 		routingKey,
@@ -96,7 +107,7 @@ func PublishDelayedMessage(exchange, routingKey string,
 			ContentType: "application/json",
 			Body:        bodyBytes,
 			Headers: amqp.Table{
-				"x-delay": delay.Microseconds(),
+				"x-delay": delayMs, // RabbitMQ delayed message exchange 使用毫秒
 			},
 			DeliveryMode: amqp.Persistent,
 			Timestamp:    time.Now(),
