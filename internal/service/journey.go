@@ -486,11 +486,12 @@ func (s *JourneyService) GetJourneyAlerts(
 
 // ProcessReminder 处理行程提醒（发送给用户本人）
 // 在预计返回时间到了时提醒用户打卡
+// 返回创建的通知任务（如果创建了的话），供 consumer 发布到短信队列
 func (s *JourneyService) ProcessReminder(
 	ctx context.Context,
 	journeyID int64,
 	userID int64,
-) error {
+) (*model.NotificationTask, error) {
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
@@ -498,12 +499,10 @@ func (s *JourneyService) ProcessReminder(
 	journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return pkgerrors.Definition{
-				Code:    "JOURNEY_NOT_FOUND",
-				Message: "Journey not found",
-			}
+			// 行程不存在：说明已经被删除或从未创建，对当前消息来说是可跳过的
+			return nil, &pkgerrors.SkipMessageError{Reason: "Journey not found for reminder"}
 		}
-		return fmt.Errorf("failed to query journey: %w", err)
+		return nil, fmt.Errorf("failed to query journey: %w", err)
 	}
 
 	// 检查行程状态，只有进行中的行程才需要提醒
@@ -512,20 +511,29 @@ func (s *JourneyService) ProcessReminder(
 			zap.Int64("journey_id", journeyID),
 			zap.String("status", string(journey.Status)),
 		)
-		return nil
+		return nil, nil
+	}
+
+	// 检查是否已经发送过提醒（防止重复发送）
+	if journey.ReminderSentAt != nil {
+		logger.Logger.Debug("Journey reminder already sent, skipping",
+			zap.Int64("journey_id", journeyID),
+			zap.Time("reminder_sent_at", *journey.ReminderSentAt),
+		)
+		return nil, nil
 	}
 
 	// 查询用户
 	user, err := q.User.GetByID(journey.UserID)
 	if err != nil {
-		return fmt.Errorf("failed to query user: %w", err)
+		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
 	// 检查用户额度（提醒短信也需要扣费）
 	quotaService := Quota()
 	wallet, err := quotaService.GetWallet(ctx, user.ID, model.QuotaChannelSMS)
 	if err != nil {
-		return fmt.Errorf("failed to query SMS quota wallet: %w", err)
+		return nil, fmt.Errorf("failed to query SMS quota wallet: %w", err)
 	}
 
 	smsUnitPriceCents := 5
@@ -536,13 +544,13 @@ func (s *JourneyService) ProcessReminder(
 			zap.Int("balance", wallet.AvailableAmount),
 		)
 		// 额度不足，跳过提醒但不报错
-		return nil
+		return nil, nil
 	}
 
 	// 生成任务代码
 	taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
 	if err != nil {
-		return fmt.Errorf("failed to generate task code: %w", err)
+		return nil, fmt.Errorf("failed to generate task code: %w", err)
 	}
 
 	now := time.Now()
@@ -565,7 +573,7 @@ func (s *JourneyService) ProcessReminder(
 	}
 
 	if err := q.NotificationTask.Create(notificationTask); err != nil {
-		return fmt.Errorf("failed to create notification task: %w", err)
+		return nil, fmt.Errorf("failed to create notification task: %w", err)
 	}
 
 	// 更新行程的 reminder_sent_at
@@ -588,7 +596,7 @@ func (s *JourneyService) ProcessReminder(
 		zap.Int64("task_code", taskCode),
 	)
 
-	return nil
+	return notificationTask, nil
 }
 
 // ProcessTimeout 处理行程超时
@@ -605,10 +613,8 @@ func (s *JourneyService) ProcessTimeout(
 	journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, pkgerrors.Definition{
-				Code:    "JOURNEY_NOT_FOUND",
-				Message: "Journey not found",
-			}
+			// 行程不存在：说明已经被删除或从未创建，对当前消息来说是可跳过的
+			return nil, &pkgerrors.SkipMessageError{Reason: "Journey not found for timeout"}
 		}
 		return nil, fmt.Errorf("failed to query journey: %w", err)
 	}

@@ -249,7 +249,7 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 		// 5. 批量记录 contact_attempts, 每次尝试的记录记录到 contact_attempts
 
 		checkInService := service.CheckIn()
-		err = checkInService.ProcessTimeoutBatch(ctx, msg.UserIDs, msg.CheckInDate)
+		createdTasks, err := checkInService.ProcessTimeoutBatch(ctx, msg.UserIDs, msg.CheckInDate)
 		if err != nil {
 			// 1. 可跳过的错误：标记为已处理，不重试
 			if errors.IsSkipMessageError(err) {
@@ -291,20 +291,12 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to process timeout batch (will retry): %w", err)
 		}
 
-		db := database.DB().WithContext(ctx)
-		q := query.Use(db)
+		// 只发布当前批次创建的任务，不再查询全量任务
+		if len(createdTasks) > 0 {
+			db := database.DB().WithContext(ctx)
+			q := query.Use(db)
 
-		today := time.Now().Truncate(24 * time.Hour)
-
-		// 查询超时通知任务（发送给紧急联系人）
-		timeoutTasks, err := q.NotificationTask.
-			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInTimeout))).
-			Where(q.NotificationTask.CreatedAt.Gte(today)).
-			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
-			Find()
-
-		if err == nil {
-			for _, task := range timeoutTasks {
+			for _, task := range createdTasks {
 				// 查询用户 public_id
 				user, err := q.User.GetByID(task.UserID)
 				if err != nil {
@@ -337,48 +329,18 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 						zap.Int64("task_code", task.TaskCode),
 						zap.Error(err),
 					)
-				}
-			}
-		}
-
-		// 查询额度耗尽提醒任务（发送给用户本人）
-		quotaDepletedTasks, err := q.NotificationTask.
-			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryQuotaDepleted))).
-			Where(q.NotificationTask.CreatedAt.Gte(today)).
-			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
-			Find()
-
-		if err == nil {
-			for _, task := range quotaDepletedTasks {
-				// 查询用户 public_id
-				user, err := q.User.GetByID(task.UserID)
-				if err != nil {
-					logger.Logger.Warn("Failed to query user for quota depleted notification",
-						zap.Int64("task_id", task.ID),
-						zap.Error(err),
-					)
-					continue
-				}
-
-				// 构建通知消息（发送给用户本人，不设置 PhoneHash）
-				notificationMsg := model.NotificationMessage{
-					MessageID: fmt.Sprintf("notification_%d", task.TaskCode),
-					TaskCode:  task.TaskCode,
-					UserID:    user.PublicID,
-					Category:  string(task.Category),
-					Channel:   string(task.Channel),
-					PhoneHash: "", // 额度耗尽提醒发送给用户本人
-					Payload:   task.Payload,
-				}
-
-				// 发布到队列
-				if err := PublishSMSNotification(notificationMsg); err != nil {
-					logger.Logger.Error("Failed to publish quota depleted notification message",
+				} else {
+					logger.Logger.Info("Published check-in timeout SMS notification",
 						zap.Int64("task_code", task.TaskCode),
-						zap.Error(err),
+						zap.String("category", string(task.Category)),
 					)
 				}
 			}
+		} else {
+			logger.Logger.Debug("No new timeout tasks created in this batch",
+				zap.String("message_id", msg.MessageID),
+				zap.String("check_in_date", msg.CheckInDate),
+			)
 		}
 
 		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
@@ -430,7 +392,7 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 		)
 		// 调用 service 层处理行程提醒逻辑（创建 NotificationTask 记录）
 		journeyService := service.Journey()
-		err = journeyService.ProcessReminder(ctx, msg.JourneyID, msg.UserID)
+		task, err := journeyService.ProcessReminder(ctx, msg.JourneyID, msg.UserID)
 		if err != nil {
 			if errors.IsSkipMessageError(err) {
 				logger.Logger.Info("Skipping journey reminder processing",
@@ -451,29 +413,20 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to process journey reminder (will retry): %w", err)
 		}
 
-		// 第二步：将今天创建的 journey_reminder 任务发布到短信队列（发送给用户本人）
-		db := database.DB().WithContext(ctx)
-		q := query.Use(db)
+		// 第二步：将刚刚创建的这条任务发布到短信队列（发送给用户本人）
+		// 注意：只发布当前创建的任务，而不是查询今天所有 pending 任务
+		if task != nil {
+			db := database.DB().WithContext(ctx)
+			q := query.Use(db)
 
-		today := time.Now().Truncate(24 * time.Hour)
-		reminderTasks, err := q.NotificationTask.
-			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryJourneyReminder))).
-			Where(q.NotificationTask.CreatedAt.Gte(today)).
-			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
-			Find()
-
-		if err == nil {
-			for _, task := range reminderTasks {
-				// 查询用户 public_id
-				user, err := q.User.GetByID(task.UserID)
-				if err != nil {
-					logger.Logger.Warn("Failed to query user for journey reminder notification",
-						zap.Int64("task_id", task.ID),
-						zap.Error(err),
-					)
-					continue
-				}
-
+			// 查询用户 public_id
+			user, err := q.User.GetByID(task.UserID)
+			if err != nil {
+				logger.Logger.Warn("Failed to query user for journey reminder notification",
+					zap.Int64("task_id", task.ID),
+					zap.Error(err),
+				)
+			} else {
 				// 构建通知消息（发送给用户本人，不设置 PhoneHash）
 				notificationMsg := model.NotificationMessage{
 					MessageID: fmt.Sprintf("notification_%d", task.TaskCode),
@@ -491,8 +444,18 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 						zap.Int64("task_code", task.TaskCode),
 						zap.Error(err),
 					)
+				} else {
+					logger.Logger.Info("Published journey reminder SMS notification",
+						zap.Int64("task_code", task.TaskCode),
+						zap.Int64("journey_id", msg.JourneyID),
+					)
 				}
 			}
+		} else {
+			logger.Logger.Debug("No new journey reminder task created (already sent or skipped)",
+				zap.String("message_id", msg.MessageID),
+				zap.Int64("journey_id", msg.JourneyID),
+			)
 		}
 
 		// 标记消息已处理

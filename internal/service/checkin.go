@@ -528,11 +528,12 @@ func (s *CheckInService) CompleteCheckIn(
 // ProcessTimeoutBatch 批量处理打卡超时
 // 由超时 consuemer 消费
 // 查询超时用户（21:00未打卡且已发送提醒），通知紧急联系人
+// 返回创建的通知任务列表（包含超时通知和额度耗尽通知）
 func (s *CheckInService) ProcessTimeoutBatch(
 	ctx context.Context,
 	userIDs []int64,
 	checkInDate string,
-) error {
+) ([]*model.NotificationTask, error) {
 	db := database.DB().WithContext(ctx)
 
 	q := query.Use(db)
@@ -542,7 +543,7 @@ func (s *CheckInService) ProcessTimeoutBatch(
 		Find()
 
 	if err != nil {
-		return fmt.Errorf("failed to query users: %w", err)
+		return nil, fmt.Errorf("failed to query users: %w", err)
 	}
 
 	userMap := make(map[int64]*model.User)
@@ -554,7 +555,7 @@ func (s *CheckInService) ProcessTimeoutBatch(
 	// 解析日期
 	checkInDateParsed, err := time.Parse("2006-01-02", checkInDate)
 	if err != nil {
-		return fmt.Errorf("invalid check_in_date format: %w", err)
+		return nil, fmt.Errorf("invalid check_in_date format: %w", err)
 	}
 
 	// 批量查询打卡记录
@@ -570,7 +571,7 @@ func (s *CheckInService) ProcessTimeoutBatch(
 		Find()
 
 	if err != nil {
-		return fmt.Errorf("failed to query check-ins: %w", err)
+		return nil, fmt.Errorf("failed to query check-ins: %w", err)
 	}
 
 	checkInMap := make(map[int64]*model.DailyCheckIn)
@@ -580,7 +581,10 @@ func (s *CheckInService) ProcessTimeoutBatch(
 
 	now := time.Now()
 
-	return db.Transaction(func(tx *gorm.DB) error {
+	// 收集创建的任务
+	var createdTasks []*model.NotificationTask
+
+	err = db.Transaction(func(tx *gorm.DB) error {
 		txQ := query.Use(tx)
 
 		// 提取所有需要检查额度的用户ID，进行批量查询
@@ -739,6 +743,9 @@ func (s *CheckInService) ProcessTimeoutBatch(
 						continue
 					}
 
+					// 添加到创建的任务列表
+					createdTasks = append(createdTasks, quotaDepletedTask)
+
 					logger.Logger.Info("Created quota depleted notification task",
 						zap.Int64("user_id", user.ID),
 						zap.String("check_in_date", checkInDate),
@@ -843,6 +850,9 @@ func (s *CheckInService) ProcessTimeoutBatch(
 					)
 					return fmt.Errorf("failed to create notification task: %w", err)
 				}
+
+				// 添加到创建的任务列表
+				createdTasks = append(createdTasks, notificationTask)
 			}
 
 			logger.Logger.Info("Processed timeout check-in",
@@ -854,6 +864,11 @@ func (s *CheckInService) ProcessTimeoutBatch(
 		return nil
 	})
 
+	if err != nil {
+		return nil, err
+	}
+
+	return createdTasks, nil
 }
 
 // // 处理单个用户的打卡信息, 这里需要对接到具体的短信服务需要的 payload 是什么才可以知道如何去做

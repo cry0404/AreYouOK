@@ -11,6 +11,7 @@ import (
 
 	"go.uber.org/zap"
 
+	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/queue"
 	"AreYouOK/internal/repository/query"
@@ -142,45 +143,87 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 			// 规则：
 			// - 只要还没到 expected_return_time + 10 分钟，并且 ReminderSentAt 为空，就一定要发一次
 			// - 如果已经过了预计返回时间，就立刻发（delay=0）
+			// - 检查 Redis 标记，防止调度器重复投递
 			if j.ReminderSentAt == nil && now.Before(j.ExpectedReturnTime.Add(10*time.Minute)) {
-				reminderDelay := j.ExpectedReturnTime.Sub(now)
-				if reminderDelay < 0 {
-					reminderDelay = 0
-				}
-
-				reminderMsgID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+				// 检查是否已经投递过 reminder 消息
+				reminderScheduled, err := cache.IsJourneyReminderScheduled(ctx, j.ID)
 				if err != nil {
-					s.logger.Error("Failed to generate reminder message ID",
+					s.logger.Warn("Failed to check journey reminder scheduled status",
 						zap.Int64("journey_id", j.ID),
 						zap.Error(err),
 					)
-				} else {
-					reminderMsg := model.JourneyReminderMessage{
-						MessageID:    fmt.Sprintf("journey_reminder_%d", reminderMsgID),
-						ScheduledAt:  now.Format(time.RFC3339),
-						JourneyID:    j.ID,
-						UserID:       user.PublicID,
-						DelaySeconds: int(reminderDelay.Seconds()),
+					// 检查失败时继续尝试投递，让 consumer 端做幂等
+				}
+
+				if !reminderScheduled {
+					reminderDelay := j.ExpectedReturnTime.Sub(now)
+					if reminderDelay < 0 {
+						reminderDelay = 0
 					}
 
-					if err := queue.PublishJourneyReminder(reminderMsg); err != nil {
-						s.logger.Error("Failed to publish journey reminder message",
+					reminderMsgID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+					if err != nil {
+						s.logger.Error("Failed to generate reminder message ID",
 							zap.Int64("journey_id", j.ID),
-							zap.Int64("user_id", user.PublicID),
 							zap.Error(err),
 						)
 					} else {
-						s.logger.Info("Published journey reminder message",
-							zap.Int64("journey_id", j.ID),
-							zap.Int64("user_id", user.PublicID),
-							zap.Duration("delay", reminderDelay),
-							zap.Time("expected_return_time", j.ExpectedReturnTime),
-						)
+						reminderMsg := model.JourneyReminderMessage{
+							MessageID:    fmt.Sprintf("journey_reminder_%d", reminderMsgID),
+							ScheduledAt:  now.Format(time.RFC3339),
+							JourneyID:    j.ID,
+							UserID:       user.PublicID,
+							DelaySeconds: int(reminderDelay.Seconds()),
+						}
+
+						if err := queue.PublishJourneyReminder(reminderMsg); err != nil {
+							s.logger.Error("Failed to publish journey reminder message",
+								zap.Int64("journey_id", j.ID),
+								zap.Int64("user_id", user.PublicID),
+								zap.Error(err),
+							)
+						} else {
+							// 投递成功后标记 Redis
+							if markErr := cache.MarkJourneyReminderScheduled(ctx, j.ID); markErr != nil {
+								s.logger.Warn("Failed to mark journey reminder scheduled",
+									zap.Int64("journey_id", j.ID),
+									zap.Error(markErr),
+								)
+							}
+
+							s.logger.Info("Published journey reminder message",
+								zap.Int64("journey_id", j.ID),
+								zap.Int64("user_id", user.PublicID),
+								zap.Duration("delay", reminderDelay),
+								zap.Time("expected_return_time", j.ExpectedReturnTime),
+							)
+						}
 					}
+				} else {
+					s.logger.Debug("Journey reminder already scheduled, skipping",
+						zap.Int64("journey_id", j.ID),
+					)
 				}
 			}
 
 			// 第二阶段：发送超时消息（通知紧急联系人）
+			// 检查 Redis 标记，防止调度器重复投递
+			timeoutScheduled, err := cache.IsJourneyTimeoutScheduled(ctx, j.ID)
+			if err != nil {
+				s.logger.Warn("Failed to check journey timeout scheduled status",
+					zap.Int64("journey_id", j.ID),
+					zap.Error(err),
+				)
+				// 检查失败时继续尝试投递，让 consumer 端做幂等
+			}
+
+			if timeoutScheduled {
+				s.logger.Debug("Journey timeout already scheduled, skipping",
+					zap.Int64("journey_id", j.ID),
+				)
+				return
+			}
+
 			// 如果超时延迟时间 <= 0，说明已经超时，立即处理
 			if timeoutDelay <= 0 {
 				timeoutDelay = 0
@@ -216,6 +259,14 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 				errors = append(errors, fmt.Errorf("failed to publish timeout message for journey %d: %w", j.ID, err))
 				errorsMu.Unlock()
 				return
+			}
+
+			// 投递成功后标记 Redis
+			if markErr := cache.MarkJourneyTimeoutScheduled(ctx, j.ID); markErr != nil {
+				s.logger.Warn("Failed to mark journey timeout scheduled",
+					zap.Int64("journey_id", j.ID),
+					zap.Error(markErr),
+				)
 			}
 
 			s.logger.Info("Published journey timeout message",
