@@ -75,7 +75,7 @@ func CheckIn() *CheckInService {
 
 type ValidateReminderBatchResult struct {
 	ProcessNow []int64 // 可以直接处理的用户
-	Republish  []int64 // 需要重新投递的用户（设置改变了）
+	Republish  []int64 // 需要重新投递的用户（设置改变了），但是已经在用户更改时就已经投递了，所以就不用在意了
 	Skipped    []int64 // 需要跳过的用户（关闭了打卡功能或不在时间段内）
 }
 
@@ -197,20 +197,25 @@ func (s *CheckInService) ValidateReminderBatch(
 
 // ProcessReminderBatch 批量发送打卡提醒消息（需要根据额度，或者免费？）， 这里的 Send 也需要重新修改
 // userIDs: 用户 public_id 列表
+// 返回值: 创建的任务数量, 错误
 func (s *CheckInService) ProcessReminderBatch(
 	ctx context.Context,
 	userIDs []int64,
 	checkInDate string,
-) error {
+) (int, error) {
+	logger.Logger.Info("ProcessReminderBatch started",
+		zap.Int("user_count", len(userIDs)),
+		zap.String("check_in_date", checkInDate),
+	)
 	if len(userIDs) == 0 {
 		logger.Logger.Warn("ProcessReminderBatch: empty userIDs list")
-		return nil
+		return 0, nil
 	}
 
 	// 解析日期
 	date, err := time.Parse("2006-01-02", checkInDate)
 	if err != nil {
-		return fmt.Errorf("invalid check_in_date format: %w", err)
+		return 0, fmt.Errorf("invalid check_in_date format: %w", err)
 	}
 
 	db := database.DB().WithContext(ctx)
@@ -225,12 +230,12 @@ func (s *CheckInService) ProcessReminderBatch(
 		Find()
 
 	if err != nil {
-		return fmt.Errorf("failed to query users: %w", err)
+		return 0, fmt.Errorf("failed to query users: %w", err)
 	}
 
 	if len(users) == 0 {
 		logger.Logger.Debug("No valid users to process")
-		return nil
+		return 0, nil
 	}
 
 	// 构建用户映射（public_id -> User）
@@ -239,8 +244,11 @@ func (s *CheckInService) ProcessReminderBatch(
 		userMap[user.PublicID] = user
 	}
 
+	// 跟踪创建的任务数量
+	var createdCount int
+
 	// 开启事务批量处理
-	return db.Transaction(func(tx *gorm.DB) error {
+	err = db.Transaction(func(tx *gorm.DB) error {
 		txQ := query.Use(tx)
 		now := time.Now()
 
@@ -296,7 +304,7 @@ func (s *CheckInService) ProcessReminderBatch(
 					zap.Int64("user_id", publicID),
 					zap.Error(err),
 				)
-				return err // 发生错误时回滚事务
+				return err
 			}
 
 			// 构建短信内容
@@ -305,27 +313,26 @@ func (s *CheckInService) ProcessReminderBatch(
 				deadline = "21:00:00" // 默认截止时间
 			}
 
-			// 获取用户昵称（默认为用户ID）
-			userName := fmt.Sprintf("%d", publicID)
+			phone, _ := utils.DecryptPhone(user.PhoneCipher)
+
+			// 取末尾四位电话作为昵称
+			userName := fmt.Sprintf("用户%s", phone[7:])
 			if user.Nickname != "" {
-				userName = user.Nickname
+				userName = user.Nickname //这里就直接更新了
 			}
 
-			// 构建符合 SMSMessage 接口的 payload
-			// CheckInReminder 需要 type, name, time 三个字段
 			payload := model.JSONB{
 				"type": "checkin_reminder",
 				"name": userName,
 				"time": deadline,
 			}
 
-			// 验证payload格式是否正确
 			if err := validateCheckInReminderPayload(payload); err != nil {
 				logger.Logger.Error("Invalid payload format",
 					zap.Int64("user_id", publicID),
 					zap.Error(err),
 				)
-				return err // 格式错误，回滚事务
+				return err
 			}
 
 			notificationTask := &model.NotificationTask{
@@ -351,6 +358,8 @@ func (s *CheckInService) ProcessReminderBatch(
 				return err // 创建失败，回滚事务
 			}
 
+			createdCount++
+
 			// reminder_sent_at 会在消费者成功发送短信后更新
 
 			logger.Logger.Debug("Processed reminder for user",
@@ -362,6 +371,19 @@ func (s *CheckInService) ProcessReminderBatch(
 
 		return nil
 	})
+	if err != nil {
+		logger.Logger.Error("ProcessReminderBatch failed",
+			zap.String("check_in_date", checkInDate),
+			zap.Error(err),
+		)
+		return 0, err
+	}
+
+	logger.Logger.Info("ProcessReminderBatch completed",
+		zap.String("check_in_date", checkInDate),
+		zap.Int("created_count", createdCount),
+	)
+	return createdCount, nil
 }
 
 // GetTodayCheckIn 查询当天打卡状态
@@ -635,7 +657,116 @@ func (s *CheckInService) ProcessTimeoutBatch(
 					zap.Int("required", totalCost),
 					zap.Int("contact_count", contactCount),
 				)
-				continue // 跳过这个用户
+
+				// 检查是否应该发送额度耗尽提醒
+				// 逻辑：每次额度用尽时发送一次，但如果用户充值后再次用尽，应该再次发送
+				//  查询最近一次发送额度耗尽提醒的时间
+				lastQuotaDepletedTask, err := txQ.NotificationTask.
+					Where(txQ.NotificationTask.UserID.Eq(user.ID)).
+					Where(txQ.NotificationTask.Category.Eq(string(model.NotificationCategoryQuotaDepleted))).
+					Order(txQ.NotificationTask.ScheduledAt.Desc()).
+					First()
+
+				shouldSendQuotaDepleted := false
+				if err != nil {
+					if err == gorm.ErrRecordNotFound {
+						// 从未发送过，应该发送
+						shouldSendQuotaDepleted = true
+					} else {
+						logger.Logger.Error("Failed to check quota depleted notification",
+							zap.Int64("user_id", user.ID),
+							zap.Error(err),
+						)
+
+						continue
+					}
+				} else {
+					// 查询从上次发送提醒到现在，是否有充值记录（grant 类型的交易）
+					// 如果有充值，说明用户曾经有额度，现在又用尽了，应该再次发送
+					rechargeCount, err := txQ.QuotaTransaction.
+						Where(txQ.QuotaTransaction.UserID.Eq(user.ID)).
+						Where(txQ.QuotaTransaction.Channel.Eq(string(model.QuotaChannelSMS))).
+						Where(txQ.QuotaTransaction.TransactionType.Eq(string(model.TransactionTypeGrant))).
+						Where(txQ.QuotaTransaction.CreatedAt.Gt(lastQuotaDepletedTask.ScheduledAt)).
+						Count()
+					if err != nil {
+						logger.Logger.Error("Failed to check quota recharge after last depleted notification",
+							zap.Int64("user_id", user.ID),
+							zap.Error(err),
+						)
+
+						continue
+					}
+
+					// 如果在上次发送提醒后有充值记录，说明用户曾经有额度，现在又用尽了，应该再次发送
+					shouldSendQuotaDepleted = rechargeCount > 0
+				}
+
+				// 如果应该发送额度耗尽提醒，则发送
+				if shouldSendQuotaDepleted {
+					taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
+					if err != nil {
+						logger.Logger.Error("Failed to generate task code for quota depleted",
+							zap.Int64("user_id", user.ID),
+							zap.Error(err),
+						)
+						continue
+					}
+
+					// 构建额度耗尽提醒的 payload
+					payload := model.JSONB{
+						"type": "quota_depleted",
+					}
+
+					// 创建额度耗尽提醒任务（发送给用户本人）
+					quotaDepletedTask := &model.NotificationTask{
+						TaskCode: taskCode,
+						UserID:   user.ID,
+						Category: model.NotificationCategoryQuotaDepleted,
+						Channel:  model.NotificationChannelSMS,
+						Status:   model.NotificationTaskStatusPending,
+						Payload:  payload,
+						// ContactPriority 和 ContactPhoneHash 为空，因为这是发送给用户本人的
+						ScheduledAt: now,
+					}
+
+					if err := txQ.NotificationTask.Create(quotaDepletedTask); err != nil {
+						logger.Logger.Error("Failed to create quota depleted notification task",
+							zap.Int64("user_id", user.ID),
+							zap.Error(err),
+						)
+						// 创建任务失败不影响主流程，继续处理
+						continue
+					}
+
+					logger.Logger.Info("Created quota depleted notification task",
+						zap.Int64("user_id", user.ID),
+						zap.String("check_in_date", checkInDate),
+					)
+				} else {
+					logger.Logger.Debug("Quota depleted notification already sent and no recharge since then, skipping",
+						zap.Int64("user_id", user.ID),
+						zap.String("check_in_date", checkInDate),
+					)
+				}
+
+				// 更新打卡状态为超时，但不发送紧急联系人通知
+				_, err = txQ.DailyCheckIn.
+					Where(txQ.DailyCheckIn.ID.Eq(checkIn.ID)).
+					Updates(map[string]interface{}{
+						"alert_triggered_at": now,
+						"status":             model.CheckInStatusTimeout,
+						"updated_at":         now,
+					})
+				if err != nil {
+					logger.Logger.Error("Failed to update check-in status for quota depleted",
+						zap.Int64("check_in_id", checkIn.ID),
+						zap.Error(err),
+					)
+					// 更新失败不影响主流程
+				}
+
+				continue // 跳过紧急联系人通知
 			}
 
 			_, err = txQ.DailyCheckIn.
@@ -685,10 +816,10 @@ func (s *CheckInService) ProcessTimeoutBatch(
 				}
 
 				// 构建 payload
+				// 使用 checkin_reminder_contact 类型发给紧急联系人（只需要 name 参数）
 				payload := model.JSONB{
-					"type":     "check_in_timeout",
-					"name":     userName,
-					"deadline": deadline,
+					"type": "checkin_reminder_contact",
+					"name": userName,
 				}
 
 				// 创建通知任务

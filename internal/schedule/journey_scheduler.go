@@ -111,39 +111,22 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 		go func(j *model.Journey) {
 			defer wg.Done()
 
-			// 计算延迟时间：预计返回时间 + 10分钟 - 当前时间
-			delay := j.ExpectedReturnTime.Add(10 * time.Minute).Sub(now)
+			// 计算提醒延迟时间：预计返回时间 - 当前时间（第一阶段：提醒用户打卡）
+			reminderDelay := j.ExpectedReturnTime.Sub(now)
 
-			// 如果延迟时间 <= 0，说明已经超时，立即处理
-			if delay <= 0 {
-				// 立即发送超时消息（延迟0秒）
-				delay = 0
-			}
+			// 计算超时延迟时间：预计返回时间 + 10分钟 - 当前时间（第二阶段：通知紧急联系人）
+			timeoutDelay := j.ExpectedReturnTime.Add(10 * time.Minute).Sub(now)
 
-			// 如果延迟时间 > 1天，跳过（等待下次扫描）
-			// 这种情况理论上不应该发生，因为我们已经过滤了 checkUntil 范围内的行程
-			if delay > 24*time.Hour {
+			// 如果超时延迟时间 > 1天，跳过（等待下次扫描）
+			if timeoutDelay > 24*time.Hour {
 				s.logger.Warn("Journey delay exceeds 24 hours, skipping",
 					zap.Int64("journey_id", j.ID),
-					zap.Duration("delay", delay),
+					zap.Duration("timeout_delay", timeoutDelay),
 				)
 				return
 			}
 
-			// 生成 MessageID
-			messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
-			if err != nil {
-				s.logger.Error("Failed to generate message ID",
-					zap.Int64("journey_id", j.ID),
-					zap.Error(err),
-				)
-				errorsMu.Lock()
-				errors = append(errors, fmt.Errorf("failed to generate message ID for journey %d: %w", j.ID, err))
-				errorsMu.Unlock()
-				return
-			}
-
-			// 查询用户 public_id（需要 join users 表）
+			// 查询用户 public_id
 			user, err := query.User.WithContext(ctx).
 				Where(query.User.ID.Eq(j.UserID)).
 				First()
@@ -159,16 +142,65 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 				return
 			}
 
-			// 构建超时消息
+			// 第一阶段：发送提醒消息给用户本人（如果还没到预计返回时间）
+			if reminderDelay > 0 && j.ReminderSentAt == nil {
+				reminderMsgID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+				if err != nil {
+					s.logger.Error("Failed to generate reminder message ID",
+						zap.Int64("journey_id", j.ID),
+						zap.Error(err),
+					)
+				} else {
+					reminderMsg := model.JourneyReminderMessage{
+						MessageID:    fmt.Sprintf("journey_reminder_%d", reminderMsgID),
+						ScheduledAt:  now.Format(time.RFC3339),
+						JourneyID:    j.ID,
+						UserID:       user.PublicID,
+						DelaySeconds: int(reminderDelay.Seconds()),
+					}
+
+					if err := queue.PublishJourneyReminder(reminderMsg); err != nil {
+						s.logger.Error("Failed to publish journey reminder message",
+							zap.Int64("journey_id", j.ID),
+							zap.Int64("user_id", user.PublicID),
+							zap.Error(err),
+						)
+					} else {
+						s.logger.Info("Published journey reminder message",
+							zap.Int64("journey_id", j.ID),
+							zap.Int64("user_id", user.PublicID),
+							zap.Duration("delay", reminderDelay),
+						)
+					}
+				}
+			}
+
+			// 第二阶段：发送超时消息（通知紧急联系人）
+			// 如果超时延迟时间 <= 0，说明已经超时，立即处理
+			if timeoutDelay <= 0 {
+				timeoutDelay = 0
+			}
+
+			timeoutMsgID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+			if err != nil {
+				s.logger.Error("Failed to generate timeout message ID",
+					zap.Int64("journey_id", j.ID),
+					zap.Error(err),
+				)
+				errorsMu.Lock()
+				errors = append(errors, fmt.Errorf("failed to generate message ID for journey %d: %w", j.ID, err))
+				errorsMu.Unlock()
+				return
+			}
+
 			timeoutMsg := model.JourneyTimeoutMessage{
-				MessageID:    fmt.Sprintf("journey_timeout_%d", messageID),
+				MessageID:    fmt.Sprintf("journey_timeout_%d", timeoutMsgID),
 				ScheduledAt:  now.Format(time.RFC3339),
 				JourneyID:    j.ID,
 				UserID:       user.PublicID,
-				DelaySeconds: int(delay.Seconds()),
+				DelaySeconds: int(timeoutDelay.Seconds()),
 			}
 
-			// 发布延迟消息
 			if err := queue.PublishJourneyTimeout(timeoutMsg); err != nil {
 				s.logger.Error("Failed to publish journey timeout message",
 					zap.Int64("journey_id", j.ID),
@@ -184,7 +216,7 @@ func (s *JourneyScheduler) CheckJourneyTimeouts(ctx context.Context, timeWindow 
 			s.logger.Info("Published journey timeout message",
 				zap.Int64("journey_id", j.ID),
 				zap.Int64("user_id", user.PublicID),
-				zap.Duration("delay", delay),
+				zap.Duration("timeout_delay", timeoutDelay),
 				zap.Time("expected_return_time", j.ExpectedReturnTime),
 			)
 		}(journey)
@@ -309,6 +341,3 @@ func (s *JourneyScheduler) CheckOverdueJourneys(ctx context.Context) error {
 
 	return nil
 }
-
-
-

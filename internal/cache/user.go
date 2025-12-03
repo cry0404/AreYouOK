@@ -1,12 +1,15 @@
 package cache
 
 import (
+	"AreYouOK/pkg/logger"
 	"AreYouOK/storage/redis"
 	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // 用于缓存 user 部分的设置，避免设置更改后频繁去查数据库，消息队列查询时更新
@@ -23,10 +26,10 @@ type TimeRange struct {
 
 // UserSettingsCache 用户设置缓存结构
 type UserSettingsCache struct {
-	DailyCheckInEnabled    bool      `json:"daily_check_in_enabled"`
-	DailyCheckInRemindAt   string    `json:"daily_check_in_remind_at"`
-	DailyCheckInDeadline   string    `json:"daily_check_in_deadline"`
-	DailyCheckInGraceUntil string    `json:"daily_check_in_grace_until"`
+	DailyCheckInEnabled    bool   `json:"daily_check_in_enabled"`
+	DailyCheckInRemindAt   string `json:"daily_check_in_remind_at"`
+	DailyCheckInDeadline   string `json:"daily_check_in_deadline"`
+	DailyCheckInGraceUntil string `json:"daily_check_in_grace_until"`
 
 	// Status                 string `json:"status"`   用户状态用户无法改变
 	DailyCheckInTimeRange *TimeRange `json:"daily_check_in_time_range,omitempty"` // {"start": "08:00:00", "end": "20:00:00"}
@@ -72,6 +75,10 @@ func BatchGetUserSettings(ctx context.Context, userIDs []int64) (map[int64]*User
 		return make(map[int64]*UserSettingsCache), nil
 	}
 
+	logger.Logger.Info("BatchGetUserSettings start",
+		zap.Int("user_count", len(userIDs)),
+	)
+
 	// 转换为字符串键
 	keys := make([]string, len(userIDs))
 	for i, userID := range userIDs {
@@ -86,8 +93,14 @@ func BatchGetUserSettings(ctx context.Context, userIDs []int64) (map[int64]*User
 	})
 
 	if err != nil {
+		logger.Logger.Error("BatchGetUserSettings cache error", zap.Error(err))
 		return nil, fmt.Errorf("failed to batch get user settings: %w", err)
 	}
+
+	logger.Logger.Info("BatchGetUserSettings cache hit summary",
+		zap.Int("requested", len(keys)),
+		zap.Int("hit", len(result)),
+	)
 
 	// 转换结果为正确的类型
 	settingsMap := make(map[int64]*UserSettingsCache)

@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 
 	"go.uber.org/zap"
@@ -86,13 +88,19 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 				return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
 			}
 
+			max := big.NewInt(100000)
+			n, err := rand.Int(rand.Reader, max)
+			nickname := fmt.Sprintf("安否用户%d", n.Int64()) // 默认值
+			if err == nil {
+				nickname = fmt.Sprintf("用户%d", n.Int64())
+			}
 			// 使用 phone_hash 作为 alipay_open_id，因为数据库要求该字段非空且唯一
 			alipayOpenID := "phone_" + phoneHash
 			user = &model.User{
 				PublicID:     publicID,
 				AlipayOpenID: alipayOpenID,
-				Nickname:     fmt.Sprintf("用户%d", userCount), // 默认用户第多少号
-				Status:       model.UserStatusContact,        // 已绑定手机号，进入填写紧急联系人阶段
+				Nickname:     nickname,
+				Status:       model.UserStatusContact, // 已绑定手机号，进入填写紧急联系人阶段
 				Timezone:     "Asia/Shanghai",
 				PhoneHash:    &phoneHash,
 			}
@@ -101,6 +109,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 
 			// 使用事务确保用户创建和额度分配原子性
 			db := database.DB().WithContext(ctx)
+
 			err = db.Transaction(func(tx *gorm.DB) error {
 				txQ := query.Use(tx)
 
@@ -353,12 +362,22 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
 			}
 
+			max := big.NewInt(100000)
+			n, err := rand.Int(rand.Reader, max)
+
+			nickname := fmt.Sprintf("安否用户%d", n.Int64()) // 默认值
+			if err == nil {
+				nickname = fmt.Sprintf("用户%d", n.Int64())
+			}
+
+			// 诡异错误，为什么 nickname 无法成功获取
+
 			// 创建新用户，状态为 contact（已验证手机号，需要填写紧急联系人）
 			alipayOpenID := "phone_" + fmt.Sprintf("%d", publicID)
 			user = &model.User{
 				PublicID:     publicID,
 				AlipayOpenID: alipayOpenID,
-				Nickname:     "",
+				Nickname:     nickname,
 				Status:       model.UserStatusContact,
 				Timezone:     "Asia/Shanghai",
 				PhoneHash:    &phoneHash,

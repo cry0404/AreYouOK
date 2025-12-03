@@ -116,3 +116,24 @@ func GetUserQuotas(ctx context.Context, c *app.RequestContext) {
 	}
 	response.Success(ctx, c, result)
 }
+
+
+// DeleteUser 软删除 User 部分
+// DELETE /v1/users/me
+
+func DeleteUserProfile(ctx context.Context, c *app.RequestContext) {
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userService := service.User()
+	if err := userService.DeleteUser(ctx, userIDStr); err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	c.Status(204) // 这里需要前端清楚 session 和 token
+}

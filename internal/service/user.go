@@ -11,6 +11,7 @@ import (
 	"go.uber.org/zap"
 	"gorm.io/gorm"
 
+	"AreYouOK/config"
 	"AreYouOK/internal/cache"
 	"AreYouOK/internal/model"
 	"AreYouOK/internal/model/dto"
@@ -18,6 +19,7 @@ import (
 	pkgerrors "AreYouOK/pkg/errors"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/snowflake"
+	"AreYouOK/storage/database"
 
 	"AreYouOK/utils"
 )
@@ -140,7 +142,6 @@ func (s *UserService) GetUserProfile(
 			smsBalance = int(v)
 		}
 	}
-	
 
 	result := &dto.UserProfileData{
 		ID:       strconv.FormatInt(publicID, 10),
@@ -152,7 +153,7 @@ func (s *UserService) GetUserProfile(
 		},
 		Status: statusStr,
 		Settings: dto.UserSettingsDTO{
-			DailyCheckInRemindAt:	dailyCheckInRemindAt,
+			DailyCheckInRemindAt:   dailyCheckInRemindAt,
 			DailyCheckInEnabled:    dailyCheckInEnabled,
 			DailyCheckInDeadline:   dailyCheckInDeadline,
 			DailyCheckInGraceUntil: dailyCheckInGraceUntil,
@@ -160,7 +161,7 @@ func (s *UserService) GetUserProfile(
 			JourneyAutoNotify:      journeyAutoNotify,
 		},
 		Quotas: dto.QuotaBalance{
-			SMSBalance:   smsBalance,
+			SMSBalance: smsBalance,
 			//VoiceBalance: voiceBalance,
 		},
 	}
@@ -241,7 +242,7 @@ func (s *UserService) UpdateUserSettings(
 		DailyCheckInRemindAt:   updatedUser.DailyCheckInRemindAt,
 		DailyCheckInDeadline:   updatedUser.DailyCheckInDeadline,
 		DailyCheckInGraceUntil: updatedUser.DailyCheckInGraceUntil,
-		UpdatedAt: time.Now().Unix(),
+		UpdatedAt:              time.Now().Unix(),
 	})
 
 	// 检查是否需要重新投递今日的打卡提醒消息
@@ -263,6 +264,23 @@ func (s *UserService) UpdateUserSettings(
 
 		if affectsReminder {
 			reminderMsg = s.buildReminderMessage(ctx, updatedUser, userIDInt)
+			// 在开发环境下，如果成功构建了提醒消息，清除当天的 Redis 标记
+			// 让 scheduler 能够重新调度（因为用户可能改了 remind_at，需要立即生效）
+			if reminderMsg != nil && config.Cfg.Environment == "development" {
+				today := time.Now().Format("2006-01-02")
+				if err := cache.UnmarkCheckinScheduled(ctx, today, userIDInt); err != nil {
+					logger.Logger.Warn("Failed to unmark checkin scheduled in dev mode",
+						zap.Int64("user_id", userIDInt),
+						zap.String("date", today),
+						zap.Error(err),
+					)
+				} else {
+					logger.Logger.Info("Cleared checkin scheduled mark in dev mode",
+						zap.Int64("user_id", userIDInt),
+						zap.String("date", today),
+					)
+				}
+			}
 		}
 	}
 
@@ -312,9 +330,9 @@ func (s *UserService) GetUserQuotas(
 	// }
 
 	result := &dto.QuotaBalance{
-		SMSBalance:     smsBalance,
+		SMSBalance: smsBalance,
 		//VoiceBalance:   voiceBalance,
-		SMSUnitPrice:   0.05,
+		SMSUnitPrice: 5,
 		//VoiceUnitPrice: 0.1,
 	}
 
@@ -394,6 +412,9 @@ func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatu
 // }
 
 // buildReminderMessage 构建今日打卡提醒消息
+// 注意：
+// - 正常来说，remind_at 表示「今日打卡前提醒时间」，不应该简单顺延到明天；
+// - 这里是「设置更新」时的补单逻辑，只负责尽量让新配置在合理时间窗口内生效。
 func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, userIDInt int64) *model.CheckInReminderMessage {
 	now := time.Now()
 	today := now.Format("2006-01-02")
@@ -422,9 +443,48 @@ func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, 
 		0, now.Location(),
 	)
 
-	// 如果提醒时间已过，设置为明天
+	// 解析截止和宽限时间，用于限制「今日补单」的合理窗口
+	// 如果解析失败，不终止流程，只用于辅助判断。
+	var graceUntilTime *time.Time
+	if user.DailyCheckInGraceUntil != "" {
+		if t, err := time.Parse("15:04:05", user.DailyCheckInGraceUntil); err == nil {
+			gt := time.Date(
+				todayTime.Year(), todayTime.Month(), todayTime.Day(),
+				t.Hour(), t.Minute(), t.Second(),
+				0, now.Location(),
+			)
+			graceUntilTime = &gt
+		}
+	}
+
+	// 根据当前环境决定「提醒时间已过」时的处理方式
 	if remindDateTime.Before(now) {
-		remindDateTime = remindDateTime.Add(24 * time.Hour)
+		// 如果已经过了今天的提醒时间：
+		// - 若还在宽限窗口内：尽量就近触发；
+		// - 若已过宽限（或没有配置宽限）：今天不再补单，让明天由调度重新生成。
+		inGraceWindow := false
+		if graceUntilTime != nil && now.Before(*graceUntilTime) {
+			inGraceWindow = true
+		}
+
+		if inGraceWindow {
+			if config.Cfg.Environment == "development" {
+				// 开发环境：就近触发，统一用 now + 1 分钟，方便本地调试
+				remindDateTime = now.Add(1 * time.Minute)
+			} else {
+				// 非开发环境：可以直接立即触发，或保持在宽限内的就近时间
+				remindDateTime = now
+			}
+		} else {
+			// 已经过了 grace_until：今日提醒已经错过，不再补单
+			logger.Logger.Info("Skipped building reminder message: remind_at already passed grace window",
+				zap.Int64("user_id", userIDInt),
+				zap.String("remind_at", remindAt),
+				zap.String("grace_until", user.DailyCheckInGraceUntil),
+				zap.Time("now", now),
+			)
+			return nil
+		}
 	}
 
 	// 计算延迟秒数
@@ -433,15 +493,7 @@ func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, 
 		delaySeconds = 0 // 最小延迟为0（立即发送）
 	}
 
-	// 检查是否超过24小时限制
-	if delaySeconds > 24*3600 {
-		logger.Logger.Info("Reminder delay exceeds 24 hours, skipping message publish",
-			zap.Int64("user_id", userIDInt),
-			zap.String("remind_at", remindAt),
-			zap.Int("delay_seconds", delaySeconds),
-		)
-		return nil
-	}
+	// 这里不再做「超过 24 小时直接丢弃」的特殊处理：
 
 	// 生成消息ID
 	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
@@ -484,4 +536,45 @@ func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, 
 	)
 
 	return reminderMsg
+}
+
+func (s *UserService) DeleteUser(
+	ctx context.Context,
+	userID string,
+) error {
+	var userIDInt int64
+	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
+		return pkgerrors.InvalidUserID
+	}
+
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	user, err := q.User.GetByPublicID(userIDInt)
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.ErrUserNotFound
+		}
+		return fmt.Errorf("failed to query user: %w", err)
+	}
+
+	now := time.Now()
+	updates := map[string]interface{}{
+		"updated_at": now,
+		"deleted_at": now,
+	}
+
+	if _, err := q.User.
+		Where(q.User.ID.Eq(user.ID)).
+		Updates(updates); err != nil {
+		return fmt.Errorf("failed to soft delete user: %w", err)
+	}
+
+	logger.Logger.Info("User soft-deleted",
+		zap.Int64("user_id", user.ID),
+		zap.Int64("public_id", user.PublicID),
+	)
+
+	return nil
 }

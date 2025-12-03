@@ -289,6 +289,11 @@ func (s *NotificationService) SendSMS(
 			zap.Error(err),
 		)
 
+		// 如果是发送给紧急联系人的通知，记录 ContactAttempt（失败）
+		if task.ContactPhoneHash != nil && *task.ContactPhoneHash != "" {
+			recordContactAttempt(ctx, db, task, model.ContactAttemptStatusFailed, sendResp, 0, false)
+		}
+
 		// 如果是不可重试的错误，返回 SkipMessageError
 		if errors.IsNonRetryableError(err) {
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("non-retryable error: %v", err)}
@@ -312,6 +317,8 @@ func (s *NotificationService) SendSMS(
 		updateData := map[string]interface{}{
 			"status":       model.NotificationTaskStatusSuccess,
 			"processed_at": now,
+			"cost_cents":   smsUnitPriceCents, // 记录实际扣费金额
+			"deducted":     true,              // 标记已扣费
 		}
 
 		// 记录短信发送状态
@@ -349,6 +356,11 @@ func (s *NotificationService) SendSMS(
 			zap.Float64("duration_seconds", smsDuration),
 			zap.Int("cost_cents", smsUnitPriceCents),
 		)
+
+		// 如果是发送给紧急联系人的通知，记录 ContactAttempt（成功）
+		if task.ContactPhoneHash != nil && *task.ContactPhoneHash != "" {
+			recordContactAttempt(ctx, tx, task, model.ContactAttemptStatusSuccess, sendResp, smsUnitPriceCents, true)
+		}
 
 		return nil
 	})
@@ -430,6 +442,61 @@ func firstNonEmpty(values ...string) string {
 func derefString(ptr *string) string {
 	if ptr == nil {
 		return ""
+	}
+	return *ptr
+}
+
+// recordContactAttempt 记录紧急联系人通知尝试
+func recordContactAttempt(
+	ctx context.Context,
+	db *gorm.DB,
+	task *model.NotificationTask,
+	status model.ContactAttemptStatus,
+	sendResp *sms.SendResponse,
+	costCents int,
+	deducted bool,
+) {
+	now := time.Now()
+
+	attempt := &model.ContactAttempt{
+		TaskID:           task.ID,
+		ContactPriority:  derefInt(task.ContactPriority),
+		ContactPhoneHash: derefString(task.ContactPhoneHash),
+		Channel:          task.Channel,
+		Status:           status,
+		CostCents:        costCents,
+		Deducted:         deducted,
+		AttemptedAt:      now,
+	}
+
+	// 记录响应信息
+	if sendResp != nil {
+		attempt.ResponseCode = &sendResp.StatusCode
+		if sendResp.Message != "" {
+			msg := truncateErrorMessage(sendResp.Message)
+			attempt.ResponseMessage = &msg
+		}
+	}
+
+	q := query.Use(db)
+	if err := q.ContactAttempt.WithContext(ctx).Create(attempt); err != nil {
+		logger.Logger.Error("Failed to record contact attempt",
+			zap.Int64("task_id", task.ID),
+			zap.String("status", string(status)),
+			zap.Error(err),
+		)
+	} else {
+		logger.Logger.Info("Recorded contact attempt",
+			zap.Int64("task_id", task.ID),
+			zap.Int("contact_priority", attempt.ContactPriority),
+			zap.String("status", string(status)),
+		)
+	}
+}
+
+func derefInt(ptr *int) int {
+	if ptr == nil {
+		return 0
 	}
 	return *ptr
 }

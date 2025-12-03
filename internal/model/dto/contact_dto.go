@@ -22,8 +22,23 @@ type CreateContactRequest struct {
 	Priority     int    `json:"priority" binding:"required"`
 }
 
+type UpdateContactRequest struct {
+	DisplayName  string `json:"display_name,omitempty"`
+	Relationship string `json:"relationship,omitempty"`
+	Phone        string `json:"phone,omitempty"`
+	Priority     int    `json:"priority,omitempty"`
+}
+
 // CreateContactResponse 创建联系人响应
 type CreateContactResponse struct {
+	DisplayName  string `json:"display_name"`
+	Relationship string `json:"relationship"`
+	PhoneMasked  string `json:"phone_masked"`
+	Priority     int    `json:"priority"`
+}
+
+
+type UpdateContactResponse struct {
 	DisplayName  string `json:"display_name"`
 	Relationship string `json:"relationship"`
 	PhoneMasked  string `json:"phone_masked"`

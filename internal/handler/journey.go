@@ -334,6 +334,43 @@ func GetJourneyAlerts(ctx context.Context, c *app.RequestContext) {
 	response.Success(ctx, c, result)
 }
 
+// 取消行程部分，软删除
+//DELETE /v1/journeys/{journey_id}
+func CancelJourney(ctx context.Context, c *app.RequestContext) {
+	journeyIDStr := c.Param("journey_id")
+	journeyID, err := strconv.ParseInt(journeyIDStr, 10, 64)
+
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code: "INVALID_JOURNEY_ID",
+			Message: "Invalid journey ID format",
+		})
+		return
+	}
+
+	userIDStr, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	userID, err := strconv.ParseInt(userIDStr, 10, 64)
+	if err != nil {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_USER_ID",
+			Message: "Invalid user ID format",
+		})
+		return
+	}
+
+	journeyService := service.Journey()
+	if err := journeyService.DeleteJourney(ctx, userID, journeyID); err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	c.Status(204)
+}
 
 // // AckJourneyAlert 确认已知晓行程超时提醒
 // // POST /v1/journeys/:journey_id/ack-alert

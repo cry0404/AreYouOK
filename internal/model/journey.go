@@ -6,9 +6,10 @@ import "time"
 type JourneyStatus string
 
 const (
-	JourneyStatusOngoing JourneyStatus = "ongoing" // 进行中
-	JourneyStatusEnded   JourneyStatus = "ended"   // 已结束
-	JourneyStatusTimeout JourneyStatus = "timeout" // 超时
+	JourneyStatusOngoing   JourneyStatus = "ongoing"   // 进行中
+	JourneyStatusEnded     JourneyStatus = "ended"     // 已结束
+	JourneyStatusTimeout   JourneyStatus = "timeout"   // 超时
+	JourneyStatusCancelled JourneyStatus = "cancelled" // 这里是用户自行取消
 )
 
 // AlertStatus 提醒状态枚举

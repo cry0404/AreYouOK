@@ -133,7 +133,9 @@ func OpenTelemetryMiddleware() app.HandlerFunc {
 		if statusCode >= 400 {
 			span.SetStatus(codes.Error, "HTTP error")
 			if statusCode >= 500 {
-				span.RecordError(c.Errors.Last())
+				if lastErr := c.Errors.Last(); lastErr != nil {
+					span.RecordError(lastErr)
+				}
 			}
 		} else {
 			span.SetStatus(codes.Ok, "HTTP success")

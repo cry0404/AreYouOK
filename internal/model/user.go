@@ -26,7 +26,7 @@ var StatusToStringMap = map[UserStatus]string{
 // User 用户模型
 type User struct {
 	DailyCheckInRemindAt   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_remind_at"`
-	DailyCheckInGraceUntil string  `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"`
+	DailyCheckInGraceUntil string  `gorm:"type:time without time zone;not null;default:'21:00:00'" json:"daily_check_in_grace_until"` // 作为前端展示
 	DailyCheckInDeadline   string  `gorm:"type:time without time zone;not null;default:'20:00:00'" json:"daily_check_in_deadline"`
 
 	PhoneHash              *string `gorm:"type:char(64);uniqueIndex:users_phone_hash_key" json:"-"` // phone_hash 唯一约束，匹配数据库中的约束名称

@@ -392,7 +392,7 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 	}
 
 	return mq.Consume(mq.ConsumeOptions{
-		Queue:         "events.check_in.timeout",
+		Queue:         "scheduler.check_in.timeout",
 		ConsumerTag:   "check_in_timeout_consumer",
 		PrefetchCount: 10,
 		Handler:       handler,
@@ -400,7 +400,78 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 	})
 }
 
-// 修改 StartJourneyTimeoutConsumer，实现完整的业务逻辑
+// StartJourneyReminderConsumer 行程提醒消费者（发送给用户本人，提醒打卡）
+func StartJourneyReminderConsumer(ctx context.Context) error {
+	handler := func(body []byte) error {
+		var msg model.JourneyReminderMessage
+		if err := json.Unmarshal(body, &msg); err != nil {
+			return fmt.Errorf("failed to unmarshal journey reminder message: %w", err)
+		}
+
+		// 幂等性检查
+		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
+		if err != nil {
+			logger.Logger.Warn("Failed to check message processed status",
+				zap.String("message_id", msg.MessageID),
+				zap.Error(err),
+			)
+		} else if !processed {
+			logger.Logger.Debug("Message already processed or being processed, skipping",
+				zap.String("message_id", msg.MessageID),
+				zap.Int64("journey_id", msg.JourneyID),
+			)
+			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+		}
+
+		logger.Logger.Debug("Processing journey reminder",
+			zap.String("message_id", msg.MessageID),
+			zap.Int64("journey_id", msg.JourneyID),
+			zap.Int64("user_id", msg.UserID),
+		)
+
+		// 调用 service 层处理行程提醒逻辑
+		journeyService := service.Journey()
+		err = journeyService.ProcessReminder(ctx, msg.JourneyID, msg.UserID)
+		if err != nil {
+			if errors.IsSkipMessageError(err) {
+				logger.Logger.Info("Skipping journey reminder processing",
+					zap.String("message_id", msg.MessageID),
+					zap.String("reason", err.(*errors.SkipMessageError).Reason),
+				)
+				cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour)
+				return nil
+			}
+
+			logger.Logger.Warn("Retryable error in journey reminder processing, will retry",
+				zap.String("message_id", msg.MessageID),
+				zap.Int64("journey_id", msg.JourneyID),
+				zap.Error(err),
+			)
+			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			return fmt.Errorf("failed to process journey reminder (will retry): %w", err)
+		}
+
+		// 标记消息已处理
+		if err := cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour); err != nil {
+			logger.Logger.Warn("Failed to mark message as processed",
+				zap.String("message_id", msg.MessageID),
+				zap.Error(err),
+			)
+		}
+
+		return nil
+	}
+
+	return mq.Consume(mq.ConsumeOptions{
+		Queue:         "scheduler.journey.reminder",
+		ConsumerTag:   "journey_reminder_consumer",
+		PrefetchCount: 10,
+		Handler:       handler,
+		Context:       ctx,
+	})
+}
+
+// StartJourneyTimeoutConsumer 行程超时消费者（发送给紧急联系人）
 func StartJourneyTimeoutConsumer(ctx context.Context) error {
 	handler := func(body []byte) error {
 		var msg model.JourneyTimeoutMessage
@@ -408,7 +479,7 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal journey timeout message: %w", err)
 		}
 
-		// 幂等性检查
+		// 先上锁，避免多实例的情况下抢夺消息
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -431,7 +502,7 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 
 		// 调用 service 层处理行程超时逻辑
 		journeyService := service.Journey()
-		err = journeyService.ProcessTimeout(ctx, msg.JourneyID, msg.UserID)
+		tasks, err := journeyService.ProcessTimeout(ctx, msg.JourneyID, msg.UserID)
 		if err != nil {
 			// 1. 可跳过的错误：标记为已处理，不重试
 			if errors.IsSkipMessageError(err) {
@@ -474,18 +545,11 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to process journey timeout (will retry): %w", err)
 		}
 
-		// 发布通知消息到队列（类似打卡超时的逻辑）
-		db := database.DB().WithContext(ctx)
-		q := query.Use(db)
+		// 使用 ProcessTimeout 返回的任务列表直接发布通知消息
+		if len(tasks) > 0 {
+			db := database.DB().WithContext(ctx)
+			q := query.Use(db)
 
-		// 查询今天创建的行程超时通知任务
-		today := time.Now().Truncate(24 * time.Hour)
-		tasks, err := q.NotificationTask.
-			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryJourneyTimeout))).
-			Where(q.NotificationTask.CreatedAt.Gte(today)).
-			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
-			Find()
-		if err == nil {
 			for _, task := range tasks {
 				// 查询用户 public_id
 				user, err := q.User.GetByID(task.UserID)
@@ -753,6 +817,7 @@ func StartAllConsumers(ctx context.Context) {
 	}{
 		{"check_in_reminder", StartCheckInReminderConsumer},
 		{"check_in_timeout", StartCheckInTimeoutConsumer},
+		{"journey_reminder", StartJourneyReminderConsumer},
 		{"journey_timeout", StartJourneyTimeoutConsumer},
 		{"sms_notification", StartSMSNotificationConsumer},
 		//{"voice_notification", StartVoiceNotificationConsumer}, 现有全部切换为短信通知

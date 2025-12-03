@@ -192,7 +192,9 @@ func (pc *ProtectedCache) BatchDelete(ctx context.Context, keys []string) error 
 // addBreakerDelay 添加防雪崩随机延迟
 func (pc *ProtectedCache) addBreakerDelay(ctx context.Context) error {
 	// 随机延迟 0-200ms，避免缓存雪崩
-	delay := time.Duration(rand.Intn(int(breakerRandomDelayMax))) * time.Millisecond
+	// 注意：breakerRandomDelayMax 已经是 200ms，rand.Intn 返回 [0, 200000000) 纳秒
+	// 所以这里直接用 time.Duration 包装即可，不需要再乘以 time.Millisecond
+	delay := time.Duration(rand.Intn(int(breakerRandomDelayMax)))
 
 	// 使用 context 支持取消
 	select {
@@ -211,7 +213,7 @@ func IsEmptyValue(value interface{}) bool {
 // 预定义的缓存实例
 var (
 	UserSettingsProtectedCache = NewProtectedCache("user:settings", 24*time.Hour)
-	CaptchaProtectedCache     = NewProtectedCache("captcha", 1*time.Minute)
-	MessageProtectedCache     = NewProtectedCache("message", 24*time.Hour)
-	QuotaProtectedCache       = NewProtectedCache("quota", 1*time.Hour)
+	CaptchaProtectedCache      = NewProtectedCache("captcha", 1*time.Minute)
+	MessageProtectedCache      = NewProtectedCache("message", 24*time.Hour)
+	QuotaProtectedCache        = NewProtectedCache("quota", 1*time.Hour)
 )

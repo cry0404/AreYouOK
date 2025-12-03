@@ -82,17 +82,17 @@ func (m *CheckInReminderContactMessage) GetMessageType() string {
 // 模板内容：您的联系人${name}没有进行归来打卡，请联系 ta 确认情况。行程信息：${trip}，预计归来时间：${time}。备注: ${note}。
 type JourneyReminderContactMessage struct {
 	smsMessage
-	Name     string    `json:"name"`
-	Trip     string    `json:"trip"`
-	Deadline time.Time `json:"time"`
-	Note     string    `json:"note"`
+	Name string `json:"name"` // 用户昵称
+	Trip string `json:"trip"` // 行程标题
+	Time string `json:"time"` // 预计返回时间（字符串格式）
+	Note string `json:"note"` // 备注
 }
 
 func (m *JourneyReminderContactMessage) GetTemplateParams() (string, error) {
 	params := map[string]string{
 		"name": m.Name,
 		"trip": m.Trip,
-		"time": m.Deadline.Format("2006-01-02 15:04:05"),
+		"time": m.Time,
 		"note": m.Note,
 	}
 	data, err := json.Marshal(params)
@@ -124,14 +124,13 @@ func (m *CheckInReminder) GetMessageType() string {
 	return "checkin_reminder"
 }
 
-// JourneyTimeOut 行程超时提醒
+// JourneyTimeOut 行程超时提醒（发送给用户本人）
 // 模板内容：安否温馨提示您，您进行了行程报备功能，请于 10 分钟内进行打卡；如果没有按时打卡，我们将按约定联系您的紧急联系人。
 type JourneyTimeOut struct {
 	smsMessage
 }
 
 func (m *JourneyTimeOut) GetTemplateParams() (string, error) {
-	// 无参数模板
 	return "{}", nil
 }
 
@@ -159,15 +158,28 @@ func (m *CheckInTimeOut) GetMessageType() string {
 	return "checkin_timeout"
 }
 
+// QuotaDepleted 额度耗尽提醒
+// 模板内容：安否温馨提示，您的紧急联系次数已经用尽，如有新的紧急联系情况，安否将不再进行通知。
+type QuotaDepleted struct {
+	smsMessage
+}
+
+func (m *QuotaDepleted) GetTemplateParams() (string, error) {
+	return "{}", nil
+}
+
+func (m *QuotaDepleted) GetMessageType() string {
+	return "quota_depleted"
+}
+
 // ParseSMSMessage 从 map[string]interface{} 解析为具体的 SMSMessage
-// payload 必须包含 "type" 字段来标识消息类型
+
 func ParseSMSMessage(payload map[string]interface{}) (SMSMessage, error) {
 	messageType, ok := payload["type"].(string)
 	if !ok {
 		return nil, fmt.Errorf("missing or invalid message type in payload")
 	}
 
-	// 将 map 序列化为 JSON，再反序列化为具体类型
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal payload: %w", err)
@@ -202,6 +214,12 @@ func ParseSMSMessage(payload map[string]interface{}) (SMSMessage, error) {
 		var msg CheckInTimeOut
 		if err := json.Unmarshal(data, &msg); err != nil {
 			return nil, fmt.Errorf("failed to parse CheckInTimeOut: %w", err)
+		}
+		return &msg, nil
+	case "quota_depleted":
+		var msg QuotaDepleted
+		if err := json.Unmarshal(data, &msg); err != nil {
+			return nil, fmt.Errorf("failed to parse QuotaDepleted: %w", err)
 		}
 		return &msg, nil
 	default:

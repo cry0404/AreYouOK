@@ -17,10 +17,11 @@ func Register(h *server.Hertz) {
 
 	// 认证相关路由
 	auth := v1.Group("/auth")
+	auth.POST("/token/refresh", handler.RefreshToken)
 	auth.Use(middleware.AuthRateLimitMiddleware()) // 认证接口限流
 	{
 		auth.POST("/miniapp/alipay/exchange", handler.ExchangeAlipayAuth)
-		auth.POST("/token/refresh", handler.RefreshToken)
+		
 
 		// 验证码相关路由
 		captcha := auth.Group("/phone", middleware.CaptchaRateLimitMiddleware())
@@ -30,7 +31,7 @@ func Register(h *server.Hertz) {
 			captcha.POST("/verify", handler.VerifyCaptcha)
 		}
 
-		// auth.GET("/waitlist/status", handler.GetWaitlistStatus)
+		auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	}
 
 	// 用户相关路由
@@ -41,6 +42,7 @@ func Register(h *server.Hertz) {
 		users.GET("/me", handler.GetUserProfile)
 		users.PUT("/me/settings", /*middleware.UserSettingsRateLimitMiddleware(),*/ handler.UpdateUserSettings) // 用户设置修改限流
 		users.GET("/me/quotas", handler.GetUserQuotas)
+		users.DELETE("/me", handler.DeleteUserProfile)
 	}
 
 	// 紧急联系人路由
@@ -50,6 +52,7 @@ func Register(h *server.Hertz) {
 		contacts.GET("", handler.ListContacts)
 		contacts.POST("", handler.CreateContact)
 		contacts.DELETE("/:priority", handler.DeleteContact)
+		contacts.PATCH("", handler.UpdateContact)
 	}
 
 	// 平安打卡路由
@@ -73,6 +76,7 @@ func Register(h *server.Hertz) {
 		journeys.POST("/:journey_id/complete", handler.CompleteJourney)
 		//journeys.POST("/:journey_id/ack-alert", handler.AckJourneyAlert)
 		journeys.GET("/:journey_id/alerts", handler.GetJourneyAlerts)
+		journeys.DELETE("/:journey_id", handler.CancelJourney)
 	}
 }
 

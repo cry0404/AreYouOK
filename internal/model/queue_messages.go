@@ -38,7 +38,16 @@ type CheckInTimeoutMessage struct {
 	DelaySeconds int     `json:"delay_seconds"`
 }
 
-// JourneyTimeoutMessage 行程超时消息
+// JourneyReminderMessage 行程提醒消息（发送给用户本人，提醒打卡）
+type JourneyReminderMessage struct {
+	MessageID    string `json:"message_id"` // 消息唯一ID，用于幂等性检查
+	ScheduledAt  string `json:"scheduled_at"`
+	JourneyID    int64  `json:"journey_id"`
+	UserID       int64  `json:"user_id"`
+	DelaySeconds int    `json:"delay_seconds"`
+}
+
+// JourneyTimeoutMessage 行程超时消息（发送给紧急联系人）
 type JourneyTimeoutMessage struct {
 	MessageID    string `json:"message_id"` // 消息唯一ID，用于幂等性检查
 	ScheduledAt  string `json:"scheduled_at"`
@@ -68,7 +77,3 @@ type EventMessage struct {
 	EventType  string                 `json:"event_type"`
 	OccurredAt string                 `json:"occurred_at"`
 }
-
-
-
-

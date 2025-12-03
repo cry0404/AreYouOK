@@ -17,6 +17,7 @@ const (
 	NotificationCategoryCheckInTimeout  NotificationCategory = "check_in_timeout"  // 打卡超时通知
 	NotificationCategoryJourneyReminder NotificationCategory = "journey_reminder"  // 行程提醒（预留）
 	NotificationCategoryJourneyTimeout  NotificationCategory = "journey_timeout"   // 行程超时通知
+	NotificationCategoryQuotaDepleted   NotificationCategory = "quota_depleted"    // 额度耗尽提醒
 )
 
 // NotificationChannel 通知渠道枚举

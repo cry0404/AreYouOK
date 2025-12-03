@@ -97,6 +97,52 @@ func PublishCheckInTimeout(msg model.CheckInTimeoutMessage) error {
 	return nil
 }
 
+// PublishJourneyReminder 发布行程提醒消息（发送给用户本人，提醒打卡）
+func PublishJourneyReminder(msg model.JourneyReminderMessage) error {
+	if msg.MessageID == "" {
+		id, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
+		if err != nil {
+			logger.Logger.Error("Failed to generate message ID",
+				zap.Int64("journey_id", msg.JourneyID),
+				zap.Error(err),
+			)
+			return fmt.Errorf("failed to generate message ID: %w", err)
+		}
+		msg.MessageID = fmt.Sprintf("journey_reminder_%d", id)
+	}
+
+	delay := time.Duration(msg.DelaySeconds) * time.Second
+
+	if delay > 24*time.Hour {
+		return fmt.Errorf("delay %v exceeds 24 hours limit, use scheduled task instead", delay)
+	}
+
+	err := mq.PublishDelayedMessage(
+		"scheduler.delayed",
+		"scheduler.journey.reminder",
+		delay,
+		msg,
+	)
+
+	if err != nil {
+		logger.Logger.Error("Failed to publish journey reminder message",
+			zap.Int64("journey_id", msg.JourneyID),
+			zap.Int64("user_id", msg.UserID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	logger.Logger.Info("Published journey reminder message",
+		zap.String("message_id", msg.MessageID),
+		zap.Int64("journey_id", msg.JourneyID),
+		zap.Int64("user_id", msg.UserID),
+		zap.Duration("delay", delay),
+	)
+
+	return nil
+}
+
 // PublishJourneyTimeout 发布行程超时消息（延迟消息）
 // 注意：如果 delay > 24小时，此函数会返回错误，调用者应该使用定时任务扫描
 func PublishJourneyTimeout(msg model.JourneyTimeoutMessage) error {
@@ -145,8 +191,6 @@ func PublishJourneyTimeout(msg model.JourneyTimeoutMessage) error {
 
 	return nil
 }
-
-
 
 // PublishSMSNotification 发布短信通知任务
 func PublishSMSNotification(msg model.NotificationMessage) error {
@@ -286,8 +330,6 @@ func PublishQuotaDepletedEvent(userID int64, channel string) error {
 
 	return nil
 }
-
-
 
 // // PublishVoiceNotification 发布语音通知任务
 // func PublishVoiceNotification(msg model.NotificationMessage) error {

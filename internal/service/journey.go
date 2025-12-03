@@ -484,8 +484,9 @@ func (s *JourneyService) GetJourneyAlerts(
 	}, nil
 }
 
-// ProcessTimeout 处理行程超时
-func (s *JourneyService) ProcessTimeout(
+// ProcessReminder 处理行程提醒（发送给用户本人）
+// 在预计返回时间到了时提醒用户打卡
+func (s *JourneyService) ProcessReminder(
 	ctx context.Context,
 	journeyID int64,
 	userID int64,
@@ -505,13 +506,120 @@ func (s *JourneyService) ProcessTimeout(
 		return fmt.Errorf("failed to query journey: %w", err)
 	}
 
+	// 检查行程状态，只有进行中的行程才需要提醒
+	if journey.Status != model.JourneyStatusOngoing {
+		logger.Logger.Debug("Journey is not ongoing, skipping reminder",
+			zap.Int64("journey_id", journeyID),
+			zap.String("status", string(journey.Status)),
+		)
+		return nil
+	}
+
+	// 查询用户
+	user, err := q.User.GetByID(journey.UserID)
+	if err != nil {
+		return fmt.Errorf("failed to query user: %w", err)
+	}
+
+	// 检查用户额度（提醒短信也需要扣费）
+	quotaService := Quota()
+	wallet, err := quotaService.GetWallet(ctx, user.ID, model.QuotaChannelSMS)
+	if err != nil {
+		return fmt.Errorf("failed to query SMS quota wallet: %w", err)
+	}
+
+	smsUnitPriceCents := 5
+	if wallet.AvailableAmount < smsUnitPriceCents {
+		logger.Logger.Warn("Insufficient quota for journey reminder",
+			zap.Int64("user_id", user.ID),
+			zap.Int64("journey_id", journeyID),
+			zap.Int("balance", wallet.AvailableAmount),
+		)
+		// 额度不足，跳过提醒但不报错
+		return nil
+	}
+
+	// 生成任务代码
+	taskCode, err := snowflake.NextID(snowflake.GeneratorTypeTask)
+	if err != nil {
+		return fmt.Errorf("failed to generate task code: %w", err)
+	}
+
+	now := time.Now()
+
+	// 构建 payload（发送给用户本人，使用 journey_timeout 类型）
+	payload := model.JSONB{
+		"type": "journey_timeout", // 无参数模板，提醒用户打卡
+	}
+
+	// 创建通知任务（发送给用户本人，不是紧急联系人）
+	notificationTask := &model.NotificationTask{
+		TaskCode:    taskCode,
+		UserID:      user.ID,
+		Category:    model.NotificationCategoryJourneyReminder,
+		Channel:     model.NotificationChannelSMS,
+		Status:      model.NotificationTaskStatusPending,
+		Payload:     payload,
+		ScheduledAt: now,
+		// 不设置 ContactPriority 和 ContactPhoneHash，表示发送给用户本人
+	}
+
+	if err := q.NotificationTask.Create(notificationTask); err != nil {
+		return fmt.Errorf("failed to create notification task: %w", err)
+	}
+
+	// 更新行程的 reminder_sent_at
+	_, err = q.Journey.
+		Where(q.Journey.ID.Eq(journey.ID)).
+		Updates(map[string]interface{}{
+			"reminder_sent_at": now,
+			"updated_at":       now,
+		})
+	if err != nil {
+		logger.Logger.Warn("Failed to update journey reminder_sent_at",
+			zap.Int64("journey_id", journeyID),
+			zap.Error(err),
+		)
+	}
+
+	logger.Logger.Info("Journey reminder processed",
+		zap.Int64("journey_id", journeyID),
+		zap.Int64("user_id", user.ID),
+		zap.Int64("task_code", taskCode),
+	)
+
+	return nil
+}
+
+// ProcessTimeout 处理行程超时
+// 返回创建的通知任务列表（用于发布到队列）
+func (s *JourneyService) ProcessTimeout(
+	ctx context.Context,
+	journeyID int64,
+	userID int64,
+) ([]*model.NotificationTask, error) {
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	// 查询行程
+	journey, err := q.Journey.GetByPublicIDAndJourneyID(userID, journeyID)
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return nil, pkgerrors.Definition{
+				Code:    "JOURNEY_NOT_FOUND",
+				Message: "Journey not found",
+			}
+		}
+		return nil, fmt.Errorf("failed to query journey: %w", err)
+	}
+
 	// 检查行程状态
 	if journey.Status != model.JourneyStatusOngoing {
 		logger.Logger.Debug("Journey is not ongoing, skipping timeout processing",
 			zap.Int64("journey_id", journeyID),
 			zap.String("status", string(journey.Status)),
 		)
-		return nil // 已处理或已结束，跳过
+		return nil, nil // 已处理或已结束，跳过
 	}
 
 	// 安全校验：只有在当前时间晚于「预计返回时间 + 10 分钟」时才允许执行超时处理
@@ -524,20 +632,20 @@ func (s *JourneyService) ProcessTimeout(
 			zap.Time("timeout_threshold", timeoutThreshold),
 			zap.Time("now", now),
 		)
-		return nil
+		return nil, nil
 	}
 
 	// 查询用户
 	user, err := q.User.GetByID(journey.UserID)
 	if err != nil {
-		return fmt.Errorf("failed to query user: %w", err)
+		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
 	// 检查用户额度 - 使用新的 QuotaService
 	quotaService := Quota()
 	wallet, err := quotaService.GetWallet(ctx, user.ID, model.QuotaChannelSMS)
 	if err != nil {
-		return fmt.Errorf("failed to query SMS quota wallet: %w", err)
+		return nil, fmt.Errorf("failed to query SMS quota wallet: %w", err)
 	}
 
 	smsBalance := wallet.AvailableAmount
@@ -563,11 +671,14 @@ func (s *JourneyService) ProcessTimeout(
 				"alert_triggered_at": now,
 				"updated_at":         now,
 			})
-		return err
+		return nil, err
 	}
 
+	// 收集创建的任务
+	var createdTasks []*model.NotificationTask
+
 	// 使用事务处理
-	return db.Transaction(func(tx *gorm.DB) error {
+	err = db.Transaction(func(tx *gorm.DB) error {
 		txQ := query.Use(tx)
 
 		// 更新行程状态
@@ -615,12 +726,14 @@ func (s *JourneyService) ProcessTimeout(
 			}
 
 			// 构建 payload（包含行程信息）
+			// 使用 journey_reminder_contact 类型发给紧急联系人
+			// 字段需要与阿里云模板变量匹配：name, trip, time, note
 			payload := model.JSONB{
-				"type":     "journey_timeout",
-				"name":     userName,
-				"trip":     journey.Title,
-				"note":     journey.Note,
-				"deadline": journey.ExpectedReturnTime.Format("15:04:05"),
+				"type": "journey_reminder_contact",
+				"name": userName,
+				"trip": journey.Title,
+				"time": journey.ExpectedReturnTime.Format("2006-01-02 15:04"),
+				"note": journey.Note,
 			}
 
 			notificationTask := &model.NotificationTask{
@@ -642,6 +755,9 @@ func (s *JourneyService) ProcessTimeout(
 				)
 				return fmt.Errorf("failed to create notification task: %w", err)
 			}
+
+			// 收集创建的任务
+			createdTasks = append(createdTasks, notificationTask)
 		}
 
 		logger.Logger.Info("Journey timeout processed",
@@ -652,6 +768,12 @@ func (s *JourneyService) ProcessTimeout(
 
 		return nil
 	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return createdTasks, nil
 }
 
 // 软删除，避免排查起来痛苦

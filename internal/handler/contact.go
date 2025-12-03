@@ -107,3 +107,50 @@ func DeleteContact(ctx context.Context, c *app.RequestContext) {
 
 	response.NoContent(ctx, c)
 }
+
+// UpdateContact 新增紧急联系人
+// Patch /v1/contacts
+
+func UpdateContact(ctx context.Context, c *app.RequestContext) {
+	var req dto.UpdateContactRequest
+
+	if req.Phone != "" {
+		if !utils.ValidatePhone(req.Phone) {
+			response.Error(ctx, c, errors.Definition{
+				Code:    "INVALID_PHONE",
+				Message: "Invalid phone number format",
+			})
+			return
+		}
+	}
+
+	// 验证优先级范围
+	if req.Priority < 1 || req.Priority > 3 {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "INVALID_PRIORITY",
+			Message: "Priority must be between 1 and 3",
+		})
+		return
+	}
+
+	userID, ok := middleware.GetUserID(ctx, c)
+
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	contactService := service.Contact()
+
+	result, err := contactService.UpdateContact(ctx, userID, &req)
+
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	c.JSON(200, response.SuccessResponse{
+		Data: result,
+	})
+
+}
