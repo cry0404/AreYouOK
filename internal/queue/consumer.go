@@ -57,14 +57,17 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
 		}
 
-		logger.Logger.Debug("Processing check-in reminder batch",
+		logger.Logger.Info("Reminder consumer received message",
 			zap.String("message_id", msg.MessageID),
 			zap.String("batch_id", msg.BatchID),
 			zap.Int("user_count", len(msg.UserIDs)),
 		)
 
-		// 1. 验证用户设置是否变更
-		// 对比快照与当前设置，返回三种用户列表
+		// 验证用户设置是否变更， 变更后决定是否需要重新投递
+		logger.Logger.Info("Validating reminder batch",
+			zap.String("message_id", msg.MessageID),
+			zap.String("check_in_date", msg.CheckInDate),
+		)
 		checkInService := service.CheckIn()
 		validationResult, err := checkInService.ValidateReminderBatch(
 			ctx,
@@ -82,7 +85,7 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to validate reminder batch: %w", err)
 		}
 
-		logger.Logger.Debug("Validation result",
+		logger.Logger.Info("Reminder batch validation result",
 			zap.String("message_id", msg.MessageID),
 			zap.Int("process_now_count", len(validationResult.ProcessNow)),
 			zap.Int("republish_count", len(validationResult.Republish)),
@@ -92,7 +95,12 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 		// 2. 处理 ProcessNow 用户（设置未变更）
 		// 这些用户可以直接创建通知任务
 		if len(validationResult.ProcessNow) > 0 {
-			err = checkInService.ProcessReminderBatch(ctx, validationResult.ProcessNow, msg.CheckInDate)
+			logger.Logger.Info("Processing reminder batch for users",
+				zap.String("message_id", msg.MessageID),
+				zap.Int("process_now_count", len(validationResult.ProcessNow)),
+				zap.String("check_in_date", msg.CheckInDate),
+			)
+			createdCount, err := checkInService.ProcessReminderBatch(ctx, validationResult.ProcessNow, msg.CheckInDate)
 			if err != nil {
 				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 				logger.Logger.Error("Failed to process ProcessNow batch",
@@ -101,6 +109,69 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 					zap.Error(err),
 				)
 				return fmt.Errorf("failed to process ProcessNow batch: %w", err)
+			}
+
+			// 如果没有创建新任务（所有用户今日已有任务），跳过 SMS 队列投递
+			if createdCount == 0 {
+				logger.Logger.Info("No new reminder tasks created (all users already have tasks today), skipping SMS queue publish",
+					zap.String("message_id", msg.MessageID),
+					zap.String("check_in_date", msg.CheckInDate),
+				)
+			} else {
+				// 查询刚创建的 pending 状态的提醒任务，投递到 notification.sms 队列
+				db := database.DB().WithContext(ctx)
+				q := query.Use(db)
+				today := time.Now().Truncate(24 * time.Hour)
+
+				reminderTasks, err := q.NotificationTask.
+					Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInReminder))).
+					Where(q.NotificationTask.CreatedAt.Gte(today)).
+					Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+					Find()
+
+				if err != nil {
+					logger.Logger.Warn("Failed to query reminder tasks for publishing",
+						zap.String("message_id", msg.MessageID),
+						zap.Error(err),
+					)
+				} else {
+					for _, task := range reminderTasks {
+						// 查询用户 public_id
+						user, err := q.User.GetByID(task.UserID)
+						if err != nil {
+							logger.Logger.Warn("Failed to query user for reminder notification",
+								zap.Int64("task_id", task.ID),
+								zap.Error(err),
+							)
+							continue
+						}
+
+						// 构建通知消息（提醒发送给用户本人，不设置 PhoneHash）
+						notificationMsg := model.NotificationMessage{
+							MessageID:   fmt.Sprintf("notification_%d", task.TaskCode),
+							TaskCode:    task.TaskCode,
+							UserID:      user.PublicID,
+							Category:    string(task.Category),
+							Channel:     string(task.Channel),
+							PhoneHash:   "", // 提醒发送给用户本人
+							Payload:     task.Payload,
+							CheckInDate: msg.CheckInDate, // 传递打卡日期，用于更新 daily_check_ins 表
+						}
+
+						// 发布到队列
+						if err := PublishSMSNotification(notificationMsg); err != nil {
+							logger.Logger.Error("Failed to publish reminder notification message",
+								zap.Int64("task_code", task.TaskCode),
+								zap.Error(err),
+							)
+						} else {
+							logger.Logger.Info("Published reminder notification to SMS queue",
+								zap.Int64("task_code", task.TaskCode),
+								zap.Int64("user_id", user.PublicID),
+							)
+						}
+					}
+				}
 			}
 		}
 
@@ -115,7 +186,7 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			)
 		}
 
-		logger.Logger.Debug("Successfully processed check-in reminder batch",
+		logger.Logger.Info("Successfully processed check-in reminder batch",
 			zap.String("message_id", msg.MessageID),
 			zap.String("batch_id", msg.BatchID),
 			zap.Int("user_count", len(msg.UserIDs)),
@@ -224,14 +295,16 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 		q := query.Use(db)
 
 		today := time.Now().Truncate(24 * time.Hour)
-		tasks, err := q.NotificationTask.
+
+		// 查询超时通知任务（发送给紧急联系人）
+		timeoutTasks, err := q.NotificationTask.
 			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInTimeout))).
 			Where(q.NotificationTask.CreatedAt.Gte(today)).
 			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
 			Find()
 
 		if err == nil {
-			for _, task := range tasks {
+			for _, task := range timeoutTasks {
 				// 查询用户 public_id
 				user, err := q.User.GetByID(task.UserID)
 				if err != nil {
@@ -261,6 +334,46 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 				// 发布到队列
 				if err := PublishSMSNotification(notificationMsg); err != nil {
 					logger.Logger.Error("Failed to publish notification message",
+						zap.Int64("task_code", task.TaskCode),
+						zap.Error(err),
+					)
+				}
+			}
+		}
+
+		// 查询额度耗尽提醒任务（发送给用户本人）
+		quotaDepletedTasks, err := q.NotificationTask.
+			Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryQuotaDepleted))).
+			Where(q.NotificationTask.CreatedAt.Gte(today)).
+			Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+			Find()
+
+		if err == nil {
+			for _, task := range quotaDepletedTasks {
+				// 查询用户 public_id
+				user, err := q.User.GetByID(task.UserID)
+				if err != nil {
+					logger.Logger.Warn("Failed to query user for quota depleted notification",
+						zap.Int64("task_id", task.ID),
+						zap.Error(err),
+					)
+					continue
+				}
+
+				// 构建通知消息（发送给用户本人，不设置 PhoneHash）
+				notificationMsg := model.NotificationMessage{
+					MessageID: fmt.Sprintf("notification_%d", task.TaskCode),
+					TaskCode:  task.TaskCode,
+					UserID:    user.PublicID,
+					Category:  string(task.Category),
+					Channel:   string(task.Channel),
+					PhoneHash: "", // 额度耗尽提醒发送给用户本人
+					Payload:   task.Payload,
+				}
+
+				// 发布到队列
+				if err := PublishSMSNotification(notificationMsg); err != nil {
+					logger.Logger.Error("Failed to publish quota depleted notification message",
 						zap.Int64("task_code", task.TaskCode),
 						zap.Error(err),
 					)
@@ -521,7 +634,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 				return fmt.Errorf("non-retryable error: %w", err)
 			}
 
-			// 3. 额度不足错误：特殊处理，发布额度耗尽事件
+			// 额度不足错误：特殊处理，发布额度耗尽事
 			if err == errors.QuotaInsufficient {
 				logger.Logger.Warn("Quota insufficient for user",
 					zap.String("message_id", msg.MessageID),
@@ -540,7 +653,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 				return nil
 			}
 
-			// 4. 其他可重试错误：取消标记，允许重试
+			// 其他可重试错误：取消标记，允许重试
 			logger.Logger.Warn("Retryable error occurred, will retry",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("user_id", msg.UserID),
@@ -556,13 +669,12 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 				zap.String("message_id", msg.MessageID),
 				zap.Error(err),
 			)
-			// 不影响主流程，因为已经处理成功了
 		}
 
 		// 如果是打卡提醒消息，更新 reminder_sent_at 字段
 		if msg.Category == "check_in_reminder" && msg.CheckInDate != "" {
 			if err := updateReminderSentAt(ctx, msg.UserID, msg.CheckInDate); err != nil {
-				// 记录错误但不影响主流程（短信已发送成功）
+
 				logger.Logger.Warn("Failed to update reminder_sent_at",
 					zap.String("message_id", msg.MessageID),
 					zap.Int64("user_id", msg.UserID),
