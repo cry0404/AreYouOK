@@ -6,13 +6,19 @@ import (
 	"os/signal"
 	"syscall"
 
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"AreYouOK/config"
 	"AreYouOK/internal/queue"
 	"AreYouOK/internal/service"
 	"AreYouOK/pkg/logger"
+	pkgmq "AreYouOK/pkg/mq"
+	pkgtel "AreYouOK/pkg/otel"
+	pkredis "AreYouOK/pkg/redis"
+	pkdatabase "AreYouOK/pkg/database"
 	"AreYouOK/pkg/sms"
+	"AreYouOK/pkg/metrics"
 	"AreYouOK/pkg/snowflake"
 	"AreYouOK/storage"
 )
@@ -24,6 +30,40 @@ func main() {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// 初始化 OpenTelemetry
+	otelCleanup, err := pkgtel.InitOpenTelemetry(ctx, pkgtel.Config{
+		ServiceName:    "areyouok-worker",
+		ServiceVersion: "1.0.0",
+		Environment:    config.Cfg.Environment,
+		OTLPEndpoint:   config.Cfg.OTELEXPORTERENDPOINT,
+		SampleRatio:    0.1,
+	})
+	if err != nil {
+		logger.Logger.Fatal("Failed to initialize OpenTelemetry", zap.Error(err))
+	}
+	defer func() {
+		if err := otelCleanup(context.Background()); err != nil {
+			logger.Logger.Error("Failed to shutdown OpenTelemetry", zap.Error(err))
+		}
+	}()
+
+	// 初始化 SMS 相关的 OpenTelemetry 指标
+	if err := metrics.InitMetrics(); err != nil {
+		logger.Logger.Warn("Failed to initialize OpenTelemetry metrics", zap.Error(err))
+	}
+
+	// 初始化 Worker 相关指标
+	meter := otel.Meter("areyouok-worker")
+	if err := pkgmq.InitMQMetrics(meter); err != nil {
+		logger.Logger.Warn("Failed to initialize RabbitMQ metrics", zap.Error(err))
+	}
+	if err := pkredis.InitRedisMetrics(meter); err != nil {
+		logger.Logger.Warn("Failed to initialize Redis metrics", zap.Error(err))
+	}
+	if err := pkdatabase.InitDatabaseMetrics(meter); err != nil {
+		logger.Logger.Warn("Failed to initialize database metrics", zap.Error(err))
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

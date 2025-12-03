@@ -16,12 +16,6 @@ import (
 	"AreYouOK/storage"
 )
 
-// 一个常驻的调度进程：
-// - 周期性执行每日打卡调度
-// - 周期性执行行程超时调度和补偿任务
-//
-// 注意：调度频率目前是硬编码的，如果未来需要更灵活的配置，
-// 可以改为从环境变量或配置文件中读取。
 
 func main() {
 	// 初始化日志
@@ -31,7 +25,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 捕获退出信号，优雅关闭
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
 
@@ -43,13 +36,13 @@ func main() {
 		cancel()
 	}()
 
-	// 初始化存储层（Postgres / Redis / RabbitMQ）
+
 	if err := storage.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize storage for scheduler", zap.Error(err))
 	}
 	defer storage.Close()
 
-	// 初始化 Snowflake（用于生成消息 ID / batch ID）
+	// 考虑与 worker 和 server 作区分
 	if err := snowflake.Init(config.Cfg.SnowflakeMachineID, config.Cfg.SnowflakeDataCenter); err != nil {
 		logger.Logger.Fatal("Failed to initialize snowflake for scheduler", zap.Error(err))
 	}
@@ -59,12 +52,12 @@ func main() {
 		zap.String("environment", config.Cfg.Environment),
 	)
 
-	// 启动调度循环
+
 	go runDailyCheckinLoop(ctx)
 	go runJourneyTimeoutLoop(ctx)
 	go runOverdueJourneyLoop(ctx)
 
-	// 等待退出
+
 	<-ctx.Done()
 
 	logger.Logger.Info("Scheduler service shutting down gracefully")
@@ -74,6 +67,27 @@ func main() {
 // 当前实现：每天本地时间 00:05 触发一次
 func runDailyCheckinLoop(ctx context.Context) {
 	s := schedule.GetScheduler()
+
+	// 在 development 环境下，为了方便本地调试，将每日调度改为每 1 分钟执行一次
+	if config.Cfg.Environment == "development" {
+		ticker := time.NewTicker(1 * time.Minute)
+		defer ticker.Stop()
+
+		logger.Logger.Info("Daily check-in scheduler running in development mode with 1m interval")
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				runCtx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+				if err := s.ScheduleDailyCheckIns(runCtx); err != nil {
+					logger.Logger.Error("Daily check-in scheduler run failed (development interval)", zap.Error(err))
+				}
+				cancel()
+			}
+		}
+	}
 
 	for {
 		// 计算下一次运行时间（今天/明天的 00:05）
@@ -110,7 +124,14 @@ func runDailyCheckinLoop(ctx context.Context) {
 // 当前实现：每 5 分钟扫描未来 10 分钟内即将到期的行程。
 func runJourneyTimeoutLoop(ctx context.Context) {
 	js := schedule.GetJourneyScheduler()
-	ticker := time.NewTicker(5 * time.Minute)
+
+	interval := 5 * time.Minute
+	if config.Cfg.Environment == "development" {
+		interval = 1 * time.Minute
+		logger.Logger.Info("Journey timeout loop running in development mode with 1m interval")
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -131,7 +152,14 @@ func runJourneyTimeoutLoop(ctx context.Context) {
 // 当前实现：每 1 小时扫描一次已超时但状态仍为 ongoing 的行程。
 func runOverdueJourneyLoop(ctx context.Context) {
 	js := schedule.GetJourneyScheduler()
-	ticker := time.NewTicker(1 * time.Hour)
+
+	interval := 1 * time.Hour
+	if config.Cfg.Environment == "development" {
+		interval = 1 * time.Minute
+		logger.Logger.Info("Overdue journey loop running in development mode with 1m interval")
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {

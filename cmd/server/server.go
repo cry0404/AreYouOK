@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app/server"
+	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
 	"AreYouOK/config"
@@ -17,6 +18,8 @@ import (
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/metrics"
+	pkgtel "AreYouOK/pkg/otel"
+	pkgmiddleware "AreYouOK/internal/middleware"
 	"AreYouOK/pkg/slider"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/pkg/snowflake"
@@ -29,11 +32,36 @@ func main() {
 	logger.Init()
 	defer logger.Sync()
 
-	// 注册监控指标
-	metrics.RegisterSMSMetrics()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	// 初始化 OpenTelemetry
+	otelCleanup, err := pkgtel.InitOpenTelemetry(ctx, pkgtel.Config{
+		ServiceName:    config.Cfg.ServiceName,
+		ServiceVersion: "1.0.0",
+		Environment:    config.Cfg.Environment,
+		OTLPEndpoint:   config.Cfg.OTELEXPORTERENDPOINT,
+		SampleRatio:    0.1,
+	})
+	if err != nil {
+		logger.Logger.Fatal("Failed to initialize OpenTelemetry", zap.Error(err))
+	}
+	defer func() {
+		if err := otelCleanup(context.Background()); err != nil {
+			logger.Logger.Error("Failed to shutdown OpenTelemetry", zap.Error(err))
+		}
+	}()
+
+	// 初始化 OpenTelemetry 指标
+	if err := metrics.InitMetrics(); err != nil {
+		logger.Logger.Warn("Failed to initialize OpenTelemetry metrics", zap.Error(err))
+	}
+
+	// 初始化 HTTP 相关的 OpenTelemetry 指标
+	meter := otel.Meter(config.Cfg.ServiceName)
+	if err := pkgmiddleware.InitMetrics(meter); err != nil {
+		logger.Logger.Warn("Failed to initialize HTTP metrics", zap.Error(err))
+	}
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
