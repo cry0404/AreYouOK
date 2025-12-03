@@ -8,23 +8,15 @@ receivers:
         cors:
           allowed_origins:
             - "*"
-  prometheus:
-    config:
-      scrape_configs:
-        - job_name: 'areyouok-api'
-          static_configs:
-            - targets: ['api:9464']
-          scrape_interval: 15s
-          metrics_path: /metrics
-        - job_name: 'areyouok-worker'
-          static_configs:
-            - targets: ['worker:9464']
-          scrape_interval: 15s
-          metrics_path: /metrics
-        - job_name: 'otel-collector'
-          static_configs:
-            - targets: ['localhost:8889']
-          scrape_interval: 30s
+  # Prometheus receiver 暂时禁用，统一通过 OTLP 接收指标
+  # 如果以后需要从应用的 /metrics 主动抓取，再单独配置目标地址
+  # prometheus:
+  #   config:
+  #     scrape_configs:
+  #       - job_name: 'otel-collector'
+  #         static_configs:
+  #           - targets: ['localhost:8889']
+  #         scrape_interval: 30s
 
 processors:
   batch:
@@ -39,9 +31,6 @@ processors:
     attributes:
       - key: environment
         value: development
-        action: upsert
-      - key: service.namespace
-        value: areyouok
         action: upsert
 
 extensions:
@@ -59,7 +48,6 @@ exporters:
       insecure: true
   prometheus:
     endpoint: "0.0.0.0:8889"
-    namespace: areyouok
     send_timestamps: true
     metric_expiration: 180m
     enable_open_metrics: true
@@ -84,7 +72,8 @@ service:
       processors: [memory_limiter, batch, resource]
       exporters: [otlp/jaeger]
     metrics:
-      receivers: [otlp, prometheus]
+      # 统一只通过 OTLP 接收业务指标
+      receivers: [otlp]
       processors: [memory_limiter, batch, resource]
       exporters: [prometheus]
     logs:

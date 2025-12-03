@@ -1,4 +1,4 @@
-# Scheduler 服务 Dockerfile
+# Scheduler 服务 Dockerfile， go 程序的统一使用部分
 
 # 构建阶段
 FROM golang:1.25-alpine AS builder
@@ -48,5 +48,6 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
 
 # 启动服务
 CMD ["/app/scheduler"]
+
 
 

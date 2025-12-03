@@ -5,6 +5,7 @@ services:
     container_name: areyouok-postgres
     restart: unless-stopped
     environment:
+      TZ: Asia/Shanghai
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: areyouok
@@ -28,6 +29,8 @@ services:
     container_name: areyouok-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
+    environment:
+      TZ: Asia/Shanghai
     ports:
       - "6379:6379"
     volumes:
@@ -47,6 +50,7 @@ services:
     container_name: areyouok-rabbitmq
     restart: unless-stopped
     environment:
+      TZ: Asia/Shanghai
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
       RABBITMQ_DEFAULT_VHOST: /
@@ -101,6 +105,7 @@ services:
 
       # 日志配置（从 .env.api 加载）
       # LOGGER_LEVEL, LOGGER_FORMAT 等
+      LOGGER_FORMAT: json
 
       # Infrastructure endpoints
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-otel-collector:4317}
@@ -152,6 +157,7 @@ services:
 
       # 日志配置（从 .env.worker 加载）
       # LOGGER_LEVEL, LOGGER_FORMAT 等
+      LOGGER_FORMAT: json
 
       # SMS 配置（从 .env.worker 加载）
       # SMS_PROVIDER, ALIBABA_CLOUD_ACCESS_KEY_ID, SMS_SIGN_NAME 等
@@ -186,6 +192,7 @@ services:
     env_file:
       - ../.env.worker
     environment:
+      LOGGER_FORMAT: json
       OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-otel-collector:4317}
       PROM_METRICS_ADDR: ${PROM_METRICS_ADDR:-:9464}
     volumes:
@@ -199,6 +206,8 @@ services:
     command: ["--config=/etc/otel-collector-config.yaml"]
     volumes:
       - ./otel-collector-config.yaml:/etc/otel-collector-config.yaml:ro
+    environment:
+      TZ: Asia/Shanghai
     ports:
       - "4317:4317"   # OTLP gRPC receiver
       - "4318:4318"   # OTLP HTTP receiver
@@ -215,7 +224,8 @@ services:
     image: jaegertracing/all-in-one:1.52
     container_name: areyouok-jaeger
     environment:
-      - COLLECTOR_OTLP_ENABLED=true
+      TZ: Asia/Shanghai
+      COLLECTOR_OTLP_ENABLED: "true"
     ports:
       - "16686:16686" # UI
       - "14268:14268" # HTTP collector
@@ -227,6 +237,8 @@ services:
     image: grafana/loki:2.9.0
     container_name: areyouok-loki
     command: -config.file=/etc/loki/local-config.yaml
+    environment:
+      TZ: Asia/Shanghai
     ports:
       - "3100:3100"
     volumes:
@@ -241,6 +253,8 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
+    environment:
+      TZ: Asia/Shanghai
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -253,6 +267,7 @@ services:
     image: grafana/grafana:10.1.0
     container_name: areyouok-grafana
     environment:
+      TZ: Asia/Shanghai
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
     volumes:
@@ -261,6 +276,20 @@ services:
       - "3000:3000"
     depends_on:
       - prometheus
+    networks:
+      - areyouok-network
+  fluent-bit:
+    image: docker.1ms.run/fluent/fluent-bit:4.2.0
+    container_name: areyouok-fluent-bit
+    restart: unless-stopped
+    volumes:
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./fluent-bit-config.conf:/fluent-bit/etc/fluent-bit.conf:ro
+      - ./parsers.conf:/fluent-bit/etc/parsers.conf:ro
+      - ./extract_level.lua:/fluent-bit/etc/extract_level.lua:ro
+    depends_on:
+      - loki
     networks:
       - areyouok-network
 
