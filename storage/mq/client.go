@@ -95,11 +95,11 @@ func declareExchanges(ch *amqp.Channel) error {
 		},
 
 		// 事件交换机，主要放重试等事件，打卡超时，充值扣费等额度
-		{
-			name:    "events.topic",
-			kind:    "topic",
-			durable: true,
-		},
+		// {
+		// 	name:    "events.topic",
+		// 	kind:    "topic",
+		// 	durable: true,
+		// },
 
 		{
 			name:    "notification.dlx", //考虑什么时候丢弃对应的通知
@@ -162,7 +162,7 @@ func declareQueues(ch *amqp.Channel) error {
 
 		//死信队列, 定时任务队列可能也需要配置个死信队列
 		{"notification.sms.dlq", true, false, false, nil},
-		{"notification.voice.dlq", true, false, false, nil},
+		//{"notification.voice.dlq", true, false, false, nil},
 
 		// 定时任务队列
 		{"scheduler.check_in.reminder", true, false, false, nil},
@@ -170,10 +170,10 @@ func declareQueues(ch *amqp.Channel) error {
 		{"scheduler.journey.reminder", true, false, false, nil},
 		{"scheduler.journey.timeout", true, false, false, nil},
 
-		// 事件队列
-		{"events.check_in.timeout", true, false, false, nil},
-		{"events.journey.timeout", true, false, false, nil},
-		{"events.quota.depleted", true, false, false, nil},
+		// // 事件队列
+		// {"events.check_in.timeout", true, false, false, nil},
+		// {"events.journey.timeout", true, false, false, nil},
+		// {"events.quota.depleted", true, false, false, nil},
 	}
 
 	for _, q := range queues {
@@ -200,13 +200,13 @@ func bindQueues(ch *amqp.Channel) error {
 		routingKey string
 		exchange   string
 	}{
-		// 通知队列绑定
-		{"notification.sms", "notification.sms.*", "notification.topic"},
-		{"notification.voice", "notification.voice.*", "notification.topic"},
 
-		// 死信队列
+		{"notification.sms", "notification.sms.*", "notification.topic"},
+		// {"notification.voice", "notification.voice.*", "notification.topic"},
+
+
 		{"notification.sms.dlq", "notification.sms.dlq", "notification.dlx"},
-		{"notification.voice.dlq", "notification.voice.dlq", "notification.dlx"},
+		// {"notification.voice.dlq", "notification.voice.dlq", "notification.dlx"},
 
 		// 定时任务队列绑定（延迟消息）
 		{"scheduler.check_in.reminder", "scheduler.check_in.reminder", "scheduler.delayed"},
@@ -214,10 +214,10 @@ func bindQueues(ch *amqp.Channel) error {
 		{"scheduler.journey.reminder", "scheduler.journey.reminder", "scheduler.delayed"},
 		{"scheduler.journey.timeout", "scheduler.journey.timeout", "scheduler.delayed"},
 
-		// 事件队列绑定
-		{"events.check_in.timeout", "check_in.timeout", "events.topic"},
-		{"events.journey.timeout", "journey.timeout", "events.topic"},
-		{"events.quota.depleted", "quota.depleted", "events.topic"},
+		// // 事件队列绑定
+		// {"events.check_in.timeout", "check_in.timeout", "events.topic"},
+		// {"events.journey.timeout", "journey.timeout", "events.topic"},
+		// {"events.quota.depleted", "quota.depleted", "events.topic"},
 	}
 	// 根据路由键绑定到对应的队列
 	for _, b := range bindings {

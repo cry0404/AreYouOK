@@ -19,9 +19,9 @@ var (
 	// 数据库相关指标
 	dbQueriesTotal     metric.Int64Counter
 	dbQueryDuration    metric.Float64Histogram
-	dbConnectionsTotal metric.Int64Counter
-	dbConnectionsActive metric.Int64UpDownCounter
-	dbTransactionTotal metric.Int64Counter
+	// dbConnectionsTotal metric.Int64Counter
+	// dbConnectionsActive metric.Int64UpDownCounter
+	// dbTransactionTotal metric.Int64Counter
 )
 
 // InitDatabaseMetrics 初始化数据库指标
@@ -49,35 +49,35 @@ func InitDatabaseMetrics(meter metric.Meter) error {
 		return err
 	}
 
-	// 数据库连接总数
-	dbConnectionsTotal, err = meter.Int64Counter(
-		"db.connections.total",
-		metric.WithDescription("Total number of database connections"),
-		metric.WithUnit("{connection}"),
-	)
-	if err != nil {
-		return err
-	}
+	// // 数据库连接总数
+	// dbConnectionsTotal, err = meter.Int64Counter(
+	// 	"db.connections.total",
+	// 	metric.WithDescription("Total number of database connections"),
+	// 	metric.WithUnit("{connection}"),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
 
-	// 数据库活跃连接数
-	dbConnectionsActive, err = meter.Int64UpDownCounter(
-		"db.connections.active",
-		metric.WithDescription("Number of active database connections"),
-		metric.WithUnit("{connection}"),
-	)
-	if err != nil {
-		return err
-	}
+	// // 数据库活跃连接数
+	// dbConnectionsActive, err = meter.Int64UpDownCounter(
+	// 	"db.connections.active",
+	// 	metric.WithDescription("Number of active database connections"),
+	// 	metric.WithUnit("{connection}"),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
 
-	// 数据库事务总数
-	dbTransactionTotal, err = meter.Int64Counter(
-		"db.transactions.total",
-		metric.WithDescription("Total number of database transactions"),
-		metric.WithUnit("{transaction}"),
-	)
-	if err != nil {
-		return err
-	}
+	// // 数据库事务总数
+	// dbTransactionTotal, err = meter.Int64Counter(
+	// 	"db.transactions.total",
+	// 	metric.WithDescription("Total number of database transactions"),
+	// 	metric.WithUnit("{transaction}"),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }

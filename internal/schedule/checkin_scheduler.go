@@ -65,7 +65,7 @@ func (s *CheckInScheduler) ScheduleDailyCheckIns(ctx context.Context) error {
 		zap.Time("start_time", startTime),
 	)
 
-	// 获取今天的日期
+
 	today := startTime.Format("2006-01-02")
 	batchID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
@@ -73,7 +73,7 @@ func (s *CheckInScheduler) ScheduleDailyCheckIns(ctx context.Context) error {
 		return fmt.Errorf("failed to generate batch ID: %w", err)
 	}
 
-	// 查询开启打卡且已激活的用户
+
 	users, err := query.User.WithContext(ctx).
 		Where(query.User.DailyCheckInEnabled.Is(true)).
 		Where(query.User.Status.Eq(string(model.UserStatusActive))).
@@ -107,20 +107,19 @@ func (s *CheckInScheduler) ScheduleDailyCheckIns(ctx context.Context) error {
 	errors := make([]error, 0)
 	errorsMu := sync.Mutex{}
 
-	// 为每个时间段生成消息
+
 	for remindAt, groupUsers := range timeGroups {
-		// 检查今天是否已经投放过（通过 Redis 标记）
+
 		shouldSkip := true
 
 		for _, user := range groupUsers {
-			// 分别检查 reminder 和 timeout 是否已发布
 			reminderScheduled, err := cache.IsReminderScheduled(ctx, today, user.PublicID)
 			if err != nil {
 				s.logger.Warn("Failed to check reminder scheduled status",
 					zap.Int64("user_id", user.PublicID),
 					zap.Error(err),
 				)
-				// 如果检查失败，继续检查其他用户
+
 				continue
 			}
 
@@ -130,7 +129,6 @@ func (s *CheckInScheduler) ScheduleDailyCheckIns(ctx context.Context) error {
 					zap.Int64("user_id", user.PublicID),
 					zap.Error(err),
 				)
-				// 如果检查失败，继续检查其他用户
 				continue
 			}
 
@@ -140,12 +138,6 @@ func (s *CheckInScheduler) ScheduleDailyCheckIns(ctx context.Context) error {
 				break
 			}
 
-			// 注意：移除了开发环境清除标记的逻辑
-			// 现在统一依赖 Redis 标记 + scheduleTimeGroup 中的数据库检查
-			// 这样可以：
-			// 1. Redis 标记存在时直接跳过，避免进入 scheduleTimeGroup
-			// 2. 只有 Redis 标记不存在时才查数据库
-			// 3. 减少数据库查询压力
 		}
 
 		if shouldSkip {
@@ -195,14 +187,14 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 	remindAt string,
 	users []*model.User,
 ) error {
-	// 解析打卡日期
+
 	checkInDateParsed, err := time.Parse("2006-01-02", checkInDate)
 	if err != nil {
 		s.logger.Error("Failed to parse checkInDate", zap.String("check_in_date", checkInDate), zap.Error(err))
 		return err
 	}
 
-	// 查询数据库，过滤掉今日已有 check_in_reminder 任务的用户
+
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
@@ -214,6 +206,7 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		userMap[user.ID] = user
 	}
 
+	// 打卡就代表有两个任务
 	// 查询今日已有 check_in_reminder 或 check_in_timeout 任务的用户，避免重复投递
 	// 反正有其中之一就证明今日打卡过了
 	existingTasks, err := q.NotificationTask.WithContext(ctx).
@@ -230,16 +223,15 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		s.logger.Warn("Failed to query existing notification tasks, proceeding with all users",
 			zap.Error(err),
 		)
-		// 查询失败时不阻塞，继续处理所有用户
+
 	}
 
-	// 构建已有任务的用户 ID 集合
+
 	existingUserIDs := make(map[int64]bool)
 	for _, task := range existingTasks {
 		existingUserIDs[task.UserID] = true
 	}
 
-	// 过滤掉已有任务的用户
 	var filteredUsers []*model.User
 	for _, user := range users {
 		if existingUserIDs[user.ID] {
@@ -252,7 +244,6 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		filteredUsers = append(filteredUsers, user)
 	}
 
-	// 如果所有用户都已有任务，跳过投递
 	if len(filteredUsers) == 0 {
 		s.logger.Info("All users in group already have reminder tasks today, skipping message publish",
 			zap.String("remind_at", remindAt),
@@ -269,14 +260,14 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		zap.Int("skipped_count", len(users)-len(filteredUsers)),
 	)
 
-	// 使用过滤后的用户列表
+
 	userIDs := make([]int64, len(filteredUsers))
 	snapshots := make(map[string]model.UserSettingSnapshot)
 
 	for i, user := range filteredUsers {
 		userIDs[i] = user.PublicID
 
-		// 构建用户设置快照
+		// 构建用户设置快照，便于投递时可以查询对比，类似于 cas 的原理
 		snapshot := model.UserSettingSnapshot{
 			RemindAt:   user.DailyCheckInRemindAt,
 			Deadline:   user.DailyCheckInDeadline,
@@ -301,7 +292,6 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		reminderTime.Hour(), reminderTime.Minute(), reminderTime.Second(), 0, now.Location())
 
 	if todayRemindTime.Before(now) {
-		// 解析宽限时间（取第一个用户的配置）
 		graceUntil := users[0].DailyCheckInGraceUntil
 		if graceUntil != "" {
 			if graceTime, err := time.Parse("15:04:05", graceUntil); err == nil {
@@ -311,14 +301,12 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 				// 如果还在宽限窗口内
 				if now.Before(graceUntilTime) {
 					if config.Cfg.Environment == "development" {
-						// 开发环境：就近触发，1 分钟后
 						todayRemindTime = now.Add(1 * time.Minute)
 					} else {
-						// 非开发环境：立即触发
+
 						todayRemindTime = now
 					}
 				} else {
-					// 已过宽限时间：今天不再补单，跳过（返回 nil 表示成功但不发消息）
 					s.logger.Info("Skipped scheduling reminder: remind_at already passed grace window",
 						zap.String("remind_at", remindAt),
 						zap.String("grace_until", graceUntil),
@@ -328,7 +316,6 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 				}
 			}
 		} else {
-			// 没有配置 grace_until：非开发环境顺延到明天，开发环境就近触发
 			if config.Cfg.Environment == "development" {
 				todayRemindTime = now.Add(1 * time.Minute)
 			} else {
@@ -342,7 +329,7 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		reminderDelay = 0
 	}
 
-	// 生成 MessageID
+
 	messageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
 		s.logger.Error("Failed to generate message ID", zap.Error(err))
@@ -359,7 +346,7 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		DelaySeconds: int(reminderDelay.Seconds()),
 	}
 
-	// 先发送 MQ 消息，成功后再写入 Redis 标记
+
 	if err := queue.PublishCheckInReminder(reminderMsg); err != nil {
 		s.logger.Error("Failed to publish reminder message",
 			zap.String("remind_at", remindAt),
@@ -369,14 +356,13 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		return err
 	}
 
-	// Reminder 消息发送成功后才标记为已投放
+
 	for _, user := range filteredUsers {
 		if err := cache.MarkReminderScheduled(ctx, checkInDate, user.PublicID); err != nil {
 			s.logger.Warn("Failed to mark reminder scheduled after publishing message",
 				zap.Int64("user_id", user.PublicID),
 				zap.Error(err),
 			)
-			// 标记失败不影响主流程，因为 MQ 消息已发送
 		}
 	}
 
@@ -394,15 +380,14 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		deadlineTime, _ = time.Parse("15:04:05", "21:00:00")
 	}
 
-	// 超时时间 = 截止时间 + 1小时宽限期
+	// 超时时间 = 截止时间 
 	todayDeadline := time.Date(now.Year(), now.Month(), now.Day(),
 		deadlineTime.Hour(), deadlineTime.Minute(), deadlineTime.Second(), 0, now.Location())
-	timeoutTime := todayDeadline.Add(1 * time.Hour)
+	timeoutTime := todayDeadline
 
-	// 计算超时延迟时间
 	timeoutDelay := time.Until(timeoutTime)
 
-	//调整为超时时间已过后，就立刻触发打卡机制
+	//超时时间已过后，就立刻触发打卡机制, 每天只会有 1 次打卡，数据库是根据 date 和人来设置 unique Index 的
 	if timeoutDelay < 0 {
 		timeoutDelay = 0
 		s.logger.Info("Timeout time has passed, will trigger immediately",
@@ -412,14 +397,14 @@ func (s *CheckInScheduler) scheduleTimeGroup(
 		)
 	}
 
-	// 生成 MessageID for timeout
+
 	timeoutMessageID, err := snowflake.NextID(snowflake.GeneratorTypeMessage)
 	if err != nil {
 		s.logger.Error("Failed to generate timeout message ID", zap.Error(err))
 		return err
 	}
 
-	// 生成超时消息
+	
 	timeoutMsg := model.CheckInTimeoutMessage{
 		MessageID:    fmt.Sprintf("ci_timeout_%d", timeoutMessageID),
 		BatchID:      fmt.Sprintf("%d", batchID),

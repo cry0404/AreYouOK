@@ -9,7 +9,7 @@ import (
 	"AreYouOK/pkg/errors"
 )
 
-// ErrorResponse 统一的错误响应格式
+
 type ErrorResponse struct {
 	Error ErrorDetail `json:"error"`
 }
@@ -20,14 +20,14 @@ type ErrorDetail struct {
 	Message string                 `json:"message"`
 }
 
-// SuccessResponse 统一的成功响应格式
+
 type SuccessResponse struct {
 	Data interface{}            `json:"data"`
 	Meta map[string]interface{} `json:"meta,omitempty"`
 }
 
 func errorToHTTPStatus(err error) int {
-	// 检查是否是 Definition 类型
+
 	def, ok := err.(errors.Definition)
 	if !ok {
 		if errMsg := err.Error(); errMsg != "" {
@@ -36,7 +36,7 @@ func errorToHTTPStatus(err error) int {
 		return http.StatusInternalServerError
 	}
 
-	// 根据错误码映射 HTTP 状态码
+
 	switch def.Code {
 	case "CAPTCHA_RATE_LIMITED", "VERIFICATION_SLIDER_REQUIRED":
 		return http.StatusTooManyRequests // 429

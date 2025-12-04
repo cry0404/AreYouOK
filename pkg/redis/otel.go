@@ -18,7 +18,7 @@ var (
 	// Redis 相关指标
 	redisCommandsTotal     metric.Int64Counter
 	redisCommandDuration   metric.Float64Histogram
-	redisConnectionsActive metric.Int64UpDownCounter
+	//redisConnectionsActive metric.Int64UpDownCounter
 	redisCacheHits         metric.Int64Counter
 	redisCacheMisses       metric.Int64Counter
 )
@@ -48,15 +48,15 @@ func InitRedisMetrics(meter metric.Meter) error {
 		return err
 	}
 
-	// Redis 活跃连接数
-	redisConnectionsActive, err = meter.Int64UpDownCounter(
-		"redis.connections.active",
-		metric.WithDescription("Number of active Redis connections"),
-		metric.WithUnit("{connection}"),
-	)
-	if err != nil {
-		return err
-	}
+	// // Redis 活跃连接数
+	// redisConnectionsActive, err = meter.Int64UpDownCounter(
+	// 	"redis.connections.active",
+	// 	metric.WithDescription("Number of active Redis connections"),
+	// 	metric.WithUnit("{connection}"),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
 
 	// Redis 缓存命中
 	redisCacheHits, err = meter.Int64Counter(

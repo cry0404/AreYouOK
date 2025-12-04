@@ -20,7 +20,7 @@ var (
 	mqMessageDuration metric.Float64Histogram
 	mqPublishErrors   metric.Int64Counter
 	mqConsumeErrors   metric.Int64Counter
-	mqQueueSize       metric.Int64UpDownCounter
+	//mqQueueSize       metric.Int64UpDownCounter
 )
 
 // InitMQMetrics 初始化 RabbitMQ 指标
@@ -68,20 +68,20 @@ func InitMQMetrics(meter metric.Meter) error {
 		return err
 	}
 
-	// 队列大小
-	mqQueueSize, err = meter.Int64UpDownCounter(
-		"mq.queue.size",
-		metric.WithDescription("RabbitMQ queue size"),
-		metric.WithUnit("{message}"),
-	)
-	if err != nil {
-		return err
-	}
+	// // 队列大小
+	// mqQueueSize, err = meter.Int64UpDownCounter(
+	// 	"mq.queue.size",
+	// 	metric.WithDescription("RabbitMQ queue size"),
+	// 	metric.WithUnit("{message}"),
+	// )
+	// if err != nil {
+	// 	return err
+	// }
 
 	return nil
 }
 
-// InstrumentedChannel 包装 amqp.Channel 以添加 OpenTelemetry 支持
+
 type InstrumentedChannel struct {
 	ch          *amqp.Channel
 	serviceName string

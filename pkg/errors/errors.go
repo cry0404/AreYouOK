@@ -6,13 +6,13 @@ func (d Definition) Error() string {
 	return d.Message
 }
 
-// Definition 表示业务错误码及默认信息。
+
 type Definition struct {
 	Code    string
 	Message string
 }
 
-// Wrap 包装错误，保留原始错误信息
+
 func (d Definition) Wrap(err error) error {
 	return fmt.Errorf("%s: %w", d.Message, err)
 }

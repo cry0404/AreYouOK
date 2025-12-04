@@ -31,7 +31,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 初始化 OpenTelemetry
+	// 初始化 otel 部分
 	otelCleanup, err := pkgtel.InitOpenTelemetry(ctx, pkgtel.Config{
 		ServiceName:    "areyouok-worker",
 		ServiceVersion: "1.0.0",
@@ -48,12 +48,12 @@ func main() {
 		}
 	}()
 
-	// 初始化 SMS 相关的 OpenTelemetry 指标
+
 	if err := metrics.InitMetrics(); err != nil {
 		logger.Logger.Warn("Failed to initialize OpenTelemetry metrics", zap.Error(err))
 	}
 
-	// 初始化 Worker 相关指标
+
 	meter := otel.Meter("areyouok-worker")
 	if err := pkgmq.InitMQMetrics(meter); err != nil {
 		logger.Logger.Warn("Failed to initialize RabbitMQ metrics", zap.Error(err))

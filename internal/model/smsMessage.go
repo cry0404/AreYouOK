@@ -90,7 +90,7 @@ type JourneyReminderContactMessage struct {
 
 func (m *JourneyReminderContactMessage) GetTemplateParams() (string, error) {
 	params := map[string]string{
-		"name": m.Name,
+		"name": m.Name, //这个部分应该取联系人的称呼
 		"trip": m.Trip,
 		"time": m.Time,
 		"note": m.Note,
