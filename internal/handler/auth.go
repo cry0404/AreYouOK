@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
 
@@ -29,27 +30,28 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	}
 
 	encryptedData := req.EncryptedData
-	if req.Response != "" {
+	if encryptedData == "" {
+		if req.Response == "" {
+			response.Error(ctx, c, errors.Definition{
+				Code:    "INVALID_REQUEST",
+				Message: "missing encrypted data (need encrypted_data or response/sign)",
+			})
+			return
+		}
+		if req.Sign == "" {
+			response.Error(ctx, c, errors.Definition{
+				Code:    "INVALID_REQUEST",
+				Message: "sign is required when using response format",
+			})
+			return
+		}
+
 		alipayResp := map[string]string{
-			"response": req.Response,
-		}
-		if req.Sign != "" {
-			alipayResp["sign"] = req.Sign
-		}
-		if req.SignType != "" {
-			alipayResp["sign_type"] = req.SignType
-		} else {
-			alipayResp["sign_type"] = "RSA2" // 默认值
-		}
-		if req.EncryptType != "" {
-			alipayResp["encrypt_type"] = req.EncryptType
-		} else {
-			alipayResp["encrypt_type"] = "AES" // 默认值
-		}
-		if req.Charset != "" {
-			alipayResp["charset"] = req.Charset
-		} else {
-			alipayResp["charset"] = "UTF-8" // 默认值
+			"response":     req.Response,
+			"sign":         req.Sign,
+			"sign_type":    strings.ToUpper(defaultString(req.SignType, "RSA2")),
+			"encrypt_type": strings.ToUpper(defaultString(req.EncryptType, "AES")),
+			"charset":      defaultString(req.Charset, "UTF-8"),
 		}
 
 		jsonBytes, err := json.Marshal(alipayResp)
@@ -73,6 +75,13 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 
 	response.Success(ctx, c, result)
 } // 先去完善存储层
+
+func defaultString(value, fallback string) string {
+	if value != "" {
+		return value
+	}
+	return fallback
+}
 
 // SendCaptcha 发送验证码
 // POST /v1/auth/phone/send-captcha

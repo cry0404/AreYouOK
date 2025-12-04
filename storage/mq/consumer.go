@@ -2,6 +2,7 @@ package mq
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"AreYouOK/pkg/errors"
@@ -83,7 +84,6 @@ func Consume(opts ConsumeOptions) error {
 			return ctx.Err()
 		case msg, ok := <-msgs:
 			if !ok {
-				// 消息通道已关闭
 				logger.Logger.Info("Message channel closed, stopping consumer",
 					zap.String("queue", opts.Queue),
 					zap.String("consumer_tag", opts.ConsumerTag),
@@ -114,19 +114,28 @@ func Consume(opts ConsumeOptions) error {
 
 				if retryCount >= maxRetries {
 					// 超过最大重试次数，拒绝消息（requeue=false）让它进入死信队列
+					// 在进入死信队列前，尝试清理 Redis 标记，避免标记残留
+					messageID := extractMessageID(msg.Body)
+					if messageID != "" {
+
+						logger.Logger.Warn("错误的消息提取，考虑引入消息清理部分",
+							zap.String("message_id", messageID),
+							zap.String("queue", opts.Queue),
+						)
+					}
+
 					logger.Logger.Error("Message exceeded max retry count, sending to DLQ",
 						zap.String("queue", opts.Queue),
 						zap.String("consumer_tag", opts.ConsumerTag),
 						zap.Int("retry_count", retryCount),
 						zap.Int("max_retries", maxRetries),
+						zap.String("message_id", messageID),
 						zap.Error(err),
 					)
 					msg.Nack(false, false) // requeue = false，消息会进入死信队列
 					continue
 				}
 
-				// 未超过最大重试次数，增加重试次数并重新入队
-				// 重新发布消息，通过消息头判断是否超过重试次数
 				retryCount++
 				logger.Logger.Warn("Message processing failed, retrying",
 					zap.String("queue", opts.Queue),
@@ -136,16 +145,14 @@ func Consume(opts ConsumeOptions) error {
 					zap.Error(err),
 				)
 
-				// 重新发布消息并更新重试次数
+				// 这里是重新发布存在错误的地方
 				if err := republishWithRetryCount(ch, msg, opts.Queue, retryCount); err != nil {
 					logger.Logger.Error("Failed to republish message with retry count",
 						zap.String("queue", opts.Queue),
 						zap.Error(err),
 					)
-					// 如果重新发布失败，直接 Nack(requeue=true) 作为降级方案
 					msg.Nack(false, true)
 				} else {
-					// 重新发布成功，确认原消息
 					msg.Ack(false)
 				}
 				continue
@@ -205,4 +212,29 @@ func republishWithRetryCount(ch *amqp.Channel, originalMsg amqp.Delivery, queue 
 	)
 
 	return err
+}
+
+// extractMessageID 从消息体中尝试提取 message_id 字段
+// 这是一个辅助函数，用于在消息进入死信队列时清理 Redis 标记
+func extractMessageID(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+
+	// 尝试解析为 JSON 并提取 message_id
+	var msgMap map[string]interface{}
+	if err := json.Unmarshal(body, &msgMap); err != nil {
+		// 解析失败，返回空字符串
+		return ""
+	}
+
+	// 尝试提取 message_id 字段（支持 message_id 和 messageId 两种格式）
+	if msgID, ok := msgMap["message_id"].(string); ok && msgID != "" {
+		return msgID
+	}
+	if msgID, ok := msgMap["messageId"].(string); ok && msgID != "" {
+		return msgID
+	}
+
+	return ""
 }

@@ -36,9 +36,10 @@ func Register(h *server.Hertz) {
 
 	// 用户相关路由
 	users := v1.Group("/users")
+	users.GET("/me/status", handler.GetUserStatus)
 	users.Use(middleware.AuthMiddleware()) // 需要鉴权的路由组
 	{
-		users.GET("/me/status", handler.GetUserStatus)
+		
 		users.GET("/me", handler.GetUserProfile)
 		users.PUT("/me/settings", /*middleware.UserSettingsRateLimitMiddleware(),*/ handler.UpdateUserSettings) // 用户设置修改限流
 		users.GET("/me/quotas", handler.GetUserQuotas)
@@ -51,6 +52,7 @@ func Register(h *server.Hertz) {
 	{
 		contacts.GET("", handler.ListContacts)
 		contacts.POST("", handler.CreateContact)
+		contacts.PUT("", handler.ReplaceContacts) // 批量替换联系人
 		contacts.DELETE("/:priority", handler.DeleteContact)
 		contacts.PATCH("", handler.UpdateContact)
 	}

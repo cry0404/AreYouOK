@@ -42,6 +42,20 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal check-in reminder message: %w", err)
 		}
 
+		// 使用 defer 确保在返回错误时清理标记（SkipMessageError 除外）
+		messageID := msg.MessageID
+		shouldCleanup := false
+		defer func() {
+			if shouldCleanup && messageID != "" {
+				if err := cache.UnmarkMessageProcessing(ctx, messageID); err != nil {
+					logger.Logger.Warn("Failed to cleanup message processing mark",
+						zap.String("message_id", messageID),
+						zap.Error(err),
+					)
+				}
+			}
+		}()
+
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
 			logger.Logger.Warn("Failed to check message processed status",
@@ -49,12 +63,17 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 				zap.Error(err),
 			)
 			// 如果检查失败，继续处理（不阻塞业务），但可能重复处理
+			shouldCleanup = true
 		} else if !processed {
 			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.String("batch_id", msg.BatchID),
 			)
+			// SkipMessageError 不需要清理标记
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+		} else {
+			// 成功标记，如果后续出错需要清理
+			shouldCleanup = true
 		}
 
 		logger.Logger.Info("Reminder consumer received message",
@@ -76,12 +95,12 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			msg.ScheduledAt,
 		)
 		if err != nil {
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 			logger.Logger.Error("Failed to validate reminder batch",
 				zap.String("message_id", msg.MessageID),
 				zap.String("batch_id", msg.BatchID),
 				zap.Error(err),
 			)
+			// defer 会清理标记
 			return fmt.Errorf("failed to validate reminder batch: %w", err)
 		}
 
@@ -102,12 +121,12 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			)
 			createdCount, err := checkInService.ProcessReminderBatch(ctx, validationResult.ProcessNow, msg.CheckInDate)
 			if err != nil {
-				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 				logger.Logger.Error("Failed to process ProcessNow batch",
 					zap.String("message_id", msg.MessageID),
 					zap.Int("user_count", len(validationResult.ProcessNow)),
 					zap.Error(err),
 				)
+				// defer 会清理标记
 				return fmt.Errorf("failed to process ProcessNow batch: %w", err)
 			}
 
@@ -119,15 +138,47 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 				)
 			} else {
 				// 查询刚创建的 pending 状态的提醒任务，投递到 notification.sms 队列
+				// 只查询当前批次用户创建的任务，避免重复投递
 				db := database.DB().WithContext(ctx)
 				q := query.Use(db)
 				today := time.Now().Truncate(24 * time.Hour)
 
-				reminderTasks, err := q.NotificationTask.
-					Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInReminder))).
-					Where(q.NotificationTask.CreatedAt.Gte(today)).
-					Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+				// 将 public_id 转换为数据库 user_id，用于过滤任务
+				users, err := q.User.WithContext(ctx).
+					Where(q.User.PublicID.In(validationResult.ProcessNow...)).
 					Find()
+				if err != nil {
+					logger.Logger.Warn("Failed to query users for task filtering, using fallback (no user filter)",
+						zap.String("message_id", msg.MessageID),
+						zap.Error(err),
+					)
+					// 降级方案：如果查询用户失败，不限制用户范围（但记录警告）
+					// 这种情况应该很少发生，但为了系统稳定性，我们仍然处理任务
+				}
+
+				var reminderTasks []*model.NotificationTask
+				if err == nil && len(users) > 0 {
+					// 构建用户ID列表
+					userIDs := make([]int64, 0, len(users))
+					for _, user := range users {
+						userIDs = append(userIDs, user.ID)
+					}
+
+					// 只查询当前批次用户创建的任务，避免重复投递
+					reminderTasks, err = q.NotificationTask.
+						Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInReminder))).
+						Where(q.NotificationTask.CreatedAt.Gte(today)).
+						Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+						Where(q.NotificationTask.UserID.In(userIDs...)).
+						Find()
+				} else {
+					// 降级方案：查询所有今天创建的 pending 任务（不推荐，但作为后备方案）
+					reminderTasks, err = q.NotificationTask.
+						Where(q.NotificationTask.Category.Eq(string(model.NotificationCategoryCheckInReminder))).
+						Where(q.NotificationTask.CreatedAt.Gte(today)).
+						Where(q.NotificationTask.Status.Eq(string(model.NotificationTaskStatusPending))).
+						Find()
+				}
 
 				if err != nil {
 					logger.Logger.Warn("Failed to query reminder tasks for publishing",
@@ -201,6 +252,8 @@ func StartCheckInReminderConsumer(ctx context.Context) error {
 			// 记录失败但不影响主流程
 		}
 
+		// 处理成功，不需要清理标记
+		shouldCleanup = false
 		return nil
 	}
 
@@ -221,6 +274,20 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal check-in timeout message: %w", err)
 		}
 
+		// 使用 defer 确保在返回错误时清理标记
+		messageID := msg.MessageID
+		shouldCleanup := false
+		defer func() {
+			if shouldCleanup && messageID != "" {
+				if err := cache.UnmarkMessageProcessing(ctx, messageID); err != nil {
+					logger.Logger.Warn("Failed to cleanup message processing mark",
+						zap.String("message_id", messageID),
+						zap.Error(err),
+					)
+				}
+			}
+		}()
+
 		//不重复消费一条消息，这种 checkIn 部分都是一天一次
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
@@ -228,12 +295,15 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 				zap.String("message_id", msg.MessageID),
 				zap.Error(err),
 			)
+			shouldCleanup = true
 		} else if !processed {
 			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.String("batch_id", msg.BatchID),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+		} else {
+			shouldCleanup = true
 		}
 
 		logger.Logger.Debug("Processing check-in timeout batch",
@@ -265,7 +335,8 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 						zap.Error(markErr),
 					)
 				}
-				return nil // 返回 nil 表示成功处理（跳过）
+				shouldCleanup = false // 已标记为已处理，不需要清理
+				return nil            // 返回 nil 表示成功处理（跳过）
 			}
 
 			// 2. 不可重试错误：记录日志并发送到死信队列
@@ -276,18 +347,16 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 					zap.String("reason", err.(*errors.NonRetryableError).Reason),
 					zap.Error(err),
 				)
-				// 取消处理标记，让 RabbitMQ 发送到死信队列
-				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				// defer 会清理标记
 				return fmt.Errorf("non-retryable error in check-in timeout: %w", err)
 			}
 
-			// 3. 其他可重试错误：取消标记，允许重试
+			// 3. 其他可重试错误：defer 会清理标记，允许重试
 			logger.Logger.Warn("Retryable error in check-in timeout batch processing, will retry",
 				zap.String("message_id", msg.MessageID),
 				zap.Int("user_count", len(msg.UserIDs)),
 				zap.Error(err),
 			)
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 			return fmt.Errorf("failed to process timeout batch (will retry): %w", err)
 		}
 
@@ -350,6 +419,8 @@ func StartCheckInTimeoutConsumer(ctx context.Context) error {
 			)
 		}
 
+		// 处理成功，不需要清理标记
+		shouldCleanup = false
 		return nil
 	}
 
@@ -370,6 +441,20 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal journey reminder message: %w", err)
 		}
 
+		// 使用 defer 确保在返回错误时清理标记
+		messageID := msg.MessageID
+		shouldCleanup := false
+		defer func() {
+			if shouldCleanup && messageID != "" {
+				if err := cache.UnmarkMessageProcessing(ctx, messageID); err != nil {
+					logger.Logger.Warn("Failed to cleanup message processing mark",
+						zap.String("message_id", messageID),
+						zap.Error(err),
+					)
+				}
+			}
+		}()
+
 		// 幂等性检查
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
@@ -377,12 +462,15 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 				zap.String("message_id", msg.MessageID),
 				zap.Error(err),
 			)
+			shouldCleanup = true
 		} else if !processed {
 			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("journey_id", msg.JourneyID),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+		} else {
+			shouldCleanup = true
 		}
 
 		logger.Logger.Debug("Processing journey reminder",
@@ -401,6 +489,7 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 				)
 				// 跳过型错误：标记已处理，避免重复消费
 				cache.MarkMessageProcessed(ctx, msg.MessageID, 48*time.Hour)
+				shouldCleanup = false // 已标记为已处理，不需要清理
 				return nil
 			}
 
@@ -409,7 +498,7 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 				zap.Int64("journey_id", msg.JourneyID),
 				zap.Error(err),
 			)
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			// defer 会清理标记
 			return fmt.Errorf("failed to process journey reminder (will retry): %w", err)
 		}
 
@@ -466,6 +555,8 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 			)
 		}
 
+		// 处理成功，不需要清理标记
+		shouldCleanup = false
 		return nil
 	}
 
@@ -486,6 +577,20 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal journey timeout message: %w", err)
 		}
 
+		// 使用 defer 确保在返回错误时清理标记
+		messageID := msg.MessageID
+		shouldCleanup := false
+		defer func() {
+			if shouldCleanup && messageID != "" {
+				if err := cache.UnmarkMessageProcessing(ctx, messageID); err != nil {
+					logger.Logger.Warn("Failed to cleanup message processing mark",
+						zap.String("message_id", messageID),
+						zap.Error(err),
+					)
+				}
+			}
+		}()
+
 		// 先上锁，避免多实例的情况下抢夺消息
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
@@ -493,12 +598,15 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 				zap.String("message_id", msg.MessageID),
 				zap.Error(err),
 			)
+			shouldCleanup = true
 		} else if !processed {
 			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("journey_id", msg.JourneyID),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+		} else {
+			shouldCleanup = true
 		}
 
 		logger.Logger.Debug("Processing journey timeout",
@@ -525,7 +633,8 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 						zap.Error(markErr),
 					)
 				}
-				return nil // 返回 nil 表示成功处理（跳过）
+				shouldCleanup = false // 已标记为已处理，不需要清理
+				return nil            // 返回 nil 表示成功处理（跳过）
 			}
 
 			// 2. 不可重试错误：记录日志并发送到死信队列
@@ -536,19 +645,17 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 					zap.String("reason", err.(*errors.NonRetryableError).Reason),
 					zap.Error(err),
 				)
-				// 取消处理标记，让 RabbitMQ 发送到死信队列
-				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				// defer 会清理标记
 				return fmt.Errorf("non-retryable error in journey timeout: %w", err)
 			}
 
-			// 3. 其他可重试错误：取消标记，允许重试
+			// 3. 其他可重试错误：defer 会清理标记，允许重试
 			logger.Logger.Warn("Retryable error in journey timeout processing, will retry",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("journey_id", msg.JourneyID),
 				zap.Int64("user_id", msg.UserID),
 				zap.Error(err),
 			)
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 			return fmt.Errorf("failed to process journey timeout (will retry): %w", err)
 		}
 
@@ -601,6 +708,8 @@ func StartJourneyTimeoutConsumer(ctx context.Context) error {
 			)
 		}
 
+		// 处理成功，不需要清理标记
+		shouldCleanup = false
 		return nil
 	}
 
@@ -624,6 +733,20 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			return fmt.Errorf("failed to unmarshal SMS notification message: %w", err)
 		}
 
+		// 使用 defer 确保在返回错误时清理标记
+		messageID := msg.MessageID
+		shouldCleanup := false
+		defer func() {
+			if shouldCleanup && messageID != "" {
+				if err := cache.UnmarkMessageProcessing(ctx, messageID); err != nil {
+					logger.Logger.Warn("Failed to cleanup message processing mark",
+						zap.String("message_id", messageID),
+						zap.Error(err),
+					)
+				}
+			}
+		}()
+
 		//使用 SETNX 原子性地检查并标记消息正在处理
 		processed, err := cache.TryMarkMessageProcessing(ctx, msg.MessageID, 24*time.Hour)
 		if err != nil {
@@ -632,13 +755,15 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 				zap.Int64("task_code", msg.TaskCode),
 				zap.Error(err),
 			)
-
+			shouldCleanup = true
 		} else if !processed {
 			logger.Logger.Debug("Message already processed or being processed, skipping",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("task_code", msg.TaskCode),
 			)
 			return &errors.SkipMessageError{Reason: fmt.Sprintf("Message %s already processed", msg.MessageID)}
+		} else {
+			shouldCleanup = true
 		}
 
 		logger.Logger.Debug("Processing SMS notification",
@@ -652,7 +777,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			logger.Logger.Error("NotificationService not initialized",
 				zap.String("message_id", msg.MessageID),
 			)
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			// defer 会清理标记
 			return fmt.Errorf("notification service not initialized")
 		}
 
@@ -660,8 +785,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			logger.Logger.Error("TaskCode is missing in message",
 				zap.String("message_id", msg.MessageID),
 			)
-			// 标记处理失败，允许重试
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+			// defer 会清理标记
 			return fmt.Errorf("task_code is required")
 		}
 
@@ -689,7 +813,8 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 						zap.Error(markErr),
 					)
 				}
-				return nil // 返回 nil 表示成功处理（跳过）
+				shouldCleanup = false // 已标记为已处理，不需要清理
+				return nil            // 返回 nil 表示成功处理（跳过）
 			}
 
 			// 2. 不可重试错误：记录日志并发送到死信队列（通过返回错误让 RabbitMQ 处理）
@@ -700,8 +825,7 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 					zap.String("reason", err.(*errors.NonRetryableError).Reason),
 					zap.Error(err),
 				)
-				// 取消处理标记，让 RabbitMQ 发送到死信队列
-				cache.UnmarkMessageProcessing(ctx, msg.MessageID)
+				// defer 会清理标记
 				return fmt.Errorf("non-retryable error: %w", err)
 			}
 
@@ -721,16 +845,16 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 						zap.Error(markErr),
 					)
 				}
+				shouldCleanup = false // 已标记为已处理，不需要清理
 				return nil
 			}
 
-			// 其他可重试错误：取消标记，允许重试
+			// 其他可重试错误：defer 会清理标记，允许重试
 			logger.Logger.Warn("Retryable error occurred, will retry",
 				zap.String("message_id", msg.MessageID),
 				zap.Int64("user_id", msg.UserID),
 				zap.Error(err),
 			)
-			cache.UnmarkMessageProcessing(ctx, msg.MessageID)
 			return fmt.Errorf("failed to send SMS (will retry): %w", err)
 		}
 
@@ -755,6 +879,8 @@ func StartSMSNotificationConsumer(ctx context.Context) error {
 			}
 		}
 
+		// 处理成功，不需要清理标记
+		shouldCleanup = false
 		return nil
 	}
 

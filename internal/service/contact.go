@@ -98,7 +98,7 @@ func (s *ContactService) CreateContact(
 			return nil, fmt.Errorf("emergencyContact can not be yourself")
 		}
 	}
-	
+
 	newContact := model.EmergencyContact{
 		DisplayName:       req.DisplayName,
 		Relationship:      req.Relationship,
@@ -283,7 +283,6 @@ func (s *ContactService) DeleteContact(
 	return nil
 }
 
-
 func (s *ContactService) UpdateContact(
 	ctx context.Context,
 	userID string,
@@ -324,7 +323,6 @@ func (s *ContactService) UpdateContact(
 	if targetIdx == -1 {
 		return nil, pkgerrors.ContactPriorityConflict // 或者自定义 CONTACT_NOT_FOUND
 	}
-
 
 	updatedContacts := make(model.EmergencyContacts, len(contacts))
 	copy(updatedContacts, contacts)
@@ -387,4 +385,145 @@ func (s *ContactService) UpdateContact(
 		PhoneMasked:  phoneForResponse,
 		Priority:     target.Priority,
 	}, nil
+}
+
+// ReplaceContacts 全量替换紧急联系人
+// 规则：
+// 1. 删除所有现有联系人，用新列表完全替换
+// 2. 联系人数量 1-3 个
+// 3. 优先级必须唯一且在 1-3 范围内
+// 4. 联系人手机号不能是用户自己（生产环境）
+// 5. 如果是第一次添加联系人，更新用户状态为 active
+func (s *ContactService) ReplaceContacts(
+	ctx context.Context,
+	userID string,
+	req dto.ReplaceContactsRequest,
+) ([]dto.ContactItem, error) {
+	var userIDInt int64
+	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
+		return nil, pkgerrors.InvalidUserID
+	}
+
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	user, err := q.User.GetByPublicID(userIDInt)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, pkgerrors.ErrUserNotFound
+		}
+		return nil, fmt.Errorf("failed to query user: %w", err)
+	}
+
+	if len(req.Contacts) < 1 || len(req.Contacts) > 3 {
+		return nil, pkgerrors.Definition{
+			Code:    "INVALID_CONTACTS_COUNT",
+			Message: "Contacts count must be between 1 and 3",
+		}
+	}
+
+	prioritySet := make(map[int]bool)
+	for _, contact := range req.Contacts {
+		if contact.Priority < 1 || contact.Priority > 3 {
+			return nil, pkgerrors.ContactPriorityConflict
+		}
+		if prioritySet[contact.Priority] {
+			return nil, pkgerrors.Definition{
+				Code:    "DUPLICATE_PRIORITY",
+				Message: fmt.Sprintf("Duplicate priority: %d", contact.Priority),
+			}
+		}
+		prioritySet[contact.Priority] = true
+	}
+
+
+	newContacts := make(model.EmergencyContacts, 0, len(req.Contacts))
+	now := time.Now().Format(time.RFC3339)
+
+	for _, contact := range req.Contacts {
+
+		if !utils.ValidatePhone(contact.Phone) {
+			return nil, pkgerrors.Definition{
+				Code:    "INVALID_PHONE",
+				Message: fmt.Sprintf("Invalid phone number for contact priority %d", contact.Priority),
+			}
+		}
+
+
+		phoneCipherBase64, err := utils.EncryptPhone(contact.Phone)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+		}
+
+		phoneHash := utils.HashPhone(contact.Phone)
+
+
+		if config.Cfg.Environment == "production" && user.PhoneHash != nil {
+			if phoneHash == *user.PhoneHash {
+				return nil, pkgerrors.Definition{
+					Code:    "SELF_AS_CONTACT",
+					Message: "Emergency contact cannot be yourself",
+				}
+			}
+		}
+
+		newContacts = append(newContacts, model.EmergencyContact{
+			DisplayName:       contact.DisplayName,
+			Relationship:      contact.Relationship,
+			PhoneCipherBase64: phoneCipherBase64,
+			PhoneHash:         phoneHash,
+			Priority:          contact.Priority,
+			CreatedAt:         now,
+		})
+	}
+
+	// 按优先级排序
+	sort.Slice(newContacts, func(i, j int) bool {
+		return newContacts[i].Priority < newContacts[j].Priority
+	})
+
+	// 准备更新
+	updates := map[string]interface{}{
+		"emergency_contacts": newContacts,
+	}
+
+	// 如果之前没有联系人，且用户状态为 contact，更新为 active
+	wasEmpty := len(user.EmergencyContacts) == 0
+	if wasEmpty && user.Status == model.UserStatusContact {
+		updates["status"] = string(model.UserStatusActive)
+		logger.Logger.Info("User activated by replacing contacts",
+			zap.String("user_id", userID),
+			zap.Int64("public_id", user.PublicID),
+		)
+	}
+
+	// 执行更新
+	if _, err := q.User.Where(q.User.PublicID.Eq(userIDInt)).Updates(updates); err != nil {
+		return nil, fmt.Errorf("failed to replace contacts: %w", err)
+	}
+
+	logger.Logger.Info("Contacts replaced",
+		zap.String("user_id", userID),
+		zap.Int("count", len(newContacts)),
+	)
+
+	// 构建响应（返回完整的联系人列表）
+	result := make([]dto.ContactItem, 0, len(newContacts))
+	for _, contact := range newContacts {
+		// 解密手机号用于响应
+		phoneCipherBytes, _ := base64.StdEncoding.DecodeString(contact.PhoneCipherBase64)
+		phone, _ := utils.DecryptPhone(phoneCipherBytes)
+
+		createdAt, _ := time.Parse(time.RFC3339, contact.CreatedAt)
+
+		result = append(result, dto.ContactItem{
+			DisplayName:  contact.DisplayName,
+			Relationship: contact.Relationship,
+			PhoneMasked:  phone, // 返回完整手机号
+			Priority:     contact.Priority,
+			CreatedAt:    createdAt,
+		})
+	}
+
+	return result, nil
 }

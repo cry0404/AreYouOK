@@ -152,5 +152,30 @@ func UpdateContact(ctx context.Context, c *app.RequestContext) {
 	c.JSON(200, response.SuccessResponse{
 		Data: result,
 	})
+}
 
+// ReplaceContacts 批量替换紧急联系人
+// PUT /v1/contacts
+func ReplaceContacts(ctx context.Context, c *app.RequestContext) {
+	var req dto.ReplaceContactsRequest
+
+	if err := c.BindAndValidate(&req); err != nil {
+		response.BindError(ctx, c, err)
+		return
+	}
+
+	userID, ok := middleware.GetUserID(ctx, c)
+	if !ok {
+		response.Error(ctx, c, fmt.Errorf("user ID not found in context"))
+		return
+	}
+
+	contactService := service.Contact()
+	result, err := contactService.ReplaceContacts(ctx, userID, req)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	response.Success(ctx, c, result)
 }

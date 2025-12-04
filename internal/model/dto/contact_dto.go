@@ -44,3 +44,17 @@ type UpdateContactResponse struct {
 	PhoneMasked  string `json:"phone_masked"`
 	Priority     int    `json:"priority"`
 }
+
+// ReplaceContactItem 批量替换联系人时的单个联系人项
+// 不包含 created_at，由后端自动生成
+type ReplaceContactItem struct {
+	DisplayName  string `json:"display_name" binding:"required"`
+	Relationship string `json:"relationship" binding:"required"`
+	Phone        string `json:"phone" binding:"required"`
+	Priority     int    `json:"priority" binding:"required,min=1,max=3"`
+}
+
+// ReplaceContactsRequest 批量替换联系人请求
+type ReplaceContactsRequest struct {
+	Contacts []ReplaceContactItem `json:"contacts" binding:"required,min=1,max=3,dive"`
+}

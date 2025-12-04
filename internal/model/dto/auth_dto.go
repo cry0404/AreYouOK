@@ -4,7 +4,7 @@ import "time"
 
 // ========== Auth 相关 DTO ==========
 type AuthExchangeRequest struct {
-	EncryptedData string `json:"encrypted_data" binding:"required"`
+	EncryptedData string `json:"encrypted_data,omitempty"`
 
 	Response    string `json:"response,omitempty"`     // AES 加密的数据（base64 编码）
 	Sign        string `json:"sign,omitempty"`         // RSA2 签名（base64 编码）
@@ -13,14 +13,14 @@ type AuthExchangeRequest struct {
 	Charset     string `json:"charset,omitempty"`      // 字符集，通常为 "UTF-8"
 
 	IV     string     `json:"iv,omitempty"`
-	Device DeviceInfo `json:"device"`
+	Device DeviceInfo `json:"device" binding:"required"`
 }
 
 // DeviceInfo 设备信息
 type DeviceInfo struct {
-	Platform   string `json:"platform"`
-	Model      string `json:"model"`
-	AppVersion string `json:"app_version"`
+	Platform   string `json:"platform" binding:"required"`
+	Model      string `json:"model" binding:"required"`
+	AppVersion string `json:"app_version" binding:"required"`
 }
 
 // AuthExchangeResponse 支付宝授权换取响应

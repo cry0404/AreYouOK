@@ -230,7 +230,7 @@ func (s *UserService) UpdateUserSettings(
 		zap.String("user_id", userID),
 		zap.Any("updates", updates),
 	)
-	// 重新查询更新后的用户信息
+
 	updatedUser, err := query.User.GetByPublicID(userIDInt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query updated user: %w", err)
@@ -247,13 +247,15 @@ func (s *UserService) UpdateUserSettings(
 
 	// 检查是否需要重新投递今日的打卡提醒消息
 	// 只有用户状态为 active 且开启了打卡功能才需要重新投递
+
+	// 如果一天只有一次打卡的话就不需要修改
 	var reminderMsg *model.CheckInReminderMessage
 	if updatedUser.Status == model.UserStatusActive && updatedUser.DailyCheckInEnabled {
 		// 检查设置变更是否影响今日提醒
 		affectsReminder := false
 
 		if req.DailyCheckInEnabled != nil {
-			affectsReminder = true // 开关变更影响提醒
+			affectsReminder = true 
 		}
 		if req.DailyCheckInRemindAt != nil {
 			affectsReminder = true // 提醒时间变更影响提醒
@@ -264,18 +266,19 @@ func (s *UserService) UpdateUserSettings(
 
 		if affectsReminder {
 			reminderMsg = s.buildReminderMessage(ctx, updatedUser, userIDInt)
-			// 在开发环境下，如果成功构建了提醒消息，清除当天的 Redis 标记
-			// 让 scheduler 能够重新调度（因为用户可能改了 remind_at，需要立即生效）
-			if reminderMsg != nil && config.Cfg.Environment == "development" {
+			// 如果成功构建了提醒消息，清除当天的 Redis 调度标记
+			// 这样可以确保新消息能够被正确处理，而旧消息会被幂等性检查跳过
+			if reminderMsg != nil {
 				today := time.Now().Format("2006-01-02")
+				// 清除调度标记，让用户设置更新的消息能够被处理
 				if err := cache.UnmarkCheckinScheduled(ctx, today, userIDInt); err != nil {
-					logger.Logger.Warn("Failed to unmark checkin scheduled in dev mode",
+					logger.Logger.Warn("Failed to unmark checkin scheduled after settings update",
 						zap.Int64("user_id", userIDInt),
 						zap.String("date", today),
 						zap.Error(err),
 					)
 				} else {
-					logger.Logger.Info("Cleared checkin scheduled mark in dev mode",
+					logger.Logger.Info("Cleared checkin scheduled mark after settings update",
 						zap.Int64("user_id", userIDInt),
 						zap.String("date", today),
 					)
