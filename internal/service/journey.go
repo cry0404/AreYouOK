@@ -62,10 +62,10 @@ func (s *JourneyService) CreateJourney(
 		}
 	}
 	now := time.Now()
-	if req.ExpectedReturnTime.Sub(now) < 10 * time.Minute{
+	if req.ExpectedReturnTime.Sub(now) < 10*time.Minute {
 		return nil, nil, pkgerrors.Definition{
-			Code: "JOURNEY_RETURN_TIME_TOO_CLOSE",
-			Message: "You can not modify your return-time before 5 minutes",
+			Code:    "JOURNEY_RETURN_TIME_TOO_CLOSE",
+			Message: "Expected return time must be at least 10 minutes in the future",
 		}
 	}
 	// 这里还需要考虑要不要限定前几分钟不能修改？
@@ -189,11 +189,12 @@ func (s *JourneyService) UpdateJourney(
 
 	now := time.Now()
 
-	// 这里开发环境可以额外处理一下
-	if req.ExpectedReturnTime.Sub(now) < 10 * time.Minute{
+
+	// 检查预计返回时间是否太近（至少需要 10 分钟）
+	if req.ExpectedReturnTime != nil && req.ExpectedReturnTime.Sub(now) < 10*time.Minute {
 		return nil, nil, pkgerrors.Definition{
-			Code: "JOURNEY_RETURN_TIME_TOO_CLOSE",
-			Message: "You can not modify your return-time before 5 minutes",
+			Code:    "JOURNEY_RETURN_TIME_TOO_CLOSE",
+			Message: "Expected return time must be at least 10 minutes in the future",
 		}
 	}
 
