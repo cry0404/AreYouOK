@@ -45,6 +45,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 	ctx context.Context,
 	encryptedData string,
 	device dto.DeviceInfo,
+	alipayOpenID string,
 ) (*dto.AuthExchangeResponse, error) {
 
 	phone, err := utils.DecryptAlipayPhone(encryptedData)
@@ -58,136 +59,159 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 
 	phoneHash := utils.HashPhone(phone)
 
-	user, err := query.User.GetByPhoneHash(phoneHash)
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	user, err := q.User.Where(q.User.AlipayOpenID.Eq(alipayOpenID)).First()
 	isNewUser := false
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-
-			userCount, countErr := query.User.Count()
-			if countErr != nil {
-				return nil, fmt.Errorf("failed to count users: %w", countErr)
+			byPhone, phoneErr := q.User.Where(q.User.PhoneHash.Eq(phoneHash)).First()
+			if phoneErr == nil {
+				user = byPhone
+			} else if !errors.Is(phoneErr, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("failed to query user by phone_hash: %w", phoneErr)
 			}
-
-			if userCount >= int64(config.Cfg.WaitlistMaxUsers) {
-				return nil, pkgerrors.WaitlistFull
-			}
-
-			publicID, err := snowflake.NextID(snowflake.GeneratorTypeUser)
-			if err != nil {
-				return nil, fmt.Errorf("failed to generate user ID: %w", err)
-			}
-
-			phoneCipherBase64, err := utils.EncryptPhone(phone)
-			if err != nil {
-				return nil, fmt.Errorf("failed to encrypt phone: %w", err)
-			}
-
-			phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
-			if err != nil {
-				return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
-			}
-
-			max := big.NewInt(100000)
-			n, err := rand.Int(rand.Reader, max)
-			nickname := fmt.Sprintf("安否用户%d", n.Int64()) // 默认值
-			if err == nil {
-				nickname = fmt.Sprintf("用户%d", n.Int64())
-			}
-			// 使用 phone_hash 作为 alipay_open_id，因为数据库要求该字段非空且唯一
-			alipayOpenID := "phone_" + phoneHash
-			user = &model.User{
-				PublicID:     publicID,
-				AlipayOpenID: alipayOpenID,
-				Nickname:     nickname,
-				Status:       model.UserStatusContact, // 已绑定手机号，进入填写紧急联系人阶段
-				Timezone:     "Asia/Shanghai",
-				PhoneHash:    &phoneHash,
-			}
-
-			user.PhoneCipher = phoneCipherBytes
-
-			// 使用事务确保用户创建和额度分配原子性
-			db := database.DB().WithContext(ctx)
-
-			err = db.Transaction(func(tx *gorm.DB) error {
-				txQ := query.Use(tx)
-
-				// 创建用户
-				if err := txQ.User.Create(user); err != nil {
-					return fmt.Errorf("failed to create user: %w", err)
-				}
-
-				// 分配默认 SMS 额度（20 次短信 = 100 cents）
-				defaultQuotaCents := config.Cfg.DefaultSMSQuota
-				if defaultQuotaCents <= 0 {
-					defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
-				}
-
-				// 初始化额度钱包（quota_wallets），保证新用户一定有钱包
-				wallet := &model.QuotaWallet{
-					UserID:          user.ID,
-					Channel:         model.QuotaChannelSMS,
-					AvailableAmount: defaultQuotaCents,
-					FrozenAmount:    0,
-					UsedAmount:      0,
-					TotalGranted:    defaultQuotaCents,
-				}
-
-				if err := txQ.QuotaWallet.Create(wallet); err != nil {
-					return fmt.Errorf("failed to create quota wallet: %w", err)
-				}
-
-				quotaTransaction := &model.QuotaTransaction{
-					UserID:          user.ID,
-					Channel:         model.QuotaChannelSMS,
-					TransactionType: model.TransactionTypeGrant,
-					Reason:          "new_user_bonus", // 新用户奖励
-					Amount:          defaultQuotaCents,
-					BalanceAfter:    defaultQuotaCents, // 首次充值，余额等于充值金额
-				}
-
-				if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
-					return fmt.Errorf("failed to grant default SMS quota: %w", err)
-				}
-
-				logger.Logger.Info("User created with default SMS quota in transaction",
-					zap.Int64("public_id", publicID),
-					zap.Int64("user_id", user.ID),
-					zap.Int("quota_cents", defaultQuotaCents),
-				)
-
-				return nil
-			})
-
-			if err != nil {
-				return nil, fmt.Errorf("failed to create user with quota: %w", err)
-			}
-
-			isNewUser = true
-			logger.Logger.Info("New user created via alipay phone",
-				zap.Int64("public_id", publicID),
-				zap.String("phone_hash", phoneHash),
-			)
 		} else {
-			return nil, fmt.Errorf("failed to query user: %w", err)
+			return nil, fmt.Errorf("failed to query user by alipay_open_id: %w", err)
 		}
-	} else {
-		// 用户已存在，检查是否需要激活（waitlisted → contact）
-		if user.Status == model.UserStatusWaitlisted {
-			userCount, countErr := query.User.Count()
-			if countErr == nil && userCount < int64(config.Cfg.WaitlistMaxUsers) {
-				updates := map[string]interface{}{
-					"status": string(model.UserStatusContact),
-				}
-				if _, updateErr := query.User.Where(query.User.PublicID.Eq(user.PublicID)).Updates(updates); updateErr == nil {
-					user.Status = model.UserStatusContact
-					logger.Logger.Info("User activated from waitlist",
-						zap.Int64("public_id", user.PublicID),
-						zap.String("phone_hash", phoneHash),
-					)
-				}
+	}
+
+	if user == nil {
+		userCount, countErr := query.User.Count()
+		if countErr != nil {
+			return nil, fmt.Errorf("failed to count users: %w", countErr)
+		}
+
+		if userCount >= int64(config.Cfg.WaitlistMaxUsers) {
+			return nil, pkgerrors.WaitlistFull
+		}
+
+		publicID, err := snowflake.NextID(snowflake.GeneratorTypeUser)
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate user ID: %w", err)
+		}
+
+		phoneCipherBase64, err := utils.EncryptPhone(phone)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+		}
+
+		phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
+		}
+
+		max := big.NewInt(100000)
+		n, err := rand.Int(rand.Reader, max)
+		nickname := fmt.Sprintf("安否用户%d", n.Int64()) // 默认值
+		if err == nil {
+			nickname = fmt.Sprintf("用户%d", n.Int64())
+		}
+
+		user = &model.User{
+			PublicID:     publicID,
+			AlipayOpenID: alipayOpenID,
+			Nickname:     nickname,
+			Status:       model.UserStatusContact, // 已绑定手机号，进入填写紧急联系人阶段
+			Timezone:     "Asia/Shanghai",
+			PhoneHash:    &phoneHash,
+		}
+
+		user.PhoneCipher = phoneCipherBytes
+
+		err = db.Transaction(func(tx *gorm.DB) error {
+			txQ := query.Use(tx)
+
+			if err := txQ.User.Create(user); err != nil {
+				return fmt.Errorf("failed to create user: %w", err)
 			}
+
+			defaultQuotaCents := config.Cfg.DefaultSMSQuota
+			if defaultQuotaCents <= 0 {
+				defaultQuotaCents = 100
+			}
+
+			wallet := &model.QuotaWallet{
+				UserID:          user.ID,
+				Channel:         model.QuotaChannelSMS,
+				AvailableAmount: defaultQuotaCents,
+				FrozenAmount:    0,
+				UsedAmount:      0,
+				TotalGranted:    defaultQuotaCents,
+			}
+
+			if err := txQ.QuotaWallet.Create(wallet); err != nil {
+				return fmt.Errorf("failed to create quota wallet: %w", err)
+			}
+
+			quotaTransaction := &model.QuotaTransaction{
+				UserID:          user.ID,
+				Channel:         model.QuotaChannelSMS,
+				TransactionType: model.TransactionTypeGrant,
+				Reason:          "new_user_bonus",
+				Amount:          defaultQuotaCents,
+				BalanceAfter:    defaultQuotaCents,
+			}
+
+			if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+				return fmt.Errorf("failed to grant default SMS quota: %w", err)
+			}
+
+			logger.Logger.Info("User created with default SMS quota in transaction",
+				zap.Int64("public_id", publicID),
+				zap.Int64("user_id", user.ID),
+				zap.Int("quota_cents", defaultQuotaCents),
+			)
+
+			return nil
+		})
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to create user with quota: %w", err)
+		}
+
+		isNewUser = true
+		logger.Logger.Info("New user created via alipay phone",
+			zap.Int64("public_id", publicID),
+			zap.String("phone_hash", phoneHash),
+		)
+	} else {
+		phoneCipherBase64, err := utils.EncryptPhone(phone)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+		}
+
+		phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
+		}
+
+		updates := map[string]interface{}{
+			"phone_cipher": phoneCipherBytes,
+			"phone_hash":   phoneHash,
+		}
+
+		if user.Status == model.UserStatusWaitlisted || user.Status == model.UserStatusOnboarding {
+			updates["status"] = string(model.UserStatusContact)
+		}
+
+		if user.AlipayOpenID != alipayOpenID {
+			updates["alipay_open_id"] = alipayOpenID
+		}
+
+		if _, updateErr := q.User.Where(q.User.ID.Eq(user.ID)).Updates(updates); updateErr != nil {
+			return nil, fmt.Errorf("failed to update user: %w", updateErr)
+		}
+
+		user.PhoneHash = &phoneHash
+		user.PhoneCipher = phoneCipherBytes
+		if newStatus, ok := updates["status"]; ok {
+			user.Status = model.UserStatus(newStatus.(string))
+		}
+		if newOID, ok := updates["alipay_open_id"]; ok {
+			user.AlipayOpenID = newOID.(string)
 		}
 	}
 
@@ -209,6 +233,8 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 	// 手机号已验证（因为是从支付宝获取的）
 	phoneVerified := true
 
+	nextStep := resolveNextStep(user.Status, phoneVerified)
+
 	return &dto.AuthExchangeResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
@@ -217,6 +243,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			ID:            userIDStr,
 			Nickname:      user.Nickname,
 			Status:        model.StatusToStringMap[user.Status],
+			NextStep:      nextStep,
 			PhoneVerified: phoneVerified,
 			IsNewUser:     isNewUser,
 		},
@@ -311,6 +338,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 			ID:            userID,
 			Nickname:      user.Nickname,
 			Status:        model.StatusToStringMap[user.Status], // 根据 status 后续跳转
+			NextStep:      resolveNextStep(user.Status, true),
 			PhoneVerified: true,
 			IsNewUser:     false,
 		},
@@ -471,6 +499,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 			ID:            userIDStr,
 			Nickname:      user.Nickname,
 			Status:        model.StatusToStringMap[user.Status],
+			NextStep:      resolveNextStep(user.Status, true),
 			PhoneVerified: true,
 			IsNewUser:     isNewUser,
 		},
@@ -524,6 +553,7 @@ func (s *AuthService) RefreshToken(
 			ID:            userIDStr,
 			Nickname:      user.Nickname,
 			Status:        model.StatusToStringMap[user.Status],
+			NextStep:      resolveNextStep(user.Status, phoneVerified),
 			PhoneVerified: phoneVerified,
 			IsNewUser:     false,
 		},

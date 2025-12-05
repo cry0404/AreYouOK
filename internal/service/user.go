@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -20,6 +21,7 @@ import (
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/snowflake"
 	"AreYouOK/storage/database"
+	"AreYouOK/storage/redis"
 
 	"AreYouOK/utils"
 )
@@ -201,13 +203,12 @@ func (s *UserService) UpdateUserSettings(
 	}
 
 	// 这里可以额外处理
-	if remindTime.Sub(now) < 10 * time.Minute {
+	if remindTime.Sub(now) < 10*time.Minute {
 		return nil, pkgerrors.Definition{
-			Code: "TIME_IS_TOO_CLOSE",
+			Code:    "TIME_IS_TOO_CLOSE",
 			Message: "You can not modify your remind time at close remind time",
 		}
 	}
-
 
 	updates := make(map[string]interface{})
 
@@ -270,7 +271,7 @@ func (s *UserService) UpdateUserSettings(
 		affectsReminder := false
 
 		if req.DailyCheckInEnabled != nil {
-			affectsReminder = true 
+			affectsReminder = true
 		}
 		if req.DailyCheckInRemindAt != nil {
 			affectsReminder = true // 提醒时间变更影响提醒
@@ -413,31 +414,89 @@ func (s *UserService) DeleteUser(
 	return nil
 }
 
-
-// GetWaitListInfo 获取当前排队的信息
-
-func (s *UserService) GetWaitListInfo(ctx context.Context) (bool, error) {
-
-
-	// 前面先获取缓存
+// GetWaitListInfo 基于 alipay_open_id 查找或创建最小用户，并返回引导步骤
+func (s *UserService) GetWaitListInfo(ctx context.Context, alipayID string) (*dto.AuthUserSnapshot, error) {
 	db := database.DB().WithContext(ctx)
-
 	q := query.Use(db)
 
-	count, err := q.User.Where(q.User.Status.Eq(string(model.UserStatusActive))).Count()
+	redisCli := redis.Client()
+
+	// 简单限流：按 open_id 统计 60 秒内请求次数
+	rateKey := redis.Key("waitlist:rate", alipayID)
+	if n, err := redisCli.Incr(ctx, rateKey).Result(); err == nil {
+		if n == 1 {
+			redisCli.Expire(ctx, rateKey, 60*time.Second)
+		}
+		if n > 30 {
+			return nil, fmt.Errorf("too many requests")
+		}
+	}
+
+	// 读取缓存，避免频繁查库
+	cacheKey := redis.Key("waitlist:info", alipayID)
+	if cached, err := redisCli.Get(ctx, cacheKey).Result(); err == nil {
+		var snap dto.AuthUserSnapshot
+		if unmarshalErr := json.Unmarshal([]byte(cached), &snap); unmarshalErr == nil {
+			return &snap, nil
+		}
+	}
+
+	user, err := q.User.Where(q.User.AlipayOpenID.Eq(alipayID)).First()
+	isNewUser := false
 
 	if err != nil {
-		return false, fmt.Errorf("failed to query User")
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fmt.Errorf("failed to query user: %w", err)
+		}
+
+		// 容量检查（按 active 数量）
+		count, countErr := q.User.Where(q.User.Status.Eq(string(model.UserStatusActive))).Count()
+		if countErr != nil {
+			return nil, fmt.Errorf("failed to query User: %w", countErr)
+		}
+		if count+1 > int64(config.Cfg.WaitlistMaxUsers) {
+			return nil, fmt.Errorf("please add to waitlist")
+		}
+
+		publicID, idErr := snowflake.NextID(snowflake.GeneratorTypeUser)
+		if idErr != nil {
+			return nil, fmt.Errorf("failed to generate public_id: %w", idErr)
+		}
+
+		newUser := &model.User{
+			PublicID:     publicID,
+			AlipayOpenID: alipayID,
+			Status:       model.UserStatusWaitlisted,
+			Timezone:     "Asia/Shanghai",
+		}
+
+		if err := q.User.Create(newUser); err != nil {
+			return nil, fmt.Errorf("failed to create waitlist user: %w", err)
+		}
+
+		user = newUser
+		isNewUser = true
 	}
 
-	if count + 1 > int64(config.Cfg.WaitlistMaxUsers) {
-		return false, fmt.Errorf("please add to waitlist")
+	phoneVerified := user.PhoneHash != nil && *user.PhoneHash != ""
+	nextStep := resolveNextStep(user.Status, phoneVerified)
+
+	resp := &dto.AuthUserSnapshot{
+		ID:            fmt.Sprintf("%d", user.PublicID),
+		Nickname:      user.Nickname,
+		Status:        model.StatusToStringMap[user.Status],
+		NextStep:      nextStep,
+		PhoneVerified: phoneVerified,
+		IsNewUser:     isNewUser,
 	}
 
+	if data, err := json.Marshal(resp); err == nil {
+		redisCli.Set(ctx, cacheKey, data, 5*time.Minute)
+	}
 
-	return true, nil
-
+	return resp, nil
 }
+
 // 分配额度，已废弃
 // func (s *UserService) GrantDefaultSMSQuota(ctx context.Context, userID int64) error {
 // 	db := database.DB().WithContext(ctx)
@@ -622,3 +681,27 @@ func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, 
 	return reminderMsg
 }
 
+// resolveNextStep 根据用户状态和手机号验证情况确定前端引导步骤
+func resolveNextStep(status model.UserStatus, phoneVerified bool) string {
+	switch status {
+	case model.UserStatusWaitlisted:
+		return "waitlist"
+	case model.UserStatusOnboarding:
+		if phoneVerified {
+			return "fill_contacts"
+		}
+		return "bind_phone"
+	case model.UserStatusContact:
+		if phoneVerified {
+			return "fill_contacts"
+		}
+		return "bind_phone"
+	case model.UserStatusActive:
+		return "home"
+	default:
+		if phoneVerified {
+			return "home"
+		}
+		return "bind_phone"
+	}
+}

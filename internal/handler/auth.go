@@ -26,6 +26,7 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 
 	if err := c.BindAndValidate(&req); err != nil {
 		response.BindError(ctx, c, err)
+		// 这里是对于 open_id 部分
 		return // 判断 binding "required" 是否填写
 	}
 
@@ -66,7 +67,8 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 	}
 
 	authService := service.Auth()
-	result, err := authService.ExchangeAlipayAuthCode(ctx, encryptedData, req.Device)
+	//到注册这里是一定有 openid 的
+	result, err := authService.ExchangeAlipayAuthCode(ctx, encryptedData, req.Device, req.AlipayOpenID)
 
 	if err != nil {
 		response.Error(ctx, c, err)
