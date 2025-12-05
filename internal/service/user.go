@@ -196,17 +196,19 @@ func (s *UserService) UpdateUserSettings(
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
-	now := time.Now()
-	remindTime, err := time.Parse("15:04:05", *req.DailyCheckInRemindAt)
-	if err != nil {
-		return nil, fmt.Errorf("can not parse remindTime: %w", err)
-	}
+	if req.DailyCheckInRemindAt != nil {
+		now := time.Now()
+		remindTime, err := time.Parse("15:04:05", *req.DailyCheckInRemindAt)
+		if err != nil {
+			return nil, fmt.Errorf("can not parse remindTime: %w", err)
+		}
 
-	// 这里可以额外处理
-	if remindTime.Sub(now) < 10*time.Minute {
-		return nil, pkgerrors.Definition{
-			Code:    "TIME_IS_TOO_CLOSE",
-			Message: "You can not modify your remind time at close remind time",
+		// 这里可以额外处理
+		if remindTime.Sub(now) < 10*time.Minute {
+			return nil, pkgerrors.Definition{
+				Code:    "TIME_IS_TOO_CLOSE",
+				Message: "You can not modify your remind time at close remind time",
+			}
 		}
 	}
 
@@ -414,8 +416,21 @@ func (s *UserService) DeleteUser(
 	return nil
 }
 
-// GetWaitListInfo 基于 alipay_open_id 查找或创建最小用户，并返回引导步骤
-func (s *UserService) GetWaitListInfo(ctx context.Context, alipayID string) (*dto.AuthUserSnapshot, error) {
+// GetWaitListInfo 基于 auth_code / alipay_open_id 查找或创建最小用户，并返回引导步骤
+func (s *UserService) GetWaitListInfo(ctx context.Context, authCode string, alipayID string) (*dto.AuthUserSnapshot, error) {
+	if authCode == "" && alipayID == "" {
+		return nil, fmt.Errorf("auth_code or alipay_open_id is required")
+	}
+
+	// 优先使用前端透传的 open_id；否则由后端交换 auth_code
+	if alipayID == "" {
+		openID, err := utils.ExchangeAlipayAuthCode(ctx, authCode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to exchange auth_code: %w", err)
+		}
+		alipayID = openID
+	}
+
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
@@ -449,13 +464,10 @@ func (s *UserService) GetWaitListInfo(ctx context.Context, alipayID string) (*dt
 			return nil, fmt.Errorf("failed to query user: %w", err)
 		}
 
-		// 容量检查（按 active 数量）
-		count, countErr := q.User.Where(q.User.Status.Eq(string(model.UserStatusActive))).Count()
+		// 容量检查（按全部用户计数，保证内测额度）
+		count, countErr := q.User.Count()
 		if countErr != nil {
 			return nil, fmt.Errorf("failed to query User: %w", countErr)
-		}
-		if count+1 > int64(config.Cfg.WaitlistMaxUsers) {
-			return nil, fmt.Errorf("please add to waitlist")
 		}
 
 		publicID, idErr := snowflake.NextID(snowflake.GeneratorTypeUser)
@@ -463,11 +475,17 @@ func (s *UserService) GetWaitListInfo(ctx context.Context, alipayID string) (*dt
 			return nil, fmt.Errorf("failed to generate public_id: %w", idErr)
 		}
 
+		status := model.UserStatusOnboarding
+		if count+1 > int64(config.Cfg.WaitlistMaxUsers) {
+			status = model.UserStatusWaitlisted
+		}
+
 		newUser := &model.User{
 			PublicID:     publicID,
 			AlipayOpenID: alipayID,
-			Status:       model.UserStatusWaitlisted,
+			Status:       status,
 			Timezone:     "Asia/Shanghai",
+			Nickname:     fmt.Sprintf("用户%d", publicID%100000),
 		}
 
 		if err := q.User.Create(newUser); err != nil {

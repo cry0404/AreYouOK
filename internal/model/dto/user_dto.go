@@ -63,5 +63,6 @@ type WaitlistStatusData struct {
 }
 
 type WaitlistRequest struct {
-	OpenID string `json:"open_id" binding:"required"`
+	AuthCode     string `json:"auth_code" binding:"required"`               // 支付宝 authCode
+	AlipayOpenID string `json:"alipay_open_id,omitempty" binding:"omitempty"` // 可选：前端已解析的 open_id（无则后端用 authCode 交换）
 }

@@ -12,7 +12,7 @@ servers:
 paths:
   /v1/auth/miniapp/alipay/exchange:
     post:
-      summary: 支付宝 auth_code 换取访问令牌
+      summary: 支付宝授权换取访问令牌（携带 open_id 与加密手机号）
       tags: [Auth]
       requestBody:
         required: true
@@ -169,6 +169,50 @@ paths:
                   data:
                     $ref: "#/components/schemas/UserQuotaData"
 
+  /v1/users/waitlist:
+    get:
+      summary: 基于 alipay_open_id 获取/创建 waitlist 用户并返回引导信息
+      tags: [User]
+      parameters:
+        - in: query
+          name: open_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/AuthUserSummary"
+
+  /v1/users/me/status:
+    get:
+      summary: 获取当前用户状态
+      tags: [User]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/UserStatusData"
+
+  /v1/users/me:
+    delete:
+      summary: 注销当前用户（软删除）
+      tags: [User]
+      responses:
+        "204":
+          description: No Content
+
   /v1/contacts:
     get:
       summary: 列表紧急联系人
@@ -204,6 +248,32 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/ContactItem"
+    put:
+      summary: 批量替换紧急联系人
+      tags: [Contact]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: "#/components/schemas/CreateContactRequest"
+      responses:
+        "200":
+          description: OK
+    patch:
+      summary: 更新紧急联系人（部分字段）
+      tags: [Contact]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateContactRequest"
+      responses:
+        "200":
+          description: OK
 
   /v1/contacts/{priority}:
     delete:
@@ -400,6 +470,18 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/JourneyItem"
+    delete:
+      summary: 取消行程
+      tags: [Journey]
+      parameters:
+        - in: path
+          name: journey_id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
 
   /v1/journeys/{journey_id}/complete:
     post:
@@ -556,6 +638,16 @@ components:
           type: integer
         voice_unit_price:
           type: integer
+
+    UserStatusData:
+      type: object
+      properties:
+        status:
+          type: string
+        phone_verified:
+          type: boolean
+        has_contacts:
+          type: boolean
 
     ContactItem:
       type: object
@@ -731,12 +823,31 @@ components:
 
     AlipayExchangeRequest:
       type: object
-      required: [auth_code]
+      required: [alipay_open_id, device]
       properties:
-        auth_code:
+        encrypted_data:
+          type: string
+          description: 支付宝返回的加密数据（含手机号）
+        alipay_open_id:
+          type: string
+        response:
+          type: string
+        sign:
+          type: string
+        sign_type:
+          type: string
+          example: RSA2
+        encrypt_type:
+          type: string
+          example: AES
+        charset:
+          type: string
+          example: UTF-8
+        iv:
           type: string
         device:
           type: object
+          required: [platform, model, app_version]
           properties:
             platform:
               type: string
@@ -756,6 +867,9 @@ components:
           type: string
         phone_verified:
           type: boolean
+        next_step:
+          type: string
+          description: waitlist | bind_phone | fill_contacts | home
         is_new_user:
           type: boolean
 
@@ -786,7 +900,7 @@ components:
           type: string
         scene_id:
           type: string
-        captcha_verify_param:
+        verify_token:
           type: string
 
     VerifySliderRequest:

@@ -63,6 +63,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Build and push Scheduler image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/scheduler/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ steps.metadata.outputs.image_name }}-scheduler:${{ steps.metadata.outputs.tag }}
+            ${{ env.REGISTRY }}/${{ steps.metadata.outputs.image_name }}-scheduler:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
       - name: Summary
         run: |
           echo "## Docker Images Built and Pushed" >> $GITHUB_STEP_SUMMARY
@@ -76,4 +88,8 @@ jobs:
           echo "### Worker Image" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ steps.metadata.outputs.image_name }}-worker:${{ steps.metadata.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
           echo "- \`${{ env.REGISTRY }}/${{ steps.metadata.outputs.image_name }}-worker:latest\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Scheduler Image" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ steps.metadata.outputs.image_name }}-scheduler:${{ steps.metadata.outputs.tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.REGISTRY }}/${{ steps.metadata.outputs.image_name }}-scheduler:latest\`" >> $GITHUB_STEP_SUMMARY
 
