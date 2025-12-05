@@ -6,12 +6,10 @@ func (d Definition) Error() string {
 	return d.Message
 }
 
-
 type Definition struct {
 	Code    string
 	Message string
 }
-
 
 func (d Definition) Wrap(err error) error {
 	return fmt.Errorf("%s: %w", d.Message, err)

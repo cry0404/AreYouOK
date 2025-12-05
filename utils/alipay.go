@@ -1,20 +1,26 @@
 package utils
 
 import (
-	//"crypto"
+	"context"
+	"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
-	//"crypto/sha256"
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"AreYouOK/config"
 	"AreYouOK/pkg/logger"
@@ -228,8 +234,6 @@ func decryptAES(ciphertext []byte, key []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-
-
 // removePKCS7Padding 去除 PKCS7 填充
 func removePKCS7Padding(data []byte) ([]byte, error) {
 	if len(data) == 0 {
@@ -427,4 +431,119 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 	)
 
 	return phoneData.Mobile, nil
+}
+
+// ExchangeAlipayAuthCode 使用 auth_code 获取用户 open_id（user_id）
+// 参考：https://opendocs.alipay.com/apis/api_9/alipay.system.oauth.token
+func ExchangeAlipayAuthCode(ctx context.Context, authCode string) (string, error) {
+	if authCode == "" {
+		return "", errors.New("auth_code is required")
+	}
+	if config.Cfg.AlipayAppID == "" {
+		return "", errors.New("ALIPAY_APP_ID is not configured")
+	}
+	if config.Cfg.AlipayPrivateKey == "" {
+		return "", errors.New("ALIPAY_PRIVATE_KEY is not configured")
+	}
+
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	params := map[string]string{
+		"app_id":     config.Cfg.AlipayAppID,
+		"method":     "alipay.system.oauth.token",
+		"format":     "JSON",
+		"charset":    "utf-8",
+		"sign_type":  "RSA2",
+		"timestamp":  timestamp,
+		"version":    "1.0",
+		"grant_type": "authorization_code",
+		"code":       authCode,
+	}
+
+	signContent := buildAlipaySignContent(params)
+	sign, err := signWithAlipayPrivateKey(signContent)
+	if err != nil {
+		return "", fmt.Errorf("failed to sign alipay request: %w", err)
+	}
+	params["sign"] = sign
+
+	form := url.Values{}
+	for k, v := range params {
+		form.Set(k, v)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, config.Cfg.AlipayGateway, strings.NewReader(form.Encode()))
+	if err != nil {
+		return "", fmt.Errorf("failed to build alipay request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=utf-8")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed to call alipay gateway: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read alipay response: %w", err)
+	}
+
+	var parsed struct {
+		Response struct {
+			UserID string `json:"user_id"`
+		} `json:"alipay_system_oauth_token_response"`
+		Error struct {
+			Code   string `json:"code"`
+			Msg    string `json:"msg"`
+			SubMsg string `json:"sub_msg"`
+		} `json:"error_response"`
+	}
+
+	if err := json.Unmarshal(body, &parsed); err != nil {
+		return "", fmt.Errorf("failed to parse alipay response: %w, body=%s", err, string(body))
+	}
+
+	if parsed.Response.UserID != "" {
+		return parsed.Response.UserID, nil
+	}
+
+	if parsed.Error.Code != "" {
+		return "", fmt.Errorf("alipay oauth error: code=%s, msg=%s, sub_msg=%s", parsed.Error.Code, parsed.Error.Msg, parsed.Error.SubMsg)
+	}
+
+	return "", fmt.Errorf("failed to exchange auth_code, status=%d, body=%s", resp.StatusCode, string(body))
+}
+
+func buildAlipaySignContent(params map[string]string) string {
+	keys := make([]string, 0, len(params))
+	for k := range params {
+		if k == "sign" {
+			continue
+		}
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var parts []string
+	for _, k := range keys {
+		if params[k] == "" {
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s=%s", k, params[k]))
+	}
+	return strings.Join(parts, "&")
+}
+
+func signWithAlipayPrivateKey(content string) (string, error) {
+	privateKey, err := loadAlipayPrivateKey()
+	if err != nil {
+		return "", err
+	}
+
+	hash := sha256.Sum256([]byte(content))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, crypto.SHA256, hash[:])
+	if err != nil {
+		return "", fmt.Errorf("failed to sign content: %w", err)
+	}
+	return base64.StdEncoding.EncodeToString(signature), nil
 }

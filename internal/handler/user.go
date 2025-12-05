@@ -137,9 +137,8 @@ func DeleteUserProfile(ctx context.Context, c *app.RequestContext) {
 	c.Status(204) // 这里需要前端清楚 session 和 token
 }
 
-// GetWaitListInfo 获取排队的信息
-
-// Get /v1/users/waitlist
+// GetWaitListInfo 获取排队/引导信息（通过 auth_code -> open_id）
+// POST /v1/users/waitlist
 func GetWaitListInfo(ctx context.Context, c *app.RequestContext) {
 	var req dto.WaitlistRequest
 	if err := c.BindAndValidate(&req); err != nil {
@@ -149,7 +148,7 @@ func GetWaitListInfo(ctx context.Context, c *app.RequestContext) {
 
 	userService := service.User()
 
-	result, err := userService.GetWaitListInfo(ctx, req.OpenID)
+	result, err := userService.GetWaitListInfo(ctx, req.AuthCode, req.AlipayOpenID)
 	if err != nil {
 		response.Error(ctx, c, err)
 		return

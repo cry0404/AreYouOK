@@ -24,8 +24,8 @@ type CreateJourneyRequest struct {
 
 // UpdateJourneyRequest 更新行程请求
 type UpdateJourneyRequest struct {
-	Title              *string    `json:"title"`
-	ExpectedReturnTime *time.Time `json:"expected_return_time"`
+	Title              *string    `json:"title" binding:"required"`
+	ExpectedReturnTime *time.Time `json:"expected_return_time" binding:"required"`
 	Note               *string    `json:"note"`
 }
 

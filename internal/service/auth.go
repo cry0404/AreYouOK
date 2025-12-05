@@ -246,6 +246,7 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			NextStep:      nextStep,
 			PhoneVerified: phoneVerified,
 			IsNewUser:     isNewUser,
+			AlipayOpenID:  user.AlipayOpenID,
 		},
 	}, nil
 }
@@ -341,6 +342,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndBind(
 			NextStep:      resolveNextStep(user.Status, true),
 			PhoneVerified: true,
 			IsNewUser:     false,
+			AlipayOpenID:  user.AlipayOpenID,
 		},
 	}, nil
 }
@@ -502,6 +504,7 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 			NextStep:      resolveNextStep(user.Status, true),
 			PhoneVerified: true,
 			IsNewUser:     isNewUser,
+			AlipayOpenID:  user.AlipayOpenID,
 		},
 	}, nil
 }

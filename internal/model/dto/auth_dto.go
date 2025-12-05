@@ -4,8 +4,8 @@ import "time"
 
 // ========== Auth 相关 DTO ==========
 type AuthExchangeRequest struct {
+	AlipayOpenID  string `json:"alipay_open_id" binding:"required"` // 必须：前端应先通过 /v1/users/waitlist 用 auth_code 换取 open_id
 	EncryptedData string `json:"encrypted_data,omitempty"`
-	AlipayOpenID  string `json:"alipay_open_id" binding:"required"`
 	Response      string `json:"response,omitempty"`     // AES 加密的数据（base64 编码）
 	Sign          string `json:"sign,omitempty"`         // RSA2 签名（base64 编码）
 	SignType      string `json:"sign_type,omitempty"`    // 签名算法，通常为 "RSA2"
@@ -39,6 +39,7 @@ type AuthUserSnapshot struct {
 	PhoneVerified bool   `json:"phone_verified"` // 据此来判断 status
 	NextStep      string `json:"next_step"`
 	IsNewUser     bool   `json:"is_new_user"`
+	AlipayOpenID  string `json:"alipay_open_id,omitempty"` // 便于前端后续调用携带
 	// Waitlist      WaitlistInfo `json:"waitlist"` //不再需要，直接返回
 }
 

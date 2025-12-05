@@ -333,8 +333,17 @@ func (s *JourneyService) ListJourneys(ctx context.Context,
 		}
 	}
 
-	journeys, err := q.Journey.ListByPublicIDAndStatus(userID, status, cursorID, limit+1)
+	nofilltered, err := q.Journey.ListByPublicIDAndStatus(userID, status, cursorID, limit+1)
 
+	
+	var journeys []*model.Journey
+
+	for _, journey := range nofilltered {
+		if journey.BaseModel.DeletedAt.Valid  {
+			continue //说明不为空，跳过
+		} 
+		journeys = append(journeys, journey)
+	}
 	if err != nil {
 		logger.Logger.Error("Failed to list journeys",
 			zap.Int64("user_id", userID),
@@ -821,12 +830,12 @@ func (s *JourneyService) DeleteJourney(
 		return fmt.Errorf("failed to query journey: %w", err)
 	}
 
-	if journey.Status != model.JourneyStatusOngoing {
-		return pkgerrors.Definition{
-			Code:    "JOURNEY_NOT_DELETABLE",
-			Message: "Only ongoing journeys can be deleted",
-		}
-	}
+	// if journey.Status != model.JourneyStatusOngoing {
+	// 	return pkgerrors.Definition{
+	// 		Code:    "JOURNEY_NOT_DELETABLE",
+	// 		Message: "Only ongoing journeys can be deleted",
+	// 	}
+	// }
 
 	now := time.Now()
 	updates := map[string]interface{}{

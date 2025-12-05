@@ -22,6 +22,7 @@ type Config struct {
 	PostgreSQLPort     string `env:"POSTGRESQL_PORT" envDefault:"5432"`
 	PostgreSQLUser     string `env:"POSTGRESQL_USER" envDefault:"postgres"`
 	AlipayPrivateKey   string `env:"ALIPAY_PRIVATE_KEY"`
+	AlipayAppID        string `env:"ALIPAY_APP_ID"`
 	PostgreSQLDatabase string `env:"POSTGRESQL_DATABASE" envDefault:"areyouok"`
 	PostgreSQLSchema   string `env:"POSTGRESQL_SCHEMA" envDefault:"public"`
 	PostgreSQLSSLMode  string `env:"POSTGRESQL_SSLMODE" envDefault:"disable"`
