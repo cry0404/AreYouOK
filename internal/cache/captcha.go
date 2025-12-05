@@ -46,7 +46,6 @@ const (
 // SetCaptcha 存储验证码
 // Key: ayok:captcha:{phoneHash}
 // TTL: 120秒
-// 不再跟 scene 相关
 func SetCaptcha(ctx context.Context, phoneHash, code string) error {
 	key := redis.Key(cap, phoneHash)
 	ttl := time.Duration(config.Cfg.CaptchaExpireSeconds) * time.Second
@@ -94,7 +93,7 @@ func GetCaptchaCount(ctx context.Context, phoneHash string) (int, error) {
 
 	count, err := redis.Client().Get(ctx, key).Int()
 	if errors.Is(err, ri.Nil) {
-		return 0, nil // 调用顺序逻辑问题，理论上来讲不可能发生这种情况
+		return 0, nil 
 	}
 
 	return count, err

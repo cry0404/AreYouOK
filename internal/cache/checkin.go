@@ -131,6 +131,8 @@ func MarkMessageProcessed(ctx context.Context, messageID string, ttl time.Durati
 	return redis.Client().Set(ctx, key, "completed", ttl).Err()
 }
 
+
+
 // ========== 月度提醒限流 ==========
 
 // GetMonthlyReminderCount 获取用户本月的提醒消息发送次数

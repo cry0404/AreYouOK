@@ -67,9 +67,8 @@ func (pc *ProtectedCache) Set(ctx context.Context, key string, value interface{}
 func (pc *ProtectedCache) Get(ctx context.Context, key string, dest interface{}) (bool, error) {
 	cacheKey := redis.Key(pc.keyPrefix, key)
 
-	// 防雪崩：添加随机延迟
+
 	if err := pc.addBreakerDelay(ctx); err != nil {
-		// 如果添加延迟失败，记录但不影响主流程
 		logger.Logger.Warn("Failed to add breaker delay",
 			zap.String("key", key),
 			zap.Error(err),
@@ -97,13 +96,12 @@ func (pc *ProtectedCache) Get(ctx context.Context, key string, dest interface{})
 	return true, nil
 }
 
-// BatchGet 批量获取缓存（带空值保护和防雪崩）
+
 func (pc *ProtectedCache) BatchGet(ctx context.Context, keys []string, destFunc func(string) interface{}) (map[string]interface{}, error) {
 	if len(keys) == 0 {
 		return make(map[string]interface{}), nil
 	}
 
-	// 防雪崩：添加随机延迟
 	if err := pc.addBreakerDelay(ctx); err != nil {
 		logger.Logger.Warn("Failed to add batch breaker delay", zap.Error(err))
 	}
@@ -191,9 +189,7 @@ func (pc *ProtectedCache) BatchDelete(ctx context.Context, keys []string) error 
 
 // addBreakerDelay 添加防雪崩随机延迟
 func (pc *ProtectedCache) addBreakerDelay(ctx context.Context) error {
-	// 随机延迟 0-200ms，避免缓存雪崩
-	// 注意：breakerRandomDelayMax 已经是 200ms，rand.Intn 返回 [0, 200000000) 纳秒
-	// 所以这里直接用 time.Duration 包装即可，不需要再乘以 time.Millisecond
+
 	delay := time.Duration(rand.Intn(int(breakerRandomDelayMax)))
 
 	// 使用 context 支持取消

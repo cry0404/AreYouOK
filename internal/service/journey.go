@@ -61,7 +61,13 @@ func (s *JourneyService) CreateJourney(
 			Message: "Expected return time must be in the future",
 		}
 	}
-
+	now := time.Now()
+	if req.ExpectedReturnTime.Sub(now) < 10 * time.Minute{
+		return nil, nil, pkgerrors.Definition{
+			Code: "JOURNEY_RETURN_TIME_TOO_CLOSE",
+			Message: "You can not modify your return-time before 5 minutes",
+		}
+	}
 	// 这里还需要考虑要不要限定前几分钟不能修改？
 
 	journeyID, err := snowflake.NextID(snowflake.GeneratorTypeJourney)
