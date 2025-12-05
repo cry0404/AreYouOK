@@ -1,12 +1,12 @@
 package utils
 
 import (
-	"crypto"
+	//"crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
+	//"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -48,9 +48,9 @@ var (
 	privateKeyOnce   sync.Once
 	privateKeyErr    error
 
-	alipayPublicKey *rsa.PublicKey
-	publicKeyOnce   sync.Once
-	publicKeyErr    error
+	// alipayPublicKey *rsa.PublicKey
+	// publicKeyOnce   sync.Once
+	// publicKeyErr    error
 )
 
 func loadAlipayPrivateKey() (*rsa.PrivateKey, error) {
@@ -119,80 +119,80 @@ func loadAlipayPrivateKey() (*rsa.PrivateKey, error) {
 	return alipayPrivateKey, privateKeyErr
 }
 
-// loadAlipayPublicKey 加载支付宝公钥（用于验签）
-func loadAlipayPublicKey() (*rsa.PublicKey, error) {
-	publicKeyOnce.Do(func() {
-		if config.Cfg.AlipayPublicKey == "" {
-			publicKeyErr = errors.New("ALIPAY_PUBLIC_KEY is not configured")
-			return
-		}
+// // loadAlipayPublicKey 加载支付宝公钥（用于验签）
+// func loadAlipayPublicKey() (*rsa.PublicKey, error) {
+// 	publicKeyOnce.Do(func() {
+// 		if config.Cfg.AlipayPublicKey == "" {
+// 			publicKeyErr = errors.New("ALIPAY_PUBLIC_KEY is not configured")
+// 			return
+// 		}
 
-		var keyBytes []byte
-		var err error
+// 		var keyBytes []byte
+// 		var err error
 
-		// 尝试解析 PEM 格式的公钥
-		block, _ := pem.Decode([]byte(config.Cfg.AlipayPublicKey))
-		if block != nil {
-			keyBytes = block.Bytes
+// 		// 尝试解析 PEM 格式的公钥
+// 		block, _ := pem.Decode([]byte(config.Cfg.AlipayPublicKey))
+// 		if block != nil {
+// 			keyBytes = block.Bytes
 
-		} else {
+// 		} else {
 
-			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPublicKey)
-			if err != nil {
+// 			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPublicKey)
+// 			if err != nil {
 
-				keyBytes = []byte(config.Cfg.AlipayPublicKey)
-			} else {
-				logger.Logger.Debug("Public key decoded from base64")
-			}
-		}
+// 				keyBytes = []byte(config.Cfg.AlipayPublicKey)
+// 			} else {
+// 				logger.Logger.Debug("Public key decoded from base64")
+// 			}
+// 		}
 
-		logger.Logger.Debug("Loading public key",
-			zap.Int("key_bytes_length", len(keyBytes)),
-		)
+// 		logger.Logger.Debug("Loading public key",
+// 			zap.Int("key_bytes_length", len(keyBytes)),
+// 		)
 
-		var publicKey interface{}
+// 		var publicKey interface{}
 
-		// 尝试解析 PKIX 格式的公钥
-		publicKey, err = x509.ParsePKIXPublicKey(keyBytes)
-		if err != nil {
-			logger.Logger.Debug("PKIX parse failed, trying PKCS1", zap.Error(err))
-			// 如果 PKIX 失败，尝试 PKCS1 格式
-			publicKey, err = x509.ParsePKCS1PublicKey(keyBytes)
-			if err != nil {
-				publicKeyErr = fmt.Errorf("failed to parse public key (tried PKIX and PKCS1): %w", err)
-				logger.Logger.Error("Failed to parse public key", zap.Error(publicKeyErr))
-				return
-			}
-			logger.Logger.Debug("Public key parsed as PKCS1")
-		} else {
-			logger.Logger.Debug("Public key parsed as PKIX")
-		}
+// 		// 尝试解析 PKIX 格式的公钥
+// 		publicKey, err = x509.ParsePKIXPublicKey(keyBytes)
+// 		if err != nil {
+// 			logger.Logger.Debug("PKIX parse failed, trying PKCS1", zap.Error(err))
+// 			// 如果 PKIX 失败，尝试 PKCS1 格式
+// 			publicKey, err = x509.ParsePKCS1PublicKey(keyBytes)
+// 			if err != nil {
+// 				publicKeyErr = fmt.Errorf("failed to parse public key (tried PKIX and PKCS1): %w", err)
+// 				logger.Logger.Error("Failed to parse public key", zap.Error(publicKeyErr))
+// 				return
+// 			}
+// 			logger.Logger.Debug("Public key parsed as PKCS1")
+// 		} else {
+// 			logger.Logger.Debug("Public key parsed as PKIX")
+// 		}
 
-		rsaKey, ok := publicKey.(*rsa.PublicKey)
-		if !ok {
-			publicKeyErr = errors.New("public key is not RSA format")
-			logger.Logger.Error("Public key is not RSA format")
-			return
-		}
+// 		rsaKey, ok := publicKey.(*rsa.PublicKey)
+// 		if !ok {
+// 			publicKeyErr = errors.New("public key is not RSA format")
+// 			logger.Logger.Error("Public key is not RSA format")
+// 			return
+// 		}
 
-		logger.Logger.Info("Public key loaded successfully",
-			zap.Int("key_size_bits", rsaKey.N.BitLen()),
-			zap.Int("key_size_bytes", rsaKey.N.BitLen()/8),
-		)
+// 		logger.Logger.Info("Public key loaded successfully",
+// 			zap.Int("key_size_bits", rsaKey.N.BitLen()),
+// 			zap.Int("key_size_bytes", rsaKey.N.BitLen()/8),
+// 		)
 
-		alipayPublicKey = rsaKey
-	})
+// 		alipayPublicKey = rsaKey
+// 	})
 
-	return alipayPublicKey, publicKeyErr
-}
+// 	return alipayPublicKey, publicKeyErr
+// }
 
-// verifyRSA2Signature RSA2 验签
-// 使用支付宝公钥验证签名
-func verifyRSA2Signature(data []byte, signature []byte, publicKey *rsa.PublicKey) error {
-	// RSA2 使用 SHA256 哈希算法
-	hash := sha256.Sum256(data)
-	return rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
-}
+// // verifyRSA2Signature RSA2 验签
+// // 使用支付宝公钥验证签名
+// func verifyRSA2Signature(data []byte, signature []byte, publicKey *rsa.PublicKey) error {
+// 	// RSA2 使用 SHA256 哈希算法
+// 	hash := sha256.Sum256(data)
+// 	return rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
+// }
 
 // decryptAES AES 解密
 // 根据支付宝文档，使用 AES-128-CBC，IV 为全零
@@ -228,13 +228,7 @@ func decryptAES(ciphertext []byte, key []byte) ([]byte, error) {
 	return plaintext, nil
 }
 
-// truncateString 截断字符串用于日志输出
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
+
 
 // removePKCS7Padding 去除 PKCS7 填充
 func removePKCS7Padding(data []byte) ([]byte, error) {
@@ -404,7 +398,6 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 	}
 
 	// 跳过验签：小程序获取手机号的数据已经是从支付宝端直接获取的
-	// 验签需要正确配置支付宝公钥，暂时跳过以简化流程
 	_ = signData
 	_ = signType
 

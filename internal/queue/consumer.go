@@ -35,6 +35,8 @@ func SetNotificationService(s NotificationService) {
 // sms 和 voice 都属于消息，由两个部分来投递，task 作为消费
 // 打卡对应的是两条消息，所以投递的时候就应该同时投递两条，在更新 userSetting 时也不例外
 // StartCheckInReminderConsumer 启动打卡提醒消费者， 有关打卡部分
+
+// checkIn 不需要扣费
 func StartCheckInReminderConsumer(ctx context.Context) error {
 	handler := func(body []byte) error {
 		var msg model.CheckInReminderMessage
@@ -503,7 +505,6 @@ func StartJourneyReminderConsumer(ctx context.Context) error {
 		}
 
 		// 第二步：将刚刚创建的这条任务发布到短信队列（发送给用户本人）
-		// 注意：只发布当前创建的任务，而不是查询今天所有 pending 任务
 		if task != nil {
 			db := database.DB().WithContext(ctx)
 			q := query.Use(db)

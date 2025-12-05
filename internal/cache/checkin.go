@@ -5,18 +5,24 @@ import (
 	"fmt"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
+
 	"AreYouOK/storage/redis"
 )
 
 const (
 	// 用于存储打卡状态，帮助消息队列中消息查询时快速了解，更新时方便跳过
-	checkinScheduledPrefix = "checkin:scheduled"
-	checkinReminderPrefix  = "checkin:reminder:scheduled"
-	checkinTimeoutPrefix   = "checkin:timeout:scheduled"
-	messageProcessedPrefix = "message:processed"
+	checkinScheduledPrefix       = "checkin:scheduled"
+	checkinReminderPrefix        = "checkin:reminder:scheduled"
+	checkinTimeoutPrefix         = "checkin:timeout:scheduled"
+	messageProcessedPrefix       = "message:processed"
+	checkinReminderMonthlyPrefix = "checkin:reminder:monthly" // 月度提醒限制
 
-	scheduledTTL = 24 * time.Hour 
-	processedTTL = 48 * time.Hour 
+	scheduledTTL = 24 * time.Hour
+	processedTTL = 48 * time.Hour
+
+	// MonthlyReminderLimit 每月每用户提醒消息上限
+	MonthlyReminderLimit = 5
 )
 
 // IsCheckinScheduled 检查指定日期的打卡是否已投放（reminder 和 timeout 都已发布）
@@ -123,4 +129,52 @@ func MarkMessageProcessed(ctx context.Context, messageID string, ttl time.Durati
 	}
 	// 更新值为 "completed"，并延长 TTL
 	return redis.Client().Set(ctx, key, "completed", ttl).Err()
+}
+
+// ========== 月度提醒限流 ==========
+
+// GetMonthlyReminderCount 获取用户本月的提醒消息发送次数
+// monthKey 格式: "2006-01"
+func GetMonthlyReminderCount(ctx context.Context, userID int64, monthKey string) (int, error) {
+	key := redis.Key(checkinReminderMonthlyPrefix, fmt.Sprintf("%d", userID), monthKey)
+	count, err := redis.Client().Get(ctx, key).Int()
+	if err == goredis.Nil {
+		return 0, nil // 未找到记录，返回 0
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to get monthly reminder count: %w", err)
+	}
+	return count, nil
+}
+
+// IncrementMonthlyReminderCount 增加用户本月的提醒消息计数
+// 自动设置过期时间为下个月 1 号
+func IncrementMonthlyReminderCount(ctx context.Context, userID int64, monthKey string) error {
+	key := redis.Key(checkinReminderMonthlyPrefix, fmt.Sprintf("%d", userID), monthKey)
+
+	// 计算 TTL：到下个月 1 号的时间
+	now := time.Now()
+	nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
+	ttl := nextMonth.Sub(now)
+
+	// 使用 pipeline 原子性增加并设置过期时间
+	pipe := redis.Client().Pipeline()
+	pipe.Incr(ctx, key)
+	pipe.Expire(ctx, key, ttl)
+	_, err := pipe.Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to increment monthly reminder count: %w", err)
+	}
+	return nil
+}
+
+// CheckMonthlyReminderLimit 检查用户是否超过月度提醒限制
+// 返回 true 表示允许发送，false 表示已达上限
+func CheckMonthlyReminderLimit(ctx context.Context, userID int64) (bool, int, error) {
+	monthKey := time.Now().Format("2006-01")
+	count, err := GetMonthlyReminderCount(ctx, userID, monthKey)
+	if err != nil {
+		return true, 0, err // 出错时降级，允许发送
+	}
+	return count < MonthlyReminderLimit, count, nil
 }

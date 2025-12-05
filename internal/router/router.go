@@ -36,10 +36,11 @@ func Register(h *server.Hertz) {
 
 	// 用户相关路由
 	users := v1.Group("/users")
-	users.GET("/me/status", handler.GetUserStatus)
+	
+	users.GET("/waitlist", handler.GetWaitListInfo)
 	users.Use(middleware.AuthMiddleware()) // 需要鉴权的路由组
 	{
-		
+		users.GET("/me/status", handler.GetUserStatus)
 		users.GET("/me", handler.GetUserProfile)
 		users.PUT("/me/settings", /*middleware.UserSettingsRateLimitMiddleware(),*/ handler.UpdateUserSettings) // 用户设置修改限流
 		users.GET("/me/quotas", handler.GetUserQuotas)

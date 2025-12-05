@@ -194,6 +194,21 @@ func (s *UserService) UpdateUserSettings(
 		return nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
+	now := time.Now()
+	remindTime, err := time.Parse("15:04:05", *req.DailyCheckInRemindAt)
+	if err != nil {
+		return nil, fmt.Errorf("can not parse remindTime: %w", err)
+	}
+
+	// 这里可以额外处理
+	if remindTime.Sub(now) < 10 * time.Minute {
+		return nil, pkgerrors.Definition{
+			Code: "TIME_IS_TOO_CLOSE",
+			Message: "You can not modify your remind time at close remind time",
+		}
+	}
+
+
 	updates := make(map[string]interface{})
 
 	if req.NickName != nil {
@@ -270,7 +285,7 @@ func (s *UserService) UpdateUserSettings(
 			// 这样可以确保新消息能够被正确处理，而旧消息会被幂等性检查跳过
 			if reminderMsg != nil {
 				today := time.Now().Format("2006-01-02")
-				// 清除调度标记，让用户设置更新的消息能够被处理
+
 				if err := cache.UnmarkCheckinScheduled(ctx, today, userIDInt); err != nil {
 					logger.Logger.Warn("Failed to unmark checkin scheduled after settings update",
 						zap.Int64("user_id", userIDInt),
@@ -356,6 +371,73 @@ func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatu
 	return result, nil
 }
 
+// 删除当前的联系人， 软删除
+func (s *UserService) DeleteUser(
+	ctx context.Context,
+	userID string,
+) error {
+	var userIDInt int64
+	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
+		return pkgerrors.InvalidUserID
+	}
+
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	user, err := q.User.GetByPublicID(userIDInt)
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return pkgerrors.ErrUserNotFound
+		}
+		return fmt.Errorf("failed to query user: %w", err)
+	}
+
+	now := time.Now()
+	updates := map[string]interface{}{
+		"updated_at": now,
+		"deleted_at": now,
+	}
+
+	if _, err := q.User.
+		Where(q.User.ID.Eq(user.ID)).
+		Updates(updates); err != nil {
+		return fmt.Errorf("failed to soft delete user: %w", err)
+	}
+
+	logger.Logger.Info("User soft-deleted",
+		zap.Int64("user_id", user.ID),
+		zap.Int64("public_id", user.PublicID),
+	)
+
+	return nil
+}
+
+
+// GetWaitListInfo 获取当前排队的信息
+
+func (s *UserService) GetWaitListInfo(ctx context.Context) (bool, error) {
+
+
+	// 前面先获取缓存
+	db := database.DB().WithContext(ctx)
+
+	q := query.Use(db)
+
+	count, err := q.User.Where(q.User.Status.Eq(string(model.UserStatusActive))).Count()
+
+	if err != nil {
+		return false, fmt.Errorf("failed to query User")
+	}
+
+	if count + 1 > int64(config.Cfg.WaitlistMaxUsers) {
+		return false, fmt.Errorf("please add to waitlist")
+	}
+
+
+	return true, nil
+
+}
 // 分配额度，已废弃
 // func (s *UserService) GrantDefaultSMSQuota(ctx context.Context, userID int64) error {
 // 	db := database.DB().WithContext(ctx)
@@ -464,7 +546,6 @@ func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, 
 	if remindDateTime.Before(now) {
 		// 如果已经过了今天的提醒时间：
 		// - 若还在宽限窗口内：尽量就近触发；
-		// - 若已过宽限（或没有配置宽限）：今天不再补单，让明天由调度重新生成。
 		inGraceWindow := false
 		if graceUntilTime != nil && now.Before(*graceUntilTime) {
 			inGraceWindow = true
@@ -541,43 +622,3 @@ func (s *UserService) buildReminderMessage(_ context.Context, user *model.User, 
 	return reminderMsg
 }
 
-func (s *UserService) DeleteUser(
-	ctx context.Context,
-	userID string,
-) error {
-	var userIDInt int64
-	if _, err := fmt.Sscanf(userID, "%d", &userIDInt); err != nil {
-		return pkgerrors.InvalidUserID
-	}
-
-	db := database.DB().WithContext(ctx)
-	q := query.Use(db)
-
-	user, err := q.User.GetByPublicID(userIDInt)
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return pkgerrors.ErrUserNotFound
-		}
-		return fmt.Errorf("failed to query user: %w", err)
-	}
-
-	now := time.Now()
-	updates := map[string]interface{}{
-		"updated_at": now,
-		"deleted_at": now,
-	}
-
-	if _, err := q.User.
-		Where(q.User.ID.Eq(user.ID)).
-		Updates(updates); err != nil {
-		return fmt.Errorf("failed to soft delete user: %w", err)
-	}
-
-	logger.Logger.Info("User soft-deleted",
-		zap.Int64("user_id", user.ID),
-		zap.Int64("public_id", user.PublicID),
-	)
-
-	return nil
-}

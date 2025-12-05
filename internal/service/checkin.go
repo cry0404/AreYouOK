@@ -289,6 +289,23 @@ func (s *CheckInService) ProcessReminderBatch(
 				continue // 继续处理其他用户，但不回滚事务
 			}
 
+			// 检查月度提醒限制（每用户每月最多 5 条提醒）
+			allowed, count, err := cache.CheckMonthlyReminderLimit(ctx, user.ID)
+			if err != nil {
+				logger.Logger.Warn("Failed to check monthly reminder limit, allowing send",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				// 出错时降级，允许发送
+			} else if !allowed {
+				logger.Logger.Info("User exceeded monthly check-in reminder limit, skipping",
+					zap.Int64("user_id", publicID),
+					zap.Int("count", count),
+					zap.Int("limit", cache.MonthlyReminderLimit),
+				)
+				continue // 超过限制，跳过该用户
+			}
+
 			taskID, err := snowflake.NextID(snowflake.GeneratorTypeTask)
 			if err != nil {
 				logger.Logger.Error("Failed to generate task ID",
@@ -359,6 +376,16 @@ func (s *CheckInService) ProcessReminderBatch(
 			}
 
 			createdCount++
+
+			// 增加月度提醒计数
+			monthKey := now.Format("2006-01")
+			if err := cache.IncrementMonthlyReminderCount(ctx, user.ID, monthKey); err != nil {
+				logger.Logger.Warn("Failed to increment monthly reminder count",
+					zap.Int64("user_id", publicID),
+					zap.Error(err),
+				)
+				// 不影响主流程，继续处理
+			}
 
 			// reminder_sent_at 会在消费者成功发送短信后更新
 

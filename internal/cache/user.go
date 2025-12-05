@@ -141,6 +141,16 @@ func BatchSetUserSettings(ctx context.Context, settingsMap map[int64]*UserSettin
 	return err
 }
 
+
+
+
+func GetUserCount(ctx context.Context) {
+
+}
+
+func UpdateUserCount(ctx context.Context) {
+	
+}
 // //更新设置时删除缓存
 // // 失效时的用户缓存设置
 // func InvalidateUserSettings(ctx context.Context, userID int64) error {

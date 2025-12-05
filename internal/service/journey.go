@@ -181,6 +181,16 @@ func (s *JourneyService) UpdateJourney(
 		}
 	}
 
+	now := time.Now()
+
+	// 这里开发环境可以额外处理一下
+	if req.ExpectedReturnTime.Sub(now) < 10 * time.Minute{
+		return nil, nil, pkgerrors.Definition{
+			Code: "JOURNEY_RETURN_TIME_TOO_CLOSE",
+			Message: "You can not modify your return-time before 5 minutes",
+		}
+	}
+
 	var needReschedule bool
 	var oldExpectedReturnTime time.Time
 

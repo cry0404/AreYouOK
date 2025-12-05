@@ -137,3 +137,30 @@ func DeleteUserProfile(ctx context.Context, c *app.RequestContext) {
 
 	c.Status(204) // 这里需要前端清楚 session 和 token
 }
+
+
+// GetWaitListInfo 获取排队的信息
+
+// Get /v1/users/waitlist
+func GetWaitListInfo(ctx context.Context, c *app.RequestContext) {
+	userService := service.User()
+
+	ok, err := userService.GetWaitListInfo(ctx)
+	if err != nil {
+		response.Error(ctx, c, err)
+		return
+	}
+
+	if ok {
+		// 如果成功，可以返回 nil 或者一个简单的消息
+		response.Success(ctx, c, nil)
+		// 或者返回一个消息对象：
+		// response.Success(ctx, c, map[string]interface{}{
+		// 	"message": "success",
+		// })
+		return
+	}
+
+	// 如果 ok 为 false，可能需要返回错误或特定状态
+	response.Error(ctx, c, fmt.Errorf("waitlist check failed"))
+}
