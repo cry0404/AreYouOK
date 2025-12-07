@@ -13,13 +13,11 @@ import (
 	"go.uber.org/zap"
 
 	"AreYouOK/config"
-	"AreYouOK/internal/middleware"
-	//"AreYouOK/internal/queue"
+	pkgmiddleware "AreYouOK/internal/middleware"
 	"AreYouOK/internal/router"
 	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/metrics"
 	pkgtel "AreYouOK/pkg/otel"
-	pkgmiddleware "AreYouOK/internal/middleware"
 	"AreYouOK/pkg/slider"
 	"AreYouOK/pkg/sms"
 	"AreYouOK/pkg/snowflake"
@@ -27,6 +25,7 @@ import (
 	"AreYouOK/storage"
 )
 
+// 实际上 otel 只是包了一层类似于中间件的东西来不中
 func main() {
 	// 日志部分
 	logger.Init()
@@ -52,12 +51,11 @@ func main() {
 		}
 	}()
 
-	// 初始化 OpenTelemetry 指标
 	if err := metrics.InitMetrics(); err != nil {
 		logger.Logger.Warn("Failed to initialize OpenTelemetry metrics", zap.Error(err))
 	}
 
-	// 初始化 HTTP 相关的 OpenTelemetry 指标
+
 	meter := otel.Meter(config.Cfg.ServiceName)
 	if err := pkgmiddleware.InitMetrics(meter); err != nil {
 		logger.Logger.Warn("Failed to initialize HTTP metrics", zap.Error(err))
@@ -74,7 +72,7 @@ func main() {
 		cancel()
 	}()
 
-	// 初始化存储层，记得关闭外部连接
+
 	if err := storage.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize storage", zap.Error(err))
 	}
@@ -99,7 +97,7 @@ func main() {
 		logger.Logger.Fatal("Failed to initialize token package", zap.Error(err))
 	} // token 在中间件前初始化，middleware 依赖 token
 
-	if err := middleware.Init(); err != nil {
+	if err := pkgmiddleware.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize middlewares", zap.Error(err))
 	}
 
@@ -111,8 +109,6 @@ func main() {
 
 	addr := net.JoinHostPort(config.Cfg.ServerHost, config.Cfg.ServerPort)
 	h := server.Default(server.WithHostPorts(addr))
-
-	
 
 	router.Register(h)
 

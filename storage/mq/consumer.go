@@ -30,6 +30,8 @@ type ConsumeOptions struct {
 }
 
 // 设计模式，策略型？
+
+// 真正开始消费的部分
 func Consume(opts ConsumeOptions) error {
 	// 服务对 rabbitmq 建立的连接而已
 	conn := Connection()
@@ -215,20 +217,17 @@ func republishWithRetryCount(ch *amqp.Channel, originalMsg amqp.Delivery, queue 
 }
 
 // extractMessageID 从消息体中尝试提取 message_id 字段
-// 这是一个辅助函数，用于在消息进入死信队列时清理 Redis 标记
 func extractMessageID(body []byte) string {
 	if len(body) == 0 {
 		return ""
 	}
 
-	// 尝试解析为 JSON 并提取 message_id
 	var msgMap map[string]interface{}
 	if err := json.Unmarshal(body, &msgMap); err != nil {
-		// 解析失败，返回空字符串
+
 		return ""
 	}
 
-	// 尝试提取 message_id 字段（支持 message_id 和 messageId 两种格式）
 	if msgID, ok := msgMap["message_id"].(string); ok && msgID != "" {
 		return msgID
 	}

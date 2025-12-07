@@ -48,6 +48,10 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 	alipayOpenID string,
 ) (*dto.AuthExchangeResponse, error) {
 
+	if alipayOpenID == "" {
+		return nil, fmt.Errorf("alipay_open_id is required")
+	}
+
 	phone, err := utils.DecryptAlipayPhone(encryptedData)
 	if err != nil {
 		return nil, fmt.Errorf("failed to decrypt alipay phone: %w", err)
@@ -62,20 +66,28 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 	db := database.DB().WithContext(ctx)
 	q := query.Use(db)
 
-	user, err := q.User.Where(q.User.AlipayOpenID.Eq(alipayOpenID)).First()
+	user, err := q.User.Where(q.User.AlipayOpenID.Eq(alipayOpenID)).Where(q.User.PhoneHash.Eq(phoneHash)).First()
 	isNewUser := false
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			byPhone, phoneErr := q.User.Where(q.User.PhoneHash.Eq(phoneHash)).First()
-			if phoneErr == nil {
-				user = byPhone
-			} else if !errors.Is(phoneErr, gorm.ErrRecordNotFound) {
-				return nil, fmt.Errorf("failed to query user by phone_hash: %w", phoneErr)
+			// 未找到匹配手机号的记录，再按 open_id 查找是否已有未绑定手机号的用户
+			user, err = q.User.Where(q.User.AlipayOpenID.Eq(alipayOpenID)).First()
+			if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+				return nil, fmt.Errorf("failed to query user by alipay_open_id: %w", err)
 			}
 		} else {
-			return nil, fmt.Errorf("failed to query user by alipay_open_id: %w", err)
+			return nil, fmt.Errorf("failed to query user by alipay_open_id and phone: %w", err)
 		}
+	}
+
+	// phone_hash 全局唯一，若已被其他用户占用则直接报错，避免撞唯一键
+	if existingByPhone, phoneErr := q.User.GetByPhoneHash(phoneHash); phoneErr == nil && existingByPhone != nil {
+		if user == nil || existingByPhone.ID != user.ID {
+			return nil, pkgerrors.PhoneAlreadyRegistered
+		}
+	} else if phoneErr != nil && !errors.Is(phoneErr, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to query user by phone_hash: %w", phoneErr)
 	}
 
 	if user == nil {
@@ -197,12 +209,75 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 			updates["status"] = string(model.UserStatusContact)
 		}
 
-		if user.AlipayOpenID != alipayOpenID {
+		if user.AlipayOpenID == "" {
 			updates["alipay_open_id"] = alipayOpenID
 		}
 
-		if _, updateErr := q.User.Where(q.User.ID.Eq(user.ID)).Updates(updates); updateErr != nil {
-			return nil, fmt.Errorf("failed to update user: %w", updateErr)
+		needInit := user.PhoneHash == nil || *user.PhoneHash == ""
+
+		if needInit {
+			err = db.Transaction(func(tx *gorm.DB) error {
+				txQ := query.Use(tx)
+
+				if _, updateErr := txQ.User.Where(txQ.User.ID.Eq(user.ID)).Updates(updates); updateErr != nil {
+					return fmt.Errorf("failed to update user: %w", updateErr)
+				}
+
+				// 初次绑定手机号时初始化默认钱包
+				if _, walletErr := txQ.QuotaWallet.Where(txQ.QuotaWallet.UserID.Eq(user.ID)).First(); walletErr != nil {
+					if !errors.Is(walletErr, gorm.ErrRecordNotFound) {
+						return fmt.Errorf("failed to query wallet: %w", walletErr)
+					}
+
+					defaultQuotaCents := config.Cfg.DefaultSMSQuota
+					if defaultQuotaCents <= 0 {
+						defaultQuotaCents = 100
+					}
+
+					wallet := &model.QuotaWallet{
+						UserID:          user.ID,
+						Channel:         model.QuotaChannelSMS,
+						AvailableAmount: defaultQuotaCents,
+						FrozenAmount:    0,
+						UsedAmount:      0,
+						TotalGranted:    defaultQuotaCents,
+					}
+
+					if err := txQ.QuotaWallet.Create(wallet); err != nil {
+						return fmt.Errorf("failed to create quota wallet: %w", err)
+					}
+
+					quotaTransaction := &model.QuotaTransaction{
+						UserID:          user.ID,
+						Channel:         model.QuotaChannelSMS,
+						TransactionType: model.TransactionTypeGrant,
+						Reason:          "new_user_bonus",
+						Amount:          defaultQuotaCents,
+						BalanceAfter:    defaultQuotaCents,
+					}
+
+					if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+						return fmt.Errorf("failed to grant default SMS quota: %w", err)
+					}
+				}
+
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			isNewUser = true
+			logger.Logger.Info("New user initialized by alipay phone",
+				zap.Int64("user_id", user.ID),
+				zap.Int64("public_id", user.PublicID),
+				zap.String("alipay_open_id", user.AlipayOpenID),
+				zap.String("phone_hash", phoneHash),
+			)
+		} else {
+			if _, updateErr := q.User.Where(q.User.ID.Eq(user.ID)).Updates(updates); updateErr != nil {
+				return nil, fmt.Errorf("failed to update user: %w", updateErr)
+			}
 		}
 
 		user.PhoneHash = &phoneHash
@@ -251,107 +326,161 @@ func (s *AuthService) ExchangeAlipayAuthCode(
 	}, nil
 }
 
-// VerifyPhoneCaptchaAndBind 验证验证码并绑定手机号（已登录用户）
-func (s *AuthService) VerifyPhoneCaptchaAndBind(
-	ctx context.Context,
-	userID string, // 从 JWT token 中获取的 public_id
-	phone string,
-	code string,
-) (*dto.VerifyCaptchaResponse, error) {
-	verifiService := Verification()
-	if err := verifiService.VerifyCaptcha(ctx, phone, code); err != nil {
-		return nil, err
-	}
+// // VerifyPhoneCaptchaAndBind 验证验证码并绑定手机号（已登录用户）
+// func (s *AuthService) VerifyPhoneCaptchaAndBind(
+// 	ctx context.Context,
+// 	userID string, // 从 JWT token 中获取的 public_id
+// 	phone string,
+// 	code string,
+// ) (*dto.VerifyCaptchaResponse, error) {
+// 	verifiService := Verification()
+// 	if err := verifiService.VerifyCaptcha(ctx, phone, code); err != nil {
+// 		return nil, err
+// 	}
 
-	phoneHash := utils.HashPhone(phone)
+// 	phoneHash := utils.HashPhone(phone)
 
-	// 查询当前用户
-	var userIDInt int64
-	fmt.Sscanf(userID, "%d", &userIDInt)
-	user, err := query.User.Where(query.User.PublicID.Eq(userIDInt)).First()
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, pkgerrors.ErrUserNotFound
-		}
-		return nil, fmt.Errorf("failed to query user: %w", err)
-	}
+// 	db := database.DB().WithContext(ctx)
+// 	q := query.Use(db)
 
-	// 检查手机号是否已被其他用户注册
-	existingUser, err := query.User.GetByPhoneHash(phoneHash)
-	if err == nil && existingUser != nil {
-		// 检查是否是当前用户自己
-		if existingUser.PublicID != userIDInt {
-			return nil, pkgerrors.PhoneAlreadyRegistered
-		}
-		// 如果是当前用户自己，说明已经绑定过了，直接返回成功
-	}
+// 	// 查询当前用户
+// 	var userIDInt int64
+// 	fmt.Sscanf(userID, "%d", &userIDInt)
+// 	user, err := q.User.Where(q.User.PublicID.Eq(userIDInt)).First()
+// 	if err != nil {
+// 		if errors.Is(err, gorm.ErrRecordNotFound) {
+// 			return nil, pkgerrors.ErrUserNotFound
+// 		}
+// 		return nil, fmt.Errorf("failed to query user: %w", err)
+// 	}
 
-	// 加密手机号
-	phoneCipherBase64, err := utils.EncryptPhone(phone)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encrypt phone: %w", err)
-	}
+// 	isNewUser := user.PhoneHash == nil || *user.PhoneHash == ""
 
-	phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
-	if err != nil {
-		return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
-	}
+// 	// 检查手机号是否已被其他用户注册
+// 	existingUser, err := q.User.GetByPhoneHash(phoneHash)
+// 	if err == nil && existingUser != nil {
+// 		// 检查是否是当前用户自己
+// 		if existingUser.PublicID != userIDInt {
+// 			return nil, pkgerrors.PhoneAlreadyRegistered
+// 		}
+// 		// 如果是当前用户自己，说明已经绑定过了，直接返回成功
+// 	}
 
-	updates := map[string]interface{}{
-		"phone_cipher": phoneCipherBytes,
-		"phone_hash":   phoneHash,
-	}
+// 	// 加密手机号
+// 	phoneCipherBase64, err := utils.EncryptPhone(phone)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+// 	}
 
-	// 状态流转：绑定手机号后的状态转换
-	// waitlisted → contact：绑定手机号后，直接进入填写紧急联系人阶段
-	// onboarding → contact：如果用户之前已经是 onboarding 状态（已授权但未绑定手机号），绑定后进入填写紧急联系人阶段
-	if user.Status == model.UserStatusWaitlisted || user.Status == model.UserStatusOnboarding {
-		updates["status"] = string(model.UserStatusContact)
-	}
+// 	phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
+// 	}
 
-	if _, updateErr := query.User.Where(query.User.PublicID.Eq(userIDInt)).Updates(updates); updateErr != nil {
-		return nil, fmt.Errorf("failed to update user: %w", updateErr)
-	}
+// 	updates := map[string]interface{}{
+// 		"phone_cipher": phoneCipherBytes,
+// 		"phone_hash":   phoneHash,
+// 	}
 
-	// 重新查询用户获取最新状态
-	user, err = query.User.GetByPublicID(userIDInt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query updated user: %w", err)
-	}
+// 	// 状态流转：绑定手机号后的状态转换
+// 	// waitlisted → contact：绑定手机号后，直接进入填写紧急联系人阶段
+// 	// onboarding → contact：如果用户之前已经是 onboarding 状态（已授权但未绑定手机号），绑定后进入填写紧急联系人阶段
+// 	if user.Status == model.UserStatusWaitlisted || user.Status == model.UserStatusOnboarding {
+// 		updates["status"] = string(model.UserStatusContact)
+// 	}
 
-	accessToken, refreshToken, expiresIn, err := token.GenerateTokenPair(userID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate token: %w", err)
-	}
+// 	if err := db.Transaction(func(tx *gorm.DB) error {
+// 		txQ := query.Use(tx)
 
-	if err := cache.SetRefreshToken(ctx, userID, refreshToken); err != nil {
-		logger.Logger.Warn("Failed to update refresh token in Redis",
-			zap.String("user_id", userID),
-			zap.Error(err),
-		)
-	}
+// 		if _, updateErr := txQ.User.Where(txQ.User.PublicID.Eq(userIDInt)).Updates(updates); updateErr != nil {
+// 			return fmt.Errorf("failed to update user: %w", updateErr)
+// 		}
 
-	return &dto.VerifyCaptchaResponse{
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    expiresIn,
-		User: dto.AuthUserSnapshot{
-			ID:            userID,
-			Nickname:      user.Nickname,
-			Status:        model.StatusToStringMap[user.Status], // 根据 status 后续跳转
-			NextStep:      resolveNextStep(user.Status, true),
-			PhoneVerified: true,
-			IsNewUser:     false,
-			AlipayOpenID:  user.AlipayOpenID,
-		},
-	}, nil
-}
+// 		if isNewUser {
+// 			// 首次绑定手机号时初始化默认钱包
+// 			if _, walletErr := txQ.QuotaWallet.Where(txQ.QuotaWallet.UserID.Eq(user.ID)).First(); walletErr != nil {
+// 				if !errors.Is(walletErr, gorm.ErrRecordNotFound) {
+// 					return fmt.Errorf("failed to query wallet: %w", walletErr)
+// 				}
+
+// 				defaultQuotaCents := config.Cfg.DefaultSMSQuota
+// 				if defaultQuotaCents <= 0 {
+// 					defaultQuotaCents = 100
+// 				}
+
+// 				wallet := &model.QuotaWallet{
+// 					UserID:          user.ID,
+// 					Channel:         model.QuotaChannelSMS,
+// 					AvailableAmount: defaultQuotaCents,
+// 					FrozenAmount:    0,
+// 					UsedAmount:      0,
+// 					TotalGranted:    defaultQuotaCents,
+// 				}
+
+// 				if err := txQ.QuotaWallet.Create(wallet); err != nil {
+// 					return fmt.Errorf("failed to create quota wallet: %w", err)
+// 				}
+
+// 				quotaTransaction := &model.QuotaTransaction{
+// 					UserID:          user.ID,
+// 					Channel:         model.QuotaChannelSMS,
+// 					TransactionType: model.TransactionTypeGrant,
+// 					Reason:          "new_user_bonus",
+// 					Amount:          defaultQuotaCents,
+// 					BalanceAfter:    defaultQuotaCents,
+// 				}
+
+// 				if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+// 					return fmt.Errorf("failed to grant default SMS quota: %w", err)
+// 				}
+// 			}
+// 		}
+
+// 		return nil
+// 	}); err != nil {
+// 		return nil, err
+// 	}
+
+// 	// 重新查询用户获取最新状态
+// 	user, err = q.User.GetByPublicID(userIDInt)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to query updated user: %w", err)
+// 	}
+
+// 	accessToken, refreshToken, expiresIn, err := token.GenerateTokenPair(userID)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("failed to generate token: %w", err)
+// 	}
+
+// 	if err := cache.SetRefreshToken(ctx, userID, refreshToken); err != nil {
+// 		logger.Logger.Warn("Failed to update refresh token in Redis",
+// 			zap.String("user_id", userID),
+// 			zap.Error(err),
+// 		)
+// 	}
+
+// 	return &dto.VerifyCaptchaResponse{
+// 		AccessToken:  accessToken,
+// 		RefreshToken: refreshToken,
+// 		ExpiresIn:    expiresIn,
+// 		User: dto.AuthUserSnapshot{
+// 			ID:            userID,
+// 			Nickname:      user.Nickname,
+// 			Status:        model.StatusToStringMap[user.Status], // 根据 status 后续跳转
+// 			NextStep:      resolveNextStep(user.Status, true),
+// 			PhoneVerified: true,
+// 			IsNewUser:     false,
+// 			AlipayOpenID:  user.AlipayOpenID,
+// 		},
+// 	}, nil
+// }
 
 // VerifyPhoneCaptchaAndLogin 验证验证码并注册/登录（无需已登录）
 func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 	ctx context.Context,
 	phone string,
 	code string,
+	alipayOpenID string,
 ) (*dto.VerifyCaptchaResponse, error) {
 	// 验证验证码
 	verifiService := Verification()
@@ -359,16 +488,38 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 		return nil, err
 	}
 
+	if alipayOpenID == "" {
+		return nil, fmt.Errorf("alipay_open_id is required")
+	}
+
 	phoneHash := utils.HashPhone(phone)
 
-	// 查询用户是否存在
-	user, err := query.User.GetByPhoneHash(phoneHash)
+	db := database.DB().WithContext(ctx)
+	q := query.Use(db)
+
+	// 先确保 phone_hash 未被其他用户占用
+	if existingByPhone, phoneErr := q.User.GetByPhoneHash(phoneHash); phoneErr == nil && existingByPhone != nil {
+		// 如已存在其它用户占用该手机号，则直接报错
+		if existingByPhone.AlipayOpenID != alipayOpenID {
+			return nil, pkgerrors.PhoneAlreadyRegistered
+		}
+	}
+
+	// 查询用户：优先 open_id，再 fallback phone_hash（兼容极少数历史缓存场景）
+	var user *model.User
+	user, err := q.User.Where(q.User.AlipayOpenID.Eq(alipayOpenID)).First()
 	isNewUser := false
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			// 新用户注册
-			userCount, countErr := query.User.Count()
+			user, err = q.User.GetByPhoneHash(phoneHash)
+		}
+	}
+
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// 新用户注册（要求 open_id）
+			userCount, countErr := q.User.Count()
 			if countErr != nil {
 				return nil, fmt.Errorf("failed to count users: %w", countErr)
 			}
@@ -400,10 +551,6 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				nickname = fmt.Sprintf("用户%d", n.Int64())
 			}
 
-			// 诡异错误，为什么 nickname 无法成功获取
-
-			// 创建新用户，状态为 contact（已验证手机号，需要填写紧急联系人）
-			alipayOpenID := "phone_" + fmt.Sprintf("%d", publicID)
 			user = &model.User{
 				PublicID:     publicID,
 				AlipayOpenID: alipayOpenID,
@@ -414,11 +561,9 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 				PhoneCipher:  phoneCipherBytes,
 			}
 
-			db := database.DB().WithContext(ctx)
 			err = db.Transaction(func(tx *gorm.DB) error {
 				txQ := query.Use(tx)
 
-				// 创建用户
 				if err := txQ.User.Create(user); err != nil {
 					return fmt.Errorf("failed to create user: %w", err)
 				}
@@ -428,7 +573,6 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 					defaultQuotaCents = 100 // 默认 100 cents = 20 次短信
 				}
 
-				// 初始化额度钱包（quota_wallets），保证新用户一定有钱包
 				wallet := &model.QuotaWallet{
 					UserID:          user.ID,
 					Channel:         model.QuotaChannelSMS,
@@ -472,9 +616,110 @@ func (s *AuthService) VerifyPhoneCaptchaAndLogin(
 			logger.Logger.Info("New user registered via phone verification",
 				zap.Int64("public_id", publicID),
 				zap.String("phone_hash", phoneHash),
+				zap.String("alipay_open_id", alipayOpenID),
 			)
 		} else {
 			return nil, fmt.Errorf("failed to query user: %w", err)
+		}
+	} else {
+		// 老用户：如缺少 open_id 则补写
+		if user.AlipayOpenID == "" {
+			if _, updateErr := q.User.Where(q.User.ID.Eq(user.ID)).Update(q.User.AlipayOpenID, alipayOpenID); updateErr != nil {
+				return nil, fmt.Errorf("failed to update alipay_open_id: %w", updateErr)
+			}
+			user.AlipayOpenID = alipayOpenID
+		}
+
+		// 若老用户缺少手机号，则视作新用户初始化钱包
+		needInit := user.PhoneHash == nil || *user.PhoneHash == ""
+
+		phoneCipherBase64, err := utils.EncryptPhone(phone)
+		if err != nil {
+			return nil, fmt.Errorf("failed to encrypt phone: %w", err)
+		}
+
+		phoneCipherBytes, err := base64.StdEncoding.DecodeString(phoneCipherBase64)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode phone cipher: %w", err)
+		}
+
+		updates := map[string]interface{}{
+			"phone_cipher": phoneCipherBytes,
+			"phone_hash":   phoneHash,
+		}
+
+		if user.Status == model.UserStatusWaitlisted || user.Status == model.UserStatusOnboarding {
+			updates["status"] = string(model.UserStatusContact)
+		}
+
+		if needInit {
+			err = db.Transaction(func(tx *gorm.DB) error {
+				txQ := query.Use(tx)
+
+				if _, updateErr := txQ.User.Where(txQ.User.ID.Eq(user.ID)).Updates(updates); updateErr != nil {
+					return fmt.Errorf("failed to update user: %w", updateErr)
+				}
+
+				if _, walletErr := txQ.QuotaWallet.Where(txQ.QuotaWallet.UserID.Eq(user.ID)).First(); walletErr != nil {
+					if !errors.Is(walletErr, gorm.ErrRecordNotFound) {
+						return fmt.Errorf("failed to query wallet: %w", walletErr)
+					}
+
+					defaultQuotaCents := config.Cfg.DefaultSMSQuota
+					if defaultQuotaCents <= 0 {
+						defaultQuotaCents = 100
+					}
+
+					wallet := &model.QuotaWallet{
+						UserID:          user.ID,
+						Channel:         model.QuotaChannelSMS,
+						AvailableAmount: defaultQuotaCents,
+						FrozenAmount:    0,
+						UsedAmount:      0,
+						TotalGranted:    defaultQuotaCents,
+					}
+
+					if err := txQ.QuotaWallet.Create(wallet); err != nil {
+						return fmt.Errorf("failed to create quota wallet: %w", err)
+					}
+
+					quotaTransaction := &model.QuotaTransaction{
+						UserID:          user.ID,
+						Channel:         model.QuotaChannelSMS,
+						TransactionType: model.TransactionTypeGrant,
+						Reason:          "new_user_bonus",
+						Amount:          defaultQuotaCents,
+						BalanceAfter:    defaultQuotaCents,
+					}
+
+					if err := txQ.QuotaTransaction.Create(quotaTransaction); err != nil {
+						return fmt.Errorf("failed to grant default SMS quota: %w", err)
+					}
+				}
+
+				return nil
+			})
+			if err != nil {
+				return nil, err
+			}
+
+			isNewUser = true
+			logger.Logger.Info("New user initialized via phone verification",
+				zap.Int64("user_id", user.ID),
+				zap.Int64("public_id", user.PublicID),
+				zap.String("alipay_open_id", user.AlipayOpenID),
+				zap.String("phone_hash", phoneHash),
+			)
+		} else {
+			if _, updateErr := q.User.Where(q.User.ID.Eq(user.ID)).Updates(updates); updateErr != nil {
+				return nil, fmt.Errorf("failed to update user: %w", updateErr)
+			}
+		}
+
+		user.PhoneHash = &phoneHash
+		user.PhoneCipher = phoneCipherBytes
+		if newStatus, ok := updates["status"]; ok {
+			user.Status = model.UserStatus(newStatus.(string))
 		}
 	}
 

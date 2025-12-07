@@ -426,7 +426,7 @@ func (s *UserService) GetWaitListInfo(ctx context.Context, authCode string, alip
 	if alipayID == "" {
 		openID, err := utils.ExchangeAlipayAuthCode(ctx, authCode)
 		if err != nil {
-			return nil, fmt.Errorf("failed to exchange auth_code: %w", err)
+			return nil, err
 		}
 		alipayID = openID
 	}

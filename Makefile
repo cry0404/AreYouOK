@@ -16,36 +16,35 @@ gen:
 	@echo "Generating GORM Gen code..."
 	@go run cmd/gen/main.go
 
-# 启动 API 服务
 run-api:
 	@echo "Starting API service..."
 	@go run cmd/server/server.go
 
-# 启动 Worker 服务
+
 run-worker:
 	@echo "Starting Worker service..."
 	@go run cmd/worker/worker.go
 
-# 构建 API 服务
+
 build-api:
 	@echo "Building API service..."
 	@mkdir -p bin
 	@CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/api ./cmd/server
 	@echo "API service built: bin/api"
 
-# 构建 Worker 服务
+
 build-worker:
 	@echo "Building Worker service..."
 	@mkdir -p bin
 	@CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/worker ./cmd/worker
 	@echo "Worker service built: bin/worker"
 
-# 向后兼容：保留原有的 run 命令（启动 API 服务）
+
 run:
 	@echo "Server run (deprecated, use 'make run-api' instead)"
 	@go run cmd/server/server.go
 
-# 格式化代码（go fmt + goimports）
+
 format:
 	@echo "Formatting code with go fmt..."
 	@go fmt ./...
@@ -59,7 +58,7 @@ format:
 	fi
 	@echo "Formatting complete!"
 
-# 快速格式化（仅 go fmt）
+
 fmt:
 	@echo "Formatting code with go fmt..."
 	@go fmt ./...

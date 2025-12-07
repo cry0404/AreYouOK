@@ -132,6 +132,12 @@ paths:
                 properties:
                   data:
                     $ref: "#/components/schemas/UserProfileData"
+    delete:
+      summary: 注销当前用户（软删除）
+      tags: [User]
+      responses:
+        "204":
+          description: No Content
 
   /v1/users/me/settings:
     put:
@@ -205,13 +211,6 @@ paths:
                   data:
                     $ref: "#/components/schemas/UserStatusData"
 
-  /v1/users/me:
-    delete:
-      summary: 注销当前用户（软删除）
-      tags: [User]
-      responses:
-        "204":
-          description: No Content
 
   /v1/contacts:
     get:

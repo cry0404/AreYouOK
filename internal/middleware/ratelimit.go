@@ -82,14 +82,13 @@ func NewRateLimiter(config RateLimitConfig) *RateLimiter {
 func (rl *RateLimiter) getKey(ctx context.Context, c *app.RequestContext) string {
 	var identifier string
 
-	// 优先使用用户ID（如果启用且用户已登录）
+
 	if rl.config.ByUserID {
 		if userID, exists := GetUserID(ctx, c); exists {
 			identifier = fmt.Sprintf("user:%s", userID)
 		}
 	}
 
-	// 如果没有用户ID，使用IP（如果启用）
 	if identifier == "" && rl.config.ByIP {
 		identifier = fmt.Sprintf("ip:%s", c.ClientIP())
 	}
@@ -105,7 +104,8 @@ func (rl *RateLimiter) Allow(ctx context.Context, c *app.RequestContext) (bool, 
 	now := time.Now()
 	windowStart := now.Add(-time.Duration(rl.config.Window) * time.Second) // 基于配置的限流器时长，来测算有关的滑动窗口部分
 
-	// 使用 Redis 的 sorted set 实现滑动窗口
+
+	// zset 来实现滑动窗口限流
 	client := redis.Client()
 	pipe := client.Pipeline()
 
@@ -121,7 +121,6 @@ func (rl *RateLimiter) Allow(ctx context.Context, c *app.RequestContext) (bool, 
 	// 获取当前窗口内的请求数
 	zcardCmd := pipe.ZCard(ctx, key)
 
-	// 设置键的过期时间（避免冷 key 占用内存）
 	pipe.Expire(ctx, key, time.Duration(rl.config.Window+10)*time.Second)
 
 	_, err := pipe.Exec(ctx)
@@ -135,13 +134,12 @@ func (rl *RateLimiter) Allow(ctx context.Context, c *app.RequestContext) (bool, 
 	return allowed, count, nil
 }
 
-// Block 阻塞用户/IP
+
 func (rl *RateLimiter) Block(ctx context.Context, c *app.RequestContext) error {
 	key := redis.Key(rl.config.KeyPrefix+"block", rl.getKey(ctx, c))
 	return redis.Client().Set(ctx, key, "1", time.Duration(rl.config.BlockDuration)*time.Second).Err()
 }
 
-// IsBlocked 检查是否被阻塞
 func (rl *RateLimiter) IsBlocked(ctx context.Context, c *app.RequestContext) (bool, error) {
 	key := redis.Key(rl.config.KeyPrefix+"block", rl.getKey(ctx, c))
 	result, err := redis.Client().Exists(ctx, key).Result()
@@ -167,21 +165,18 @@ func RateLimitMiddleware(config RateLimitConfig) app.HandlerFunc {
 			return
 		}
 
-		// 检查限流
-		allowed, count, err := limiter.Allow(ctx, c) // 根据滑动窗口计算次数
+		allowed, count, err := limiter.Allow(ctx, c) 
 		if err != nil {
 			logger.Logger.Error("Failed to check rate limit", zap.Error(err))
 			c.AbortWithStatus(consts.StatusInternalServerError)
 			return
 		}
 
-		// 设置响应头（遵循 RateLimit 标准）
 		c.Response.Header.Set("X-RateLimit-Limit", strconv.Itoa(config.MaxRequests))
 		c.Response.Header.Set("X-RateLimit-Remaining", strconv.Itoa(config.MaxRequests-count))
 		c.Response.Header.Set("X-RateLimit-Reset", strconv.FormatInt(time.Now().Add(time.Duration(config.Window)*time.Second).Unix(), 10))
 
 		if !allowed {
-			// 阻塞用户/IP
 			if err := limiter.Block(ctx, c); err != nil {
 				logger.Logger.Error("Failed to block user", zap.Error(err))
 			}
@@ -191,7 +186,6 @@ func RateLimitMiddleware(config RateLimitConfig) app.HandlerFunc {
 			return
 		}
 
-		// 继续处理请求
 		c.Next(ctx)
 	}
 }

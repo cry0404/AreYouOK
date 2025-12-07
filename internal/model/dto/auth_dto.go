@@ -4,10 +4,11 @@ import "time"
 
 // ========== Auth 相关 DTO ==========
 type AuthExchangeRequest struct {
-	AlipayOpenID  string `json:"alipay_open_id" binding:"required"` // 必须：前端应先通过 /v1/users/waitlist 用 auth_code 换取 open_id
+	AlipayOpenID  string `json:"alipay_open_id,omitempty"`
+	AuthCode      string `json:"auth_code" binding:"required"`
 	EncryptedData string `json:"encrypted_data,omitempty"`
-	Response      string `json:"response,omitempty"`     // AES 加密的数据（base64 编码）
-	Sign          string `json:"sign,omitempty"`         // RSA2 签名（base64 编码）
+	Response      string `json:"response,omitempty"`
+	Sign          string `json:"sign,omitempty"`
 	SignType      string `json:"sign_type,omitempty"`    // 签名算法，通常为 "RSA2"
 	EncryptType   string `json:"encrypt_type,omitempty"` // 加密算法，通常为 "AES"
 	Charset       string `json:"charset,omitempty"`      // 字符集，通常为 "UTF-8"
@@ -72,8 +73,10 @@ type VerifySliderResponse struct {
 
 // VerifyCaptchaRequest 验证码验证请求
 type VerifyCaptchaRequest struct {
+	AlipayOpenID       string `json:"alipay_open_id,omitempty"`
 	Phone      string `json:"phone" binding:"required"`
 	VerifyCode string `json:"verify_code" binding:"required"`
+	AuthCode   string `json:"auth_code,omitempty"` // 未登录场景必填，用于换取 open_id
 }
 
 // VerifyCaptchaResponse 验证码验证响应

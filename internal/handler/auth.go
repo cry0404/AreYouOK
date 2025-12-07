@@ -7,11 +7,13 @@ import (
 	"strings"
 
 	"github.com/cloudwego/hertz/pkg/app"
+	"go.uber.org/zap"
 
-	"AreYouOK/internal/middleware"
+	//"AreYouOK/internal/middleware"
 	"AreYouOK/internal/model/dto"
 	"AreYouOK/internal/service"
 	"AreYouOK/pkg/errors"
+	"AreYouOK/pkg/logger"
 	"AreYouOK/pkg/response"
 	"AreYouOK/utils"
 )
@@ -28,6 +30,30 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 		response.BindError(ctx, c, err)
 		// 这里是对于 open_id 部分
 		return // 判断 binding "required" 是否填写
+	}
+	var (
+		openid string
+		err    error
+	)
+	if req.AlipayOpenID == "" {
+		openid, err = utils.ExchangeAlipayAuthCode(ctx, req.AuthCode)
+		if err != nil {
+			response.Error(ctx, c, errors.Definition{
+				Code:    "CANNOT_GET_OPENID",
+				Message: "cannot get open_id, please provide valid auth_code",
+			})
+			return
+		}
+	} else {
+		openid = req.AlipayOpenID
+	}
+
+	if openid == "" {
+		response.Error(ctx, c, errors.Definition{
+			Code:    "CANNOT_GET_OPENID",
+			Message: "open_id is required and cannot be empty",
+		})
+		return
 	}
 
 	encryptedData := req.EncryptedData
@@ -68,7 +94,7 @@ func ExchangeAlipayAuth(ctx context.Context, c *app.RequestContext) {
 
 	authService := service.Auth()
 	//到注册这里是一定有 openid 的
-	result, err := authService.ExchangeAlipayAuthCode(ctx, encryptedData, req.Device, req.AlipayOpenID)
+	result, err := authService.ExchangeAlipayAuthCode(ctx, encryptedData, req.Device, openid)
 
 	if err != nil {
 		response.Error(ctx, c, err)
@@ -158,6 +184,17 @@ func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 		response.BindError(ctx, c, err)
 		return
 	}
+	
+
+	openid, e := utils.ExchangeAlipayAuthCode(ctx, req.AuthCode)
+		logger.Logger.Info("成功获取到 openid", zap.String("open id 的值:", openid))
+		if e != nil || openid == "" {
+			response.Error(ctx, c, errors.Definition{
+				Code:    "CANNOT_GET_OPENID",
+				Message: "cannot get open_id, please provide valid auth_code",
+			})
+			return
+		}
 
 	if !utils.ValidatePhone(req.Phone) {
 		response.Error(ctx, c, errors.Definition{
@@ -169,19 +206,10 @@ func VerifyCaptcha(ctx context.Context, c *app.RequestContext) {
 
 	authService := service.Auth()
 
-	// 尝试从 context 获取 userID（如果已登录）
-	userID, hasUserID := middleware.GetUserID(ctx, c)
-
 	var result *dto.VerifyCaptchaResponse
 	var err error
 
-	if hasUserID {
-		// 场景1：已登录用户绑定/更换手机号
-		result, err = authService.VerifyPhoneCaptchaAndBind(ctx, userID, req.Phone, req.VerifyCode)
-	} else {
-		// 场景2：新用户注册或老用户登录
-		result, err = authService.VerifyPhoneCaptchaAndLogin(ctx, req.Phone, req.VerifyCode)
-	}
+	result, err = authService.VerifyPhoneCaptchaAndLogin(ctx, req.Phone, req.VerifyCode, openid)
 
 	if err != nil {
 		response.Error(ctx, c, err)

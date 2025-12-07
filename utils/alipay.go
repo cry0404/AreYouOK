@@ -72,11 +72,11 @@ func loadAlipayPrivateKey() (*rsa.PrivateKey, error) {
 		// 尝试解析 PEM 格式的私钥
 		block, _ := pem.Decode([]byte(config.Cfg.AlipayPrivateKey))
 		if block != nil {
-			// PEM 格式，使用 block.Bytes
+
 			keyBytes = block.Bytes
 			logger.Logger.Debug("Private key is PEM format")
 		} else {
-			// 尝试 base64 解码
+
 			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPrivateKey)
 			if err != nil {
 				keyBytes = []byte(config.Cfg.AlipayPrivateKey)
@@ -125,83 +125,6 @@ func loadAlipayPrivateKey() (*rsa.PrivateKey, error) {
 	return alipayPrivateKey, privateKeyErr
 }
 
-// // loadAlipayPublicKey 加载支付宝公钥（用于验签）
-// func loadAlipayPublicKey() (*rsa.PublicKey, error) {
-// 	publicKeyOnce.Do(func() {
-// 		if config.Cfg.AlipayPublicKey == "" {
-// 			publicKeyErr = errors.New("ALIPAY_PUBLIC_KEY is not configured")
-// 			return
-// 		}
-
-// 		var keyBytes []byte
-// 		var err error
-
-// 		// 尝试解析 PEM 格式的公钥
-// 		block, _ := pem.Decode([]byte(config.Cfg.AlipayPublicKey))
-// 		if block != nil {
-// 			keyBytes = block.Bytes
-
-// 		} else {
-
-// 			keyBytes, err = base64.StdEncoding.DecodeString(config.Cfg.AlipayPublicKey)
-// 			if err != nil {
-
-// 				keyBytes = []byte(config.Cfg.AlipayPublicKey)
-// 			} else {
-// 				logger.Logger.Debug("Public key decoded from base64")
-// 			}
-// 		}
-
-// 		logger.Logger.Debug("Loading public key",
-// 			zap.Int("key_bytes_length", len(keyBytes)),
-// 		)
-
-// 		var publicKey interface{}
-
-// 		// 尝试解析 PKIX 格式的公钥
-// 		publicKey, err = x509.ParsePKIXPublicKey(keyBytes)
-// 		if err != nil {
-// 			logger.Logger.Debug("PKIX parse failed, trying PKCS1", zap.Error(err))
-// 			// 如果 PKIX 失败，尝试 PKCS1 格式
-// 			publicKey, err = x509.ParsePKCS1PublicKey(keyBytes)
-// 			if err != nil {
-// 				publicKeyErr = fmt.Errorf("failed to parse public key (tried PKIX and PKCS1): %w", err)
-// 				logger.Logger.Error("Failed to parse public key", zap.Error(publicKeyErr))
-// 				return
-// 			}
-// 			logger.Logger.Debug("Public key parsed as PKCS1")
-// 		} else {
-// 			logger.Logger.Debug("Public key parsed as PKIX")
-// 		}
-
-// 		rsaKey, ok := publicKey.(*rsa.PublicKey)
-// 		if !ok {
-// 			publicKeyErr = errors.New("public key is not RSA format")
-// 			logger.Logger.Error("Public key is not RSA format")
-// 			return
-// 		}
-
-// 		logger.Logger.Info("Public key loaded successfully",
-// 			zap.Int("key_size_bits", rsaKey.N.BitLen()),
-// 			zap.Int("key_size_bytes", rsaKey.N.BitLen()/8),
-// 		)
-
-// 		alipayPublicKey = rsaKey
-// 	})
-
-// 	return alipayPublicKey, publicKeyErr
-// }
-
-// // verifyRSA2Signature RSA2 验签
-// // 使用支付宝公钥验证签名
-// func verifyRSA2Signature(data []byte, signature []byte, publicKey *rsa.PublicKey) error {
-// 	// RSA2 使用 SHA256 哈希算法
-// 	hash := sha256.Sum256(data)
-// 	return rsa.VerifyPKCS1v15(publicKey, crypto.SHA256, hash[:], signature)
-// }
-
-// decryptAES AES 解密
-// 根据支付宝文档，使用 AES-128-CBC，IV 为全零
 func decryptAES(ciphertext []byte, key []byte) ([]byte, error) {
 	// AES-128 需要 16 字节的密钥
 	if len(key) != 16 {
@@ -295,7 +218,7 @@ func decryptRSABlock(privateKey *rsa.PrivateKey, ciphertext []byte) ([]byte, err
 //	  "charset": "UTF-8"
 //	}
 //
-// 流程：1. 使用支付宝公钥验签（RSA2） 2. 使用 AES 密钥解密（AES-128-CBC）
+
 // encryptedData: 前端返回的完整 JSON 字符串或仅 response 字段
 func DecryptAlipayPhone(encryptedData string) (string, error) {
 	// 解析完整的支付宝响应数据
@@ -401,7 +324,6 @@ func DecryptAlipayPhone(encryptedData string) (string, error) {
 		}
 	}
 
-	// 跳过验签：小程序获取手机号的数据已经是从支付宝端直接获取的
 	_ = signData
 	_ = signType
 
@@ -491,6 +413,7 @@ func ExchangeAlipayAuthCode(ctx context.Context, authCode string) (string, error
 	var parsed struct {
 		Response struct {
 			UserID string `json:"user_id"`
+			OpenID string `json:"open_id"`
 		} `json:"alipay_system_oauth_token_response"`
 		Error struct {
 			Code   string `json:"code"`
@@ -506,12 +429,19 @@ func ExchangeAlipayAuthCode(ctx context.Context, authCode string) (string, error
 	if parsed.Response.UserID != "" {
 		return parsed.Response.UserID, nil
 	}
+	// 有些场景只返回 open_id，不带 user_id，兼容返回 open_id
+	if parsed.Response.OpenID != "" {
+		return parsed.Response.OpenID, nil
+	}
 
 	if parsed.Error.Code != "" {
 		return "", fmt.Errorf("alipay oauth error: code=%s, msg=%s, sub_msg=%s", parsed.Error.Code, parsed.Error.Msg, parsed.Error.SubMsg)
 	}
 
-	return "", fmt.Errorf("failed to exchange auth_code, status=%d, body=%s", resp.StatusCode, string(body))
+	logger.Logger.Info("解析密钥失败",
+		zap.String("解析的 body", string(body)),
+	)
+	return "", fmt.Errorf("failed to exchange auth_code") //, status=%d, body=%s", resp.StatusCode, string(body))
 }
 
 func buildAlipaySignContent(params map[string]string) string {

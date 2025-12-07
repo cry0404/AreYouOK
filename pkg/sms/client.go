@@ -19,8 +19,8 @@ type Client interface {
 	// signName: 短信签名名称
 	// templateCode: 模板代码
 	// templateParam: 模板参数（JSON 字符串）
-	SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse,error)
-	
+	SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse, error)
+
 	// SendBatch 批量发送短信
 	// phones: 手机号列表
 	// signName: 短信签名名称（所有手机号使用相同签名）
@@ -44,6 +44,8 @@ func Init() error {
 		switch cfg.SMSProvider {
 		case "aliyun":
 			smsClient, smsErr = NewAliyunClient()
+		case "mock":
+			smsClient = NewMockClient()
 		case "tencent":
 			// TODO: 实现腾讯云 SMS 客户端，不打算实现了
 			smsErr = errors.ErrTencentSMSNotImplemented
@@ -71,11 +73,9 @@ func GetClient() Client {
 	return smsClient
 }
 
-func SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse,error) {
+func SendSingle(ctx context.Context, phone, signName, templateCode, templateParam string) (*SendResponse, error) {
 	return GetClient().SendSingle(ctx, phone, signName, templateCode, templateParam)
 }
-
-
 
 // func SendBatch(ctx context.Context, phones []string, signName, templateCode string, templateParams []string) (*SendResponse, error) {
 // 	return GetClient().SendBatch(ctx, phones, signName, templateCode, templateParams)
