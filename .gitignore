@@ -1,5 +1,6 @@
 .cursor
 docs/
+docs/
 .DS_Store
 config/.env
 TODO.md
