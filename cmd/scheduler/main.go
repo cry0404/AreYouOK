@@ -18,7 +18,7 @@ import (
 
 
 func main() {
-	// 初始化日志
+
 	logger.Init()
 	defer logger.Sync()
 

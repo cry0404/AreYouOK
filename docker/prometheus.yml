@@ -9,13 +9,13 @@ rule_files:
   - "alerts.yml"
 
 scrape_configs:
-  # Prometheus self monitoring
+
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
     scrape_interval: 30s
 
-  # OpenTelemetry Collector metrics
+
   - job_name: 'otel-collector'
     static_configs:
       - targets: ['otel-collector:8889']
@@ -23,7 +23,7 @@ scrape_configs:
     scrape_interval: 15s
     honor_labels: true
 
-  # API Service metrics (via OpenTelemetry Collector)
+
   - job_name: 'areyouok-api'
     static_configs:
       - targets: ['otel-collector:8889']
@@ -40,7 +40,7 @@ scrape_configs:
         - 'sms.sent.total'
         - 'sms.send.duration'
 
-  # Worker Service metrics (via OpenTelemetry Collector)
+
   - job_name: 'areyouok-worker'
     static_configs:
       - targets: ['otel-collector:8889']
@@ -55,7 +55,6 @@ scrape_configs:
         - 'redis.commands.total'
         - 'redis.command.duration'
 
-  # Node Exporter for system metrics (if available)
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']

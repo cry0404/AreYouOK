@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
-
+	_ "net/http/pprof"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
@@ -34,7 +35,12 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 初始化 OpenTelemetry
+	if config.Cfg.Environment == "development" {
+		go func() {
+			http.ListenAndServe("localhost:6060", nil)
+		}()
+	}
+
 	otelCleanup, err := pkgtel.InitOpenTelemetry(ctx, pkgtel.Config{
 		ServiceName:    config.Cfg.ServiceName,
 		ServiceVersion: "1.0.0",
@@ -55,7 +61,6 @@ func main() {
 		logger.Logger.Warn("Failed to initialize OpenTelemetry metrics", zap.Error(err))
 	}
 
-
 	meter := otel.Meter(config.Cfg.ServiceName)
 	if err := pkgmiddleware.InitMetrics(meter); err != nil {
 		logger.Logger.Warn("Failed to initialize HTTP metrics", zap.Error(err))
@@ -71,7 +76,6 @@ func main() {
 		)
 		cancel()
 	}()
-
 
 	if err := storage.Init(); err != nil {
 		logger.Logger.Fatal("Failed to initialize storage", zap.Error(err))

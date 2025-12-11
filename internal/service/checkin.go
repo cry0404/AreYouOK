@@ -829,8 +829,8 @@ func (s *CheckInService) ProcessTimeoutBatch(
 				contacts = contacts[:maxContacts]
 			}
 
-			// 获取用户昵称, 用户昵称应该必须设置才对
-			userName := user.Nickname
+			// // 获取用户昵称, 用户昵称应该必须设置才对
+			// userName := user.Nickname
 
 			// 获取截止时间
 			deadline := user.DailyCheckInDeadline
@@ -853,7 +853,7 @@ func (s *CheckInService) ProcessTimeoutBatch(
 				// 使用 checkin_reminder_contact 类型发给紧急联系人（只需要 name 参数）
 				payload := model.JSONB{
 					"type": "checkin_reminder_contact",
-					"name": userName,
+					"name": contact.DisplayName,
 				}
 
 				// 创建通知任务

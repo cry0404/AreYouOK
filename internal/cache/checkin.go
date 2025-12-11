@@ -25,8 +25,7 @@ const (
 	MonthlyReminderLimit = 5
 )
 
-// IsCheckinScheduled 检查指定日期的打卡是否已投放（reminder 和 timeout 都已发布）
-// 为了向后兼容，保留此函数，但实际检查 reminder 和 timeout 是否都已调度
+
 func IsCheckinScheduled(ctx context.Context, date string, userID int64) (bool, error) {
 	reminderScheduled, err := IsReminderScheduled(ctx, date, userID)
 	if err != nil {
@@ -43,7 +42,6 @@ func IsCheckinScheduled(ctx context.Context, date string, userID int64) (bool, e
 }
 
 // MarkCheckinScheduled 标记指定日期的打卡已投放（同时标记 reminder 和 timeout）
-// 为了向后兼容，保留此函数，但实际会同时标记 reminder 和 timeout
 func MarkCheckinScheduled(ctx context.Context, date string, userID int64) error {
 	// 同时标记 reminder 和 timeout
 	if err := MarkReminderScheduled(ctx, date, userID); err != nil {
@@ -53,7 +51,6 @@ func MarkCheckinScheduled(ctx context.Context, date string, userID int64) error 
 }
 
 // UnmarkCheckinScheduled 清除指定日期的打卡已投放标记（用于设置更新或重试）
-// 需要同时删除 legacy 标记（checkin:scheduled）以及新的 reminder/timeout 标记
 func UnmarkCheckinScheduled(ctx context.Context, date string, userID int64) error {
 	keys := []string{
 		redis.Key(checkinScheduledPrefix, date, fmt.Sprintf("%d", userID)), // 兼容旧逻辑
@@ -158,8 +155,6 @@ func IncrementMonthlyReminderCount(ctx context.Context, userID int64, monthKey s
 	now := time.Now()
 	nextMonth := time.Date(now.Year(), now.Month()+1, 1, 0, 0, 0, 0, now.Location())
 	ttl := nextMonth.Sub(now)
-
-	// 使用 pipeline 原子性增加并设置过期时间
 	pipe := redis.Client().Pipeline()
 	pipe.Incr(ctx, key)
 	pipe.Expire(ctx, key, ttl)
@@ -171,7 +166,6 @@ func IncrementMonthlyReminderCount(ctx context.Context, userID int64, monthKey s
 }
 
 // CheckMonthlyReminderLimit 检查用户是否超过月度提醒限制
-// 返回 true 表示允许发送，false 表示已达上限
 func CheckMonthlyReminderLimit(ctx context.Context, userID int64) (bool, int, error) {
 	monthKey := time.Now().Format("2006-01")
 	count, err := GetMonthlyReminderCount(ctx, userID, monthKey)

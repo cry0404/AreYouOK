@@ -36,7 +36,7 @@ var (
 	smsErr    error
 )
 
-// Init 初始化 SMS 客户端
+
 func Init() error {
 	smsOnce.Do(func() {
 		cfg := config.Cfg

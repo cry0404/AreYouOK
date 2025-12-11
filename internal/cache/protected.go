@@ -83,12 +83,11 @@ func (pc *ProtectedCache) Get(ctx context.Context, key string, dest interface{})
 		return false, fmt.Errorf("failed to get cache: %w", err)
 	}
 
-	// 检查是否为空值标识
+
 	if data == emptyValueFlag {
 		return true, nil // 空值命中
 	}
 
-	// 反序列化正常值
 	if err := json.Unmarshal([]byte(data), dest); err != nil {
 		return false, fmt.Errorf("failed to unmarshal cache value: %w", err)
 	}
@@ -142,7 +141,6 @@ func (pc *ProtectedCache) BatchGet(ctx context.Context, keys []string, destFunc 
 			continue
 		}
 
-		// 反序列化值
 		dest := destFunc(key)
 		if dest == nil {
 			logger.Logger.Warn("Dest function returned nil for key",
@@ -187,12 +185,11 @@ func (pc *ProtectedCache) BatchDelete(ctx context.Context, keys []string) error 
 	return err
 }
 
-// addBreakerDelay 添加防雪崩随机延迟
+
 func (pc *ProtectedCache) addBreakerDelay(ctx context.Context) error {
 
 	delay := time.Duration(rand.Intn(int(breakerRandomDelayMax)))
 
-	// 使用 context 支持取消
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

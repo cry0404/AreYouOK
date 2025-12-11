@@ -740,11 +740,11 @@ func (s *JourneyService) ProcessTimeout(
 			contacts = contacts[:maxContacts]
 		}
 
-		// 获取用户昵称
-		userName := user.Nickname
-		if userName == "" {
-			userName = fmt.Sprintf("%d", userID)
-		}
+		// // 获取用户昵称
+		// userName := user.Nickname
+		// if userName == "" {
+		// 	userName = fmt.Sprintf("%d", userID)
+		// }
 
 		// 为每个紧急联系人创建通知任务
 		for _, contact := range contacts {
@@ -762,7 +762,7 @@ func (s *JourneyService) ProcessTimeout(
 			// 字段需要与阿里云模板变量匹配：name, trip, time, note
 			payload := model.JSONB{
 				"type": "journey_reminder_contact",
-				"name": userName,
+				"name": contact.DisplayName,
 				"trip": journey.Title,
 				"time": journey.ExpectedReturnTime.Format("2006-01-02 15:04"),
 				"note": journey.Note,
