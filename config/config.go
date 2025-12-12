@@ -33,6 +33,11 @@ type Config struct {
 	LoggerOutputPath   string `env:"LOGGER_OUTPUT_PATH" envDefault:"stdout"`
 	RedisPrefix        string `env:"REDIS_PREFIX" envDefault:"ayok"`
 
+	// Redis Sentinel 配置
+	RedisSentinelEnabled bool   `env:"REDIS_SENTINEL_ENABLED" envDefault:"false"`
+	RedisSentinelMaster  string `env:"REDIS_SENTINEL_MASTER" envDefault:"mymaster"`
+	RedisSentinelAddrs   string `env:"REDIS_SENTINEL_ADDRS" envDefault:""` // 逗号分隔，如 "redis-sentinel:26379"
+
 	RabbitMQAddr     string `env:"RABBITMQ_ADDR" envDefault:"localhost"`
 	RabbitMQPort     string `env:"RABBITMQ_PORT" envDefault:"5672"`
 	RabbitMQUsername string `env:"RABBITMQ_USERNAME" envDefault:"guest"`
@@ -216,19 +221,19 @@ func (c *Config) GetSMSTemplateConfig(messageType string) (signName, templateCod
 	case "checkin_reminder_contact":
 		signName = c.SMSCheckInReminderContactSignName
 		templateCode = c.SMSCheckInReminderContactTemplate
-		
+
 	case "journey_reminder_contact":
 		signName = c.SMSJourneyReminderContactSignName
 		templateCode = c.SMSJourneyReminderContactTemplate
-		
+
 	case "journey_timeout":
 		signName = c.SMSJourneyTimeoutSignName
 		templateCode = c.SMSJourneyTimeoutTemplate
-		
+
 	case "checkin_timeout":
 		signName = c.SMSCheckInTimeoutSignName
 		templateCode = c.SMSCheckInTimeoutTemplate
-		
+
 	case "quota_depleted":
 		signName = c.SMSQuotaDepletedSignName
 		templateCode = c.SMSQuotaDepletedTemplate
