@@ -1,0 +1,33 @@
+# Kustomization 配置，用于一键部署所有资源
+# 使用方法: kubectl apply -k k3s/
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: areyouok
+
+resources:
+  # 命名空间
+  - namespace.yaml
+  
+  # 配置和密钥
+  - configmap.yaml
+  - secrets.yaml
+  
+  # 基础设施
+  - postgres/statefulset.yaml
+  - redis/statefulset.yaml
+  - rabbitmq/statefulset.yaml
+  
+  # 应用服务
+  - api/deployment.yaml
+  - worker/deployment.yaml
+  - scheduler/deployment.yaml
+  
+  # Ingress
+  - ingress.yaml
+
+# 通用标签
+commonLabels:
+  app.kubernetes.io/part-of: areyouok
+  app.kubernetes.io/managed-by: kustomize
+

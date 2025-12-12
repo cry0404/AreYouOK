@@ -1,0 +1,47 @@
+# Redis Sentinel 模式的 ConfigMap 补丁
+# 使用方法：
+#   1. 先部署 Redis Sentinel: ./deploy.sh deploy-redis-ha
+#   2. 应用此补丁启用 Sentinel 模式: kubectl apply -f k3s/redis-ha/configmap-sentinel.yaml
+#   3. 重启应用服务: ./deploy.sh restart
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: areyouok-config
+  namespace: areyouok
+data:
+  # 环境配置
+  ENVIRONMENT: "production"
+  LOGGER_FORMAT: "json"
+  LOGGER_LEVEL: "INFO"
+  
+  # PostgreSQL 配置
+  POSTGRESQL_HOST: "postgres"
+  POSTGRESQL_PORT: "5432"
+  POSTGRESQL_DATABASE: "areyouok"
+  POSTGRESQL_USER: "postgres"
+  POSTGRESQL_SCHEMA: "public"
+  POSTGRESQL_SSLMODE: "disable"
+  
+  # Redis 配置（Sentinel 模式）
+  # 普通模式配置（Sentinel 启用后会忽略）
+  REDIS_ADDR: "redis:6379"
+  REDIS_PREFIX: "ayok"
+  
+  # Sentinel 模式配置（启用高可用）
+  REDIS_SENTINEL_ENABLED: "true"
+  REDIS_SENTINEL_MASTER: "mymaster"
+  REDIS_SENTINEL_ADDRS: "redis-sentinel:26379"
+  
+  # RabbitMQ 配置
+  RABBITMQ_ADDR: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USERNAME: "guest"
+  RABBITMQ_VHOST: "/"
+  
+  # Captcha 配置
+  CAPTCHA_PROVIDER: "aliyun"
+  
+  # OpenTelemetry 配置
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+

@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: areyouok
+  labels:
+    app: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+      - name: worker
+        image: ghcr.io/cry0404/areyouok-worker:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: areyouok-config
+        - secretRef:
+            name: areyouok-secrets
+        env:
+        - name: SERVICE_NAME
+          value: "areyouok-worker"
+        - name: SNOWFLAKE_MACHINE_ID
+          value: "2"
+        - name: SNOWFLAKE_DATA_CENTER
+          value: "1"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+      # 如果 GHCR 镜像是私有的，取消下面的注释
+      # imagePullSecrets:
+      # - name: ghcr-credentials
+

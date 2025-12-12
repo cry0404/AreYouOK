@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: scheduler
+  namespace: areyouok
+  labels:
+    app: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: scheduler
+  # Scheduler 应该只有一个实例运行，避免重复调度
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: scheduler
+    spec:
+      containers:
+      - name: scheduler
+        image: ghcr.io/cry0404/areyouok-scheduler:latest
+        imagePullPolicy: Always
+        envFrom:
+        - configMapRef:
+            name: areyouok-config
+        - secretRef:
+            name: areyouok-secrets
+        env:
+        - name: SERVICE_NAME
+          value: "areyouok-scheduler"
+        - name: SNOWFLAKE_MACHINE_ID
+          value: "3"
+        - name: SNOWFLAKE_DATA_CENTER
+          value: "1"
+        resources:
+          requests:
+            memory: "32Mi"
+            cpu: "20m"
+          limits:
+            memory: "128Mi"
+            cpu: "200m"
+      # 如果 GHCR 镜像是私有的，取消下面的注释
+      # imagePullSecrets:
+      # - name: ghcr-credentials
+

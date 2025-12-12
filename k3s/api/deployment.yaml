@@ -1,0 +1,84 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: areyouok
+  labels:
+    app: api
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: api
+  template:
+    metadata:
+      labels:
+        app: api
+    spec:
+      containers:
+      - name: api
+        image: ghcr.io/cry0404/areyouok-api:latest
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+          name: http
+        envFrom:
+        - configMapRef:
+            name: areyouok-config
+        - secretRef:
+            name: areyouok-secrets
+        env:
+        - name: SERVICE_NAME
+          value: "areyouok-api"
+        - name: SERVER_HOST
+          value: "0.0.0.0"
+        - name: SERVER_PORT
+          value: "8080"
+        - name: SNOWFLAKE_MACHINE_ID
+          value: "1"
+        - name: SNOWFLAKE_DATA_CENTER
+          value: "1"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "300m"
+        livenessProbe:
+          httpGet:
+            path: /v1/auth/waitlist/status
+            port: 8080
+          initialDelaySeconds: 15
+          periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /v1/auth/waitlist/status
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+      # 如果 GHCR 镜像是私有的，取消下面的注释
+      # imagePullSecrets:
+      # - name: ghcr-credentials
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: areyouok
+  labels:
+    app: api
+spec:
+  type: ClusterIP
+  selector:
+    app: api
+  ports:
+  - port: 80
+    targetPort: 8080
+    name: http
+

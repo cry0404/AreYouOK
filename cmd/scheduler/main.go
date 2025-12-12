@@ -94,7 +94,6 @@ func runDailyCheckinLoop(ctx context.Context) {
 		now := time.Now()
 		next := time.Date(now.Year(), now.Month(), now.Day(), 0, 5, 0, 0, now.Location())
 		if !next.After(now) {
-			// 如果已经过了今天 00:05，则设置为明天
 			next = next.Add(24 * time.Hour)
 		}
 
@@ -121,7 +120,6 @@ func runDailyCheckinLoop(ctx context.Context) {
 }
 
 // runJourneyTimeoutLoop 周期性扫描即将到期的行程并投递超时消息
-// 当前实现：每 5 分钟扫描未来 10 分钟内即将到期的行程。
 func runJourneyTimeoutLoop(ctx context.Context) {
 	js := schedule.GetJourneyScheduler()
 

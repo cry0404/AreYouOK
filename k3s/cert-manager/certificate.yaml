@@ -1,0 +1,37 @@
+# 证书资源定义
+# 也可以通过 Ingress 注解自动创建证书，这里提供手动创建的方式
+
+---
+# API 服务证书
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: api-tls
+  namespace: areyouok
+spec:
+  secretName: api-tls-secret
+  duration: 2160h    # 90 天
+  renewBefore: 360h  # 15 天前续期
+  issuerRef:
+    name: letsencrypt-prod  # 使用 letsencrypt-staging 测试
+    kind: ClusterIssuer
+  dnsNames:
+  - api.yourdomain.com  # TODO: 替换为你的域名
+
+---
+# Grafana 证书（可选）
+# apiVersion: cert-manager.io/v1
+# kind: Certificate
+# metadata:
+#   name: grafana-tls
+#   namespace: areyouok
+# spec:
+#   secretName: grafana-tls-secret
+#   duration: 2160h
+#   renewBefore: 360h
+#   issuerRef:
+#     name: letsencrypt-prod
+#     kind: ClusterIssuer
+#   dnsNames:
+#   - grafana.yourdomain.com
+

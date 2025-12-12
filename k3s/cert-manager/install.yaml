@@ -1,0 +1,33 @@
+# cert-manager 安装说明
+# cert-manager 需要单独安装，不在本目录的配置中
+#
+# 安装命令（选择一种）：
+#
+# 方式一：使用 kubectl 安装（推荐）
+# kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+#
+# 方式二：使用 Helm 安装
+# helm repo add jetstack https://charts.jetstack.io
+# helm repo update
+# helm install cert-manager jetstack/cert-manager \
+#   --namespace cert-manager \
+#   --create-namespace \
+#   --set installCRDs=true
+#
+# 验证安装：
+# kubectl -n cert-manager get pods
+#
+# 安装完成后，再应用本目录下的 issuer.yaml
+
+---
+# 这是一个占位文件，提醒需要先安装 cert-manager
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cert-manager-readme
+  namespace: areyouok
+data:
+  readme: |
+    cert-manager must be installed before applying issuer.yaml
+    Run: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+

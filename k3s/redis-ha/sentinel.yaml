@@ -1,0 +1,225 @@
+# Redis Sentinel 高可用配置
+# 包含：1 Master + 2 Replicas + 3 Sentinels
+# 
+# 注意：使用此配置需要修改应用的 Redis 连接方式
+# 从直连 Redis 改为通过 Sentinel 连接
+
+---
+# Redis 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: redis-config
+  namespace: areyouok
+data:
+  redis.conf: |
+    # 基础配置
+    bind 0.0.0.0
+    port 6379
+    
+    # 持久化
+    appendonly yes
+    appendfsync everysec
+    
+    # 内存管理
+    maxmemory 256mb
+    maxmemory-policy allkeys-lru
+    
+    # 主从复制（Replica 会自动配置）
+    replica-read-only yes
+    
+  sentinel.conf: |
+    # Sentinel 配置
+    port 26379
+    
+    # 监控的 Master（redis-0 是初始 Master）
+    sentinel monitor mymaster redis-0.redis-headless.areyouok.svc.cluster.local 6379 2
+    
+    # Master 下线判定时间（毫秒）
+    sentinel down-after-milliseconds mymaster 5000
+    
+    # 故障转移超时时间
+    sentinel failover-timeout mymaster 60000
+    
+    # 同时同步的 Replica 数量
+    sentinel parallel-syncs mymaster 1
+
+---
+# Headless Service（用于 StatefulSet DNS）
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-headless
+  namespace: areyouok
+  labels:
+    app: redis
+spec:
+  clusterIP: None
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+  - port: 26379
+    targetPort: 26379
+    name: sentinel
+
+---
+# Redis Service（客户端连接用）
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: areyouok
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+  - port: 6379
+    targetPort: 6379
+    name: redis
+
+---
+# Sentinel Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-sentinel
+  namespace: areyouok
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  selector:
+    app: redis
+  ports:
+  - port: 26379
+    targetPort: 26379
+    name: sentinel
+
+---
+# Redis StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  namespace: areyouok
+  labels:
+    app: redis
+spec:
+  serviceName: redis-headless
+  replicas: 3  # 1 Master + 2 Replicas
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      initContainers:
+      # 初始化容器：配置主从关系
+      - name: init-redis
+        image: redis:7.4-alpine
+        command:
+        - sh
+        - -c
+        - |
+          set -ex
+          # 生成 redis 配置
+          cp /mnt/config/redis.conf /mnt/data/redis.conf
+          
+          # 获取 Pod 序号
+          HOSTNAME=$(hostname)
+          ORDINAL=${HOSTNAME##*-}
+          
+          # 如果不是 redis-0，配置为 Replica
+          if [ "$ORDINAL" != "0" ]; then
+            echo "replicaof redis-0.redis-headless.areyouok.svc.cluster.local 6379" >> /mnt/data/redis.conf
+          fi
+        volumeMounts:
+        - name: config
+          mountPath: /mnt/config
+        - name: redis-data
+          mountPath: /mnt/data
+      containers:
+      # Redis 主容器
+      - name: redis
+        image: redis:7.4-alpine
+        command: ["redis-server", "/data/redis.conf"]
+        ports:
+        - containerPort: 6379
+          name: redis
+        env:
+        - name: TZ
+          value: "Asia/Shanghai"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+        volumeMounts:
+        - name: redis-data
+          mountPath: /data
+        livenessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        readinessProbe:
+          exec:
+            command: ["redis-cli", "ping"]
+          initialDelaySeconds: 5
+          periodSeconds: 3
+      
+      # Sentinel 容器
+      - name: sentinel
+        image: redis:7.4-alpine
+        command:
+        - sh
+        - -c
+        - |
+          # 复制 sentinel 配置
+          cp /mnt/config/sentinel.conf /data/sentinel.conf
+          # 启动 sentinel
+          redis-sentinel /data/sentinel.conf
+        ports:
+        - containerPort: 26379
+          name: sentinel
+        env:
+        - name: TZ
+          value: "Asia/Shanghai"
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "25m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
+        volumeMounts:
+        - name: config
+          mountPath: /mnt/config
+        - name: redis-data
+          mountPath: /data
+      
+      volumes:
+      - name: config
+        configMap:
+          name: redis-config
+  
+  volumeClaimTemplates:
+  - metadata:
+      name: redis-data
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      storageClassName: local-path
+      resources:
+        requests:
+          storage: 2Gi
+

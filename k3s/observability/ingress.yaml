@@ -1,0 +1,51 @@
+# 可观测性服务的 Ingress 配置
+# 用于通过域名访问 Grafana、Jaeger、Prometheus 等服务
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: observability-ingress
+  namespace: areyouok
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  # Grafana - 可视化面板
+  # TODO: 替换为你的域名
+  - host: grafana.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: grafana
+            port:
+              number: 3000
+
+  # Jaeger - 分布式追踪 UI
+  # TODO: 替换为你的域名
+  - host: jaeger.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: jaeger
+            port:
+              number: 16686
+
+  # Prometheus - 指标查询（可选，建议仅内部访问）
+  # TODO: 替换为你的域名
+  - host: prometheus.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: prometheus
+            port:
+              number: 9090
+

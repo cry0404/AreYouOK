@@ -766,11 +766,9 @@ func (s *CheckInService) ProcessTimeoutBatch(
 							zap.Int64("user_id", user.ID),
 							zap.Error(err),
 						)
-						// 创建任务失败不影响主流程，继续处理
 						continue
 					}
 
-					// 添加到创建的任务列表
 					createdTasks = append(createdTasks, quotaDepletedTask)
 
 					logger.Logger.Info("Created quota depleted notification task",
@@ -849,8 +847,6 @@ func (s *CheckInService) ProcessTimeoutBatch(
 					continue
 				}
 
-				// 构建 payload
-				// 使用 checkin_reminder_contact 类型发给紧急联系人（只需要 name 参数）
 				payload := model.JSONB{
 					"type": "checkin_reminder_contact",
 					"name": contact.DisplayName,

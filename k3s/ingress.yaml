@@ -1,0 +1,25 @@
+# API Ingress 配置（HTTP 版本）
+# 如需 HTTPS，请使用 ingress-tls.yaml 或部署 TLS: ./deploy.sh deploy-tls
+
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: api-ingress
+  namespace: areyouok
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  ingressClassName: traefik
+  rules:
+  # TODO: 替换为你的域名
+  - host: api.yourdomain.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: api
+            port:
+              number: 80
+

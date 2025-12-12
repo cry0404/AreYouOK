@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: areyouok-config
+  namespace: areyouok
+data:
+  # 环境配置
+  ENVIRONMENT: "production"
+  LOGGER_FORMAT: "json"
+  LOGGER_LEVEL: "INFO"
+  
+  # PostgreSQL 配置
+  POSTGRESQL_HOST: "postgres"
+  POSTGRESQL_PORT: "5432"
+  POSTGRESQL_DATABASE: "areyouok"
+  POSTGRESQL_USER: "postgres"
+  POSTGRESQL_SCHEMA: "public"
+  POSTGRESQL_SSLMODE: "disable"
+  
+  # Redis 配置
+  REDIS_ADDR: "redis:6379"
+  REDIS_PREFIX: "ayok"
+  
+  # Redis Sentinel 配置（高可用模式）
+  # 启用后会忽略 REDIS_ADDR，改为通过 Sentinel 连接
+  REDIS_SENTINEL_ENABLED: "false"
+  REDIS_SENTINEL_MASTER: "mymaster"
+  REDIS_SENTINEL_ADDRS: "redis-sentinel:26379"
+  
+  # RabbitMQ 配置
+  RABBITMQ_ADDR: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_USERNAME: "guest"
+  RABBITMQ_VHOST: "/"
+  
+  # Captcha 配置
+  CAPTCHA_PROVIDER: "aliyun"
+  
+  # OpenTelemetry 配置（可观测性组件部署后生效）
+  OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
+
