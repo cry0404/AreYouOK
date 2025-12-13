@@ -40,3 +40,4 @@ spec:
         ingress:
           class: traefik
 
+

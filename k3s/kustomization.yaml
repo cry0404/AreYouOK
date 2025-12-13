@@ -31,3 +31,4 @@ commonLabels:
   app.kubernetes.io/part-of: areyouok
   app.kubernetes.io/managed-by: kustomize
 
+

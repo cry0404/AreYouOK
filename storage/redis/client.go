@@ -77,7 +77,7 @@ func Init() error {
 			pkredis.InstrumentRedisClient(c, serviceName, cfg.RedisDB)
 		}
 
-		// 初始化 Redis 指标
+
 		meter := otel.Meter(serviceName)
 		if err := pkredis.InitRedisMetrics(meter); err != nil {
 			
@@ -87,7 +87,7 @@ func Init() error {
 	return err
 }
 
-// Client 返回 Redis UniversalClient
+
 func Client() redis.UniversalClient {
 	if client == nil {
 		panic("Redis client not init")

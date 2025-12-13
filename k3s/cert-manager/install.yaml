@@ -31,3 +31,4 @@ data:
     cert-manager must be installed before applying issuer.yaml
     Run: kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
 
+

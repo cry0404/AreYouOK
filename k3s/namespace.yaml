@@ -6,3 +6,4 @@ metadata:
     app.kubernetes.io/name: areyouok
     app.kubernetes.io/managed-by: kubectl
 
+

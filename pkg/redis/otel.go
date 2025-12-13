@@ -15,12 +15,12 @@ import (
 )
 
 var (
-	// Redis 相关指标
-	redisCommandsTotal     metric.Int64Counter
-	redisCommandDuration   metric.Float64Histogram
+
+	redisCommandsTotal     metric.Int64Counter // redis 执行的命令次数
+	redisCommandDuration   metric.Float64Histogram //执行时间分布
 	//redisConnectionsActive metric.Int64UpDownCounter
-	redisCacheHits         metric.Int64Counter
-	redisCacheMisses       metric.Int64Counter
+	redisCacheHits         metric.Int64Counter //缓存命中
+	redisCacheMisses       metric.Int64Counter //缓存未命中
 )
 
 // InitRedisMetrics 初始化 Redis 指标
@@ -99,12 +99,12 @@ func NewTracingHook(serviceName string, db int) *TracingHook {
 	}
 }
 
-// DialHook 实现 redis.Hook 接口
+
 func (th *TracingHook) DialHook(next redis.DialHook) redis.DialHook {
 	return next
 }
 
-// ProcessHook 实现 redis.Hook 接口
+
 func (th *TracingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 	return func(ctx context.Context, cmd redis.Cmder) error {
 		spanName := cmd.Name()
@@ -126,7 +126,7 @@ func (th *TracingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 			attribute.String("redis.command", cmd.String()),
 		)
 
-		// 提取键名（避免记录敏感数据）
+
 		if cmd.Args() != nil {
 			keys := extractKeys(cmd.Args())
 			if len(keys) > 0 {
@@ -140,7 +140,6 @@ func (th *TracingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 		err := next(ctx, cmd)
 		duration := time.Since(startTime).Seconds()
 
-		// 记录命令执行结果
 		status := "success"
 		if err != nil {
 			if err != redis.Nil {
@@ -180,6 +179,8 @@ func (th *TracingHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
 // ProcessPipelineHook 实现 redis.Hook 接口
 func (th *TracingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
 	return func(ctx context.Context, cmds []redis.Cmder) error {
+
+		// 创建对应 span 的追踪单元
 		ctx, span := th.tracer.Start(ctx, "redis.pipeline",
 			trace.WithSpanKind(trace.SpanKindClient),
 			trace.WithAttributes(th.attrs...),
@@ -191,6 +192,7 @@ func (th *TracingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis
 			commands = append(commands, cmd.String())
 		}
 
+		// 设置 span 对应的属性
 		span.SetAttributes(
 			attribute.Int("redis.pipeline.count", len(cmds)),
 			attribute.String("redis.pipeline.commands", strings.Join(commands, ";")),
@@ -198,10 +200,11 @@ func (th *TracingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis
 
 		err := next(ctx, cmds)
 
-		// 记录 Pipeline 执行指标
+		// 执行实际命令并计时
 		labels := []attribute.KeyValue{
 			attribute.String("redis.operation", "pipeline"),
 		}
+
 
 		successCount := 0
 		for _, cmd := range cmds {
@@ -210,6 +213,8 @@ func (th *TracingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis
 			}
 		}
 
+
+		// 记录对应的指标
 		span.SetAttributes(
 			attribute.Int("redis.pipeline.success_count", successCount),
 			attribute.Int("redis.pipeline.error_count", len(cmds)-successCount),
@@ -221,11 +226,10 @@ func (th *TracingHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis
 	}
 }
 
-// extractKeys 提取 Redis 命令中的键名（避免记录敏感值）
+
 func extractKeys(args []interface{}) []string {
 	keys := make([]string, 0, len(args)-1)
 
-	// 第一个参数通常是命令名，跳过
 	for i := 1; i < len(args) && len(keys) < 5; i++ {
 		if key, ok := args[i].(string); ok {
 			keys = append(keys, sanitizeKey(key))
@@ -235,14 +239,14 @@ func extractKeys(args []interface{}) []string {
 	return keys
 }
 
-// sanitizeKey 清理键名，移除敏感信息
+
 func sanitizeKey(key string) string {
-	// 移除常见的敏感模式
+
 	if strings.Contains(key, "token") ||
 		strings.Contains(key, "password") ||
 		strings.Contains(key, "secret") ||
 		strings.Contains(key, "session") {
-		// 返回键名的第一部分，隐藏敏感信息
+
 		parts := strings.Split(key, ":")
 		if len(parts) > 1 {
 			return parts[0] + ":***"
@@ -250,7 +254,6 @@ func sanitizeKey(key string) string {
 		return "***"
 	}
 
-	// 限制键名长度
 	if len(key) > 100 {
 		return key[:100] + "..."
 	}
