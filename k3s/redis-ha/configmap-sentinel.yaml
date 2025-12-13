@@ -46,3 +46,5 @@ data:
   OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
 
 
+
+
