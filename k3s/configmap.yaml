@@ -35,6 +35,30 @@ data:
   
   # Captcha 配置
   CAPTCHA_PROVIDER: "aliyun"
+  CAPTCHA_EXPIRE_SECONDS: "120"
+  CAPTCHA_SLIDER_THRESHOLD: "2"
+  CAPTCHA_MAX_DAILY: "10"
+  
+  # 支付宝网关
+  ALIPAY_GATEWAY: "https://openapi.alipay.com/gateway.do"
+  
+  # JWT 配置
+  JWT_EXPIRE_MINUTES: "30"
+  JWT_REFRESH_DAYS: "7"
+  
+  # Waitlist 配置
+  WAITLIST_MAX_USERS: "1000"
+  
+  # 默认 SMS 额度（cents）
+  DEFAULT_SMS_QUOTA: "100"
+  
+  # 限流配置
+  RATE_LIMIT_ENABLED: "true"
+  RATE_LIMIT_RPS: "100"
+  
+  # 数据库连接池
+  POSTGRESQL_MAX_OPEN: "200"
+  POSTGRESQL_MAX_IDLE: "30"
   
   # OpenTelemetry 配置（可观测性组件部署后生效）
   OTEL_EXPORTER_OTLP_ENDPOINT: "otel-collector:4317"
