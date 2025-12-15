@@ -1,13 +1,19 @@
 # Scheduler 服务 Dockerfile， go 程序的统一使用部分
 
 # 构建阶段
-FROM golang:1.25-alpine AS builder
+FROM docker.1ms.run/golang:1.25-alpine AS builder
+
+# 使用阿里云镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # 安装构建依赖
 RUN apk add --no-cache git make
 
 # 设置工作目录
 WORKDIR /app
+
+# 设置 Go 代理加速
+ENV GOPROXY=https://goproxy.cn,direct
 
 # 复制 go.mod 和 go.sum
 COPY go.mod go.sum ./
@@ -22,7 +28,10 @@ COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/bin/scheduler ./cmd/scheduler
 
 # 运行阶段
-FROM alpine:latest
+FROM docker.1ms.run/alpine:latest
+
+# 使用阿里云镜像源加速
+RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.aliyun.com/g' /etc/apk/repositories
 
 # 安装必要的运行时依赖（包括 procps 用于 pgrep 命令）
 RUN apk --no-cache add ca-certificates tzdata procps
