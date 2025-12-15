@@ -17,6 +17,7 @@ func Register(h *server.Hertz) {
 
 	// 认证相关路由
 	auth := v1.Group("/auth")
+	auth.GET("/waitlist/status", handler.GetWaitlistStatus)
 	auth.POST("/token/refresh", handler.RefreshToken)
 	auth.Use(middleware.AuthRateLimitMiddleware()) // 认证接口限流
 	{
@@ -31,7 +32,7 @@ func Register(h *server.Hertz) {
 			captcha.POST("/verify", handler.VerifyCaptcha)
 		}
 
-		auth.GET("/waitlist/status", handler.GetWaitlistStatus)
+		
 	}
 
 	// 用户相关路由

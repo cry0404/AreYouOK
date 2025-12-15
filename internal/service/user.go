@@ -362,13 +362,13 @@ func (s *UserService) GetUserQuotas(
 
 // GetWaitlistStatus 获取内测排队状态
 func (s *UserService) GetWaitlistStatus(ctx context.Context) (*dto.WaitlistStatusData, error) {
-	userCount, err := query.User.CountByStatus()
+	userCount, err := query.User.Count()
 	if err != nil {
 		return nil, fmt.Errorf("failed to count users: %w", err)
 	}
 
 	result := &dto.WaitlistStatusData{
-		UserCount: len(userCount),
+		UserCount: int(userCount),
 	}
 
 	return result, nil

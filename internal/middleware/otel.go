@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/cloudwego/hertz/pkg/app"
@@ -23,6 +24,11 @@ var (
 	httpServerResponseSize   metric.Int64Histogram
 	httpServerActiveRequests metric.Int64UpDownCounter
 )
+
+// toValidUTF8 统一清洗用户可控字符串，防止非法 UTF-8 触发指标/trace 序列化失败
+func toValidUTF8(val string) string {
+	return strings.ToValidUTF8(val, "")
+}
 
 // InitMetrics 初始化指标
 func InitMetrics(meter metric.Meter) error {
@@ -92,26 +98,33 @@ func OpenTelemetryMiddleware() app.HandlerFunc {
 		// 增加活跃请求计数
 		httpServerActiveRequests.Add(ctx, 1)
 
+		method := toValidUTF8(string(c.Method()))
+		path := toValidUTF8(string(c.Path()))
+		uri := toValidUTF8(c.Request.URI().String())
+		scheme := toValidUTF8(string(c.Request.URI().Scheme()))
+		host := toValidUTF8(string(c.Host()))
+		ua := toValidUTF8(string(c.UserAgent()))
+
 		// 创建 Span
-		spanName := string(c.Method()) + " " + string(c.Path())
+		spanName := method + " " + path
 		spanCtx, span := tracer.Start(ctx, spanName, trace.WithAttributes(
-			semconv.HTTPMethod(string(c.Method())),
-			semconv.HTTPRoute(string(c.Path())),
-			semconv.HTTPURL(c.Request.URI().String()),
-			semconv.HTTPScheme(string(c.Request.URI().Scheme())),
-			attribute.String("http.host", string(c.Host())),
-			attribute.String("http.user_agent", string(c.UserAgent())),
+			semconv.HTTPMethod(method),
+			semconv.HTTPRoute(path),
+			semconv.HTTPURL(uri),
+			semconv.HTTPScheme(scheme),
+			attribute.String("http.host", host),
+			attribute.String("http.user_agent", ua),
 		))
 		defer span.End()
 
 		// 添加用户 ID (如果已认证)
 		if userID := c.GetString("user_id"); userID != "" {
-			span.SetAttributes(attribute.String("enduser.id", userID))
+			span.SetAttributes(attribute.String("enduser.id", toValidUTF8(userID)))
 		}
 
 		// 添加请求 ID, 用于 tracing 对应的请求
 		if requestID := c.GetHeader("X-Request-Id"); len(requestID) > 0 {
-			span.SetAttributes(attribute.String("http.request_id", string(requestID)))
+			span.SetAttributes(attribute.String("http.request_id", toValidUTF8(string(requestID))))
 		}
 
 		// 更新上下文
@@ -120,8 +133,6 @@ func OpenTelemetryMiddleware() app.HandlerFunc {
 		// 记录请求指标
 		duration := time.Since(startTime).Seconds()
 		statusCode := int(c.Response.StatusCode())
-		method := string(c.Method())
-		path := string(c.Path())
 
 		// 设置 Span 属性
 		span.SetAttributes(

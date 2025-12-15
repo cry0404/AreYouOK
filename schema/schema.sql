@@ -30,11 +30,11 @@ CREATE TABLE users (
   
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  deleted_at TIMESTAMPTZ,
-  CONSTRAINT users_public_id_key UNIQUE (public_id),
-  CONSTRAINT users_alipay_open_id_key UNIQUE (alipay_open_id),
-  CONSTRAINT users_phone_hash_key UNIQUE (phone_hash)
+  deleted_at TIMESTAMPTZ
 );
+CREATE UNIQUE INDEX users_public_id_key ON users(public_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX users_alipay_open_id_key ON users(alipay_open_id) WHERE deleted_at IS NULL;
+CREATE UNIQUE INDEX users_phone_hash_key ON users(phone_hash) WHERE deleted_at IS NULL;
 CREATE INDEX idx_users_status ON users(status);
 CREATE INDEX idx_users_emergency_contacts ON users USING GIN (emergency_contacts);
 
